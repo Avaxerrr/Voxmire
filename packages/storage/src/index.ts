@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import {
   type EngineBackend,
   type JobStatus,
@@ -12,7 +12,7 @@ import {
   transcriptionJobSchema
 } from '@voxmire/contracts';
 
-export type VoxmireDatabase = Database.Database;
+export type VoxmireDatabase = DatabaseSync;
 
 export type CreateJobRecordInput = {
   sourceFile: SourceFile;
@@ -21,9 +21,9 @@ export type CreateJobRecordInput = {
 };
 
 export function openVoxmireDatabase(databasePath: string): VoxmireDatabase {
-  const db = new Database(databasePath);
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
+  const db = new DatabaseSync(databasePath);
+  db.exec('PRAGMA journal_mode = WAL');
+  db.exec('PRAGMA foreign_keys = ON');
   runMigrations(db);
   return db;
 }
@@ -93,7 +93,8 @@ export function createJobRecord(db: VoxmireDatabase, input: CreateJobRecordInput
   };
 
   const parsedJob = transcriptionJobSchema.parse(job);
-  const transaction = db.transaction(() => {
+  db.exec('BEGIN');
+  try {
     db.prepare(`
       INSERT INTO source_files (id, path, name, extension, size_bytes, duration_seconds, created_at)
       VALUES (@id, @path, @name, @extension, @sizeBytes, @durationSeconds, @createdAt)
@@ -103,9 +104,11 @@ export function createJobRecord(db: VoxmireDatabase, input: CreateJobRecordInput
       INSERT INTO jobs (id, source_file_id, status, model_id, engine_backend, progress, error_message, created_at, updated_at, completed_at)
       VALUES (@id, @sourceFileId, @status, @modelId, @engineBackend, @progress, @errorMessage, @createdAt, @updatedAt, @completedAt)
     `).run(toJobRow(parsedJob));
-  });
-
-  transaction();
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
   return { job: parsedJob, sourceFile };
 }
 
@@ -279,7 +282,7 @@ function parseSegmentRow(row: unknown): TranscriptSegment {
   });
 }
 
-function toSourceRow(sourceFile: SourceFile): Record<string, unknown> {
+function toSourceRow(sourceFile: SourceFile): Record<string, SQLInputValue> {
   return {
     id: sourceFile.id,
     path: sourceFile.path,
@@ -291,7 +294,7 @@ function toSourceRow(sourceFile: SourceFile): Record<string, unknown> {
   };
 }
 
-function toJobRow(job: TranscriptionJob): Record<string, unknown> {
+function toJobRow(job: TranscriptionJob): Record<string, SQLInputValue> {
   return {
     id: job.id,
     sourceFileId: job.sourceFileId,
@@ -306,7 +309,7 @@ function toJobRow(job: TranscriptionJob): Record<string, unknown> {
   };
 }
 
-function toSegmentRow(segment: TranscriptSegment): Record<string, unknown> {
+function toSegmentRow(segment: TranscriptSegment): Record<string, SQLInputValue> {
   return {
     id: segment.id,
     jobId: segment.jobId,

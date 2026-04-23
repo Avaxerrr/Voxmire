@@ -63,7 +63,7 @@ Expected input support:
 
 ## Storage
 
-- SQLite for durable local state.
+- SQLite for durable local state through built-in `node:sqlite`.
 
 Expected data:
 

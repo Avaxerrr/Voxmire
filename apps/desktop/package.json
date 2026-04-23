@@ -1,32 +1,32 @@
 {
-  "name": "@voxmire/desktop",
-  "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "main": "./out/main/index.js",
-  "scripts": {
-    "dev": "electron-vite dev",
-    "build": "electron-vite build",
-    "preview": "electron-vite preview",
-    "typecheck": "tsc --noEmit",
-    "lint": "echo \"lint not configured yet\""
-  },
-  "dependencies": {
-    "@voxmire/contracts": "workspace:*",
-    "@voxmire/core": "workspace:*",
-    "@voxmire/engine": "workspace:*",
-    "@voxmire/exporters": "workspace:*",
-    "@voxmire/storage": "workspace:*",
-    "react": "^19.2.1",
-    "react-dom": "^19.2.1"
-  },
-  "devDependencies": {
-    "@types/node": "^24.10.1",
-    "@types/react": "^19.2.7",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^5.1.2",
-    "electron": "^39.2.7",
-    "electron-vite": "^4.0.0",
-    "vite": "^7.2.7"
-  }
+    "name":  "@voxmire/desktop",
+    "version":  "0.0.0",
+    "private":  true,
+    "type":  "module",
+    "main":  "./out/main/index.js",
+    "scripts":  {
+                    "dev":  "electron-vite dev",
+                    "build":  "electron-vite build",
+                    "preview":  "electron-vite preview",
+                    "typecheck":  "tsc --noEmit",
+                    "lint":  "echo \"lint not configured yet\""
+                },
+    "dependencies":  {
+                         "@voxmire/contracts":  "workspace:*",
+                         "@voxmire/core":  "workspace:*",
+                         "@voxmire/engine":  "workspace:*",
+                         "@voxmire/exporters":  "workspace:*",
+                         "@voxmire/storage":  "workspace:*",
+                         "react":  "^19.2.1",
+                         "react-dom":  "^19.2.1"
+                     },
+    "devDependencies":  {
+                            "@types/node":  "^24.10.1",
+                            "@types/react":  "^19.2.7",
+                            "@types/react-dom":  "^19.2.3",
+                            "@vitejs/plugin-react":  "^5.1.2",
+                            "electron":  "^39.2.7",
+                            "electron-vite":  "^4.0.0",
+                            "vite":  "^7.2.7"
+                        }
 }

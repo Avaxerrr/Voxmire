@@ -17,7 +17,7 @@ Also add `docs/IMPLEMENTATION_PLAN.md` as the repo source of truth before contin
   - job state transition helpers
   - model shortlist defaults: `large-v3-turbo`, `large-v3`, `distil-large-v3.5`, `medium`
   - long-audio chunk policy defaults
-- Add `packages/storage` using `better-sqlite3`:
+- Add `packages/storage` using built-in `node:sqlite`:
   - migrations for jobs, source files, transcript segments, models, settings
   - repository APIs for creating jobs, listing jobs, updating progress/status, saving segments, loading transcripts
 - Add `packages/engine`:

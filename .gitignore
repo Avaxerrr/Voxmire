@@ -32,3 +32,6 @@ resources/engines/**/*
 /whisper-bin-*/
 *.zip
 *.7z
+
+# IDE settings
+.idea/

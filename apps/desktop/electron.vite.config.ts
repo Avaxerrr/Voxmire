@@ -2,9 +2,17 @@ import { resolve } from 'node:path';
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
 import react from '@vitejs/plugin-react';
 
+const workspacePackages = [
+  '@voxmire/contracts',
+  '@voxmire/core',
+  '@voxmire/engine',
+  '@voxmire/exporters',
+  '@voxmire/storage'
+];
+
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin({ exclude: workspacePackages })],
     build: {
       rollupOptions: {
         input: resolve(__dirname, 'src/main/index.ts')
@@ -12,7 +20,7 @@ export default defineConfig({
     }
   },
   preload: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin({ exclude: workspacePackages })],
     build: {
       rollupOptions: {
         input: resolve(__dirname, 'src/preload/index.ts')
@@ -29,3 +37,4 @@ export default defineConfig({
     }
   }
 });
+
