@@ -8,6 +8,10 @@ Expected first-run CPU resources:
 ffmpeg/ffmpeg.exe
 ffmpeg/ffprobe.exe
 engines/win32/whisper-cpu.exe
+engines/win32/whisper.dll
+engines/win32/ggml.dll
+engines/win32/ggml-base.dll
+engines/win32/ggml-cpu.dll
 models/ggml-large-v3-turbo.bin
 ```
 

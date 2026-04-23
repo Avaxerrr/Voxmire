@@ -12,6 +12,10 @@ resources/
   engines/
     win32/
       whisper-cpu.exe
+      whisper.dll
+      ggml.dll
+      ggml-base.dll
+      ggml-cpu.dll
   models/
     ggml-large-v3-turbo.bin
 ```

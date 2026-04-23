@@ -87,6 +87,16 @@ export function getResourceStatus(paths: ResourcePaths): ResourceStatus[] {
         'https://github.com/ggml-org/whisper.cpp/releases'
       );
     }),
+    ...['whisper.dll', 'ggml.dll', 'ggml-base.dll', 'ggml-cpu.dll'].map((fileName) =>
+      resourceStatus(
+        `whisper-runtime-${fileName}`,
+        'whisper-engine',
+        fileName,
+        true,
+        join(paths.projectRoot, 'resources', 'engines', platformResourceDirectory(), fileName),
+        'https://github.com/ggml-org/whisper.cpp/releases'
+      )
+    ),
     ...modelIds.map((modelId) => {
       const path = defaultModelPath(paths, modelId);
       return resourceStatus(
