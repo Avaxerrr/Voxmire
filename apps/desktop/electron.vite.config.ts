@@ -23,7 +23,11 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin({ exclude: workspacePackages })],
     build: {
       rollupOptions: {
-        input: resolve(__dirname, 'src/preload/index.ts')
+        input: resolve(__dirname, 'src/preload/index.ts'),
+        output: {
+          entryFileNames: 'index.cjs',
+          format: 'cjs'
+        }
       }
     }
   },
