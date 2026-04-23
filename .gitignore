@@ -1,0 +1,22 @@
+node_modules/
+dist/
+out/
+build/
+.vite/
+.turbo/
+coverage/
+*.log
+*.tmp
+
+# Local app data
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Packaged binaries and large local models should be added intentionally.
+resources/models/*
+resources/ffmpeg/*
+resources/engines/**/*
+!resources/models/.gitkeep
+!resources/ffmpeg/.gitkeep
+!resources/engines/**/.gitkeep

@@ -1,0 +1,16 @@
+{
+    "version":  "0.0.0",
+    "dependencies":  {
+                         "zod":  "^3.24.1"
+                     },
+    "types":  "./src/index.ts",
+    "type":  "module",
+    "name":  "@voxmire/contracts",
+    "private":  true,
+    "scripts":  {
+                    "build":  "tsc --noEmit",
+                    "typecheck":  "tsc --noEmit",
+                    "lint":  "echo \"lint not configured yet\""
+                },
+    "main":  "./src/index.ts"
+}

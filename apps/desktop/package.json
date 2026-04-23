@@ -1,0 +1,12 @@
+{
+  "name": "@voxmire/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "echo \"desktop app not scaffolded yet\"",
+    "build": "echo \"desktop app not scaffolded yet\"",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo \"lint not configured yet\""
+  }
+}
