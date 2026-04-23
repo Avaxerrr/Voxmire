@@ -105,6 +105,21 @@ export const exportTranscriptResultSchema = z.object({
   format: exportFormatSchema
 });
 
+
+export const resourceKindSchema = z.enum(['ffmpeg', 'ffprobe', 'whisper-engine', 'model']);
+
+export const resourceStatusSchema = z.object({
+  id: z.string().min(1),
+  kind: resourceKindSchema,
+  label: z.string().min(1),
+  required: z.boolean(),
+  available: z.boolean(),
+  path: z.string().min(1),
+  sourceUrl: z.string().url().nullable(),
+  reason: z.string().nullable()
+});
+export type ResourceKind = z.infer<typeof resourceKindSchema>;
+export type ResourceStatus = z.infer<typeof resourceStatusSchema>;
 export type JobStatus = z.infer<typeof jobStatusSchema>;
 export type ExportFormat = z.infer<typeof exportFormatSchema>;
 export type EngineKind = z.infer<typeof engineKindSchema>;

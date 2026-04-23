@@ -6,6 +6,7 @@ import type {
   ExportTranscriptResult,
   JobWithSource,
   ModelProfile,
+  ResourceStatus,
   TranscriptSegment,
   TranscriptionJob,
   TranscriptionProgressEvent
@@ -18,7 +19,8 @@ const api = {
     getInfo: () => ipcRenderer.invoke('app:get-info')
   },
   system: {
-    getEngineAvailability: (): Promise<EngineAvailability[]> => ipcRenderer.invoke('system:get-engine-availability')
+    getEngineAvailability: (): Promise<EngineAvailability[]> => ipcRenderer.invoke('system:get-engine-availability'),
+    getResourceStatus: (): Promise<ResourceStatus[]> => ipcRenderer.invoke('system:get-resource-status')
   },
   models: {
     list: (): Promise<ModelProfile[]> => ipcRenderer.invoke('models:list')

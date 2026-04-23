@@ -7,6 +7,7 @@ import type {
   ExportTranscriptResult,
   JobWithSource,
   ModelProfile,
+  ResourceStatus,
   TranscriptSegment,
   TranscriptionJob,
   TranscriptionProgressEvent
@@ -29,6 +30,7 @@ declare global {
       };
       system: {
         getEngineAvailability: () => Promise<EngineAvailability[]>;
+        getResourceStatus: () => Promise<ResourceStatus[]>;
       };
       models: {
         list: () => Promise<ModelProfile[]>;

@@ -5,6 +5,7 @@ import type {
   EngineAvailability,
   EngineBackend,
   ModelId,
+  ResourceStatus,
   TranscriptSegment,
   TranscriptionProgressEvent
 } from '@voxmire/contracts';
@@ -65,6 +66,60 @@ export function detectWhisperEngine(paths: ResourcePaths, backend: EngineBackend
 
 export function detectWhisperEngines(paths: ResourcePaths): EngineAvailability[] {
   return ['cpu', 'cuda', 'vulkan'].map((backend) => detectWhisperEngine(paths, backend as EngineBackend));
+}
+export function getResourceStatus(paths: ResourcePaths): ResourceStatus[] {
+  const ffmpegPath = resolveFfmpegExecutable(paths);
+  const ffprobePath = resolveFfprobeExecutable(paths);
+  const engineBackends: EngineBackend[] = ['cpu', 'cuda', 'vulkan'];
+  const modelIds: ModelId[] = ['large-v3-turbo', 'large-v3', 'distil-large-v3.5', 'medium'];
+
+  return [
+    resourceStatus('ffmpeg', 'ffmpeg', 'FFmpeg', true, ffmpegPath, 'https://www.gyan.dev/ffmpeg/builds/'),
+    resourceStatus('ffprobe', 'ffprobe', 'ffprobe', true, ffprobePath, 'https://www.gyan.dev/ffmpeg/builds/'),
+    ...engineBackends.map((backend) => {
+      const path = resolveWhisperExecutable(paths, backend);
+      return resourceStatus(
+        `whisper-${backend}`,
+        'whisper-engine',
+        `whisper.cpp ${backend.toUpperCase()}`,
+        backend === 'cpu',
+        path,
+        'https://github.com/ggml-org/whisper.cpp/releases'
+      );
+    }),
+    ...modelIds.map((modelId) => {
+      const path = defaultModelPath(paths, modelId);
+      return resourceStatus(
+        `model-${modelId}`,
+        'model',
+        `GGML ${modelId}`,
+        modelId === 'large-v3-turbo',
+        path,
+        'https://huggingface.co/ggerganov/whisper.cpp/tree/main'
+      );
+    })
+  ];
+}
+
+function resourceStatus(
+  id: string,
+  kind: ResourceStatus['kind'],
+  label: string,
+  required: boolean,
+  path: string,
+  sourceUrl: string
+): ResourceStatus {
+  const available = existsSync(path);
+  return {
+    id,
+    kind,
+    label,
+    required,
+    available,
+    path,
+    sourceUrl,
+    reason: available ? null : `Missing ${basename(path)} at ${path}`
+  };
 }
 
 export async function probeMediaFile(paths: ResourcePaths, filePath: string): Promise<ProbeResult> {

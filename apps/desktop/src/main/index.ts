@@ -15,6 +15,7 @@ import {
   WhisperCppCpuEngine,
   defaultModelPath,
   detectWhisperEngines,
+  getResourceStatus,
   probeMediaFile,
   sourceExtension,
   type ResourcePaths
@@ -81,6 +82,7 @@ function registerIpcHandlers(): void {
   }));
 
   ipcMain.handle('system:get-engine-availability', () => detectWhisperEngines(resources));
+  ipcMain.handle('system:get-resource-status', () => getResourceStatus(resources));
   ipcMain.handle('models:list', () => modelProfiles);
   ipcMain.handle('jobs:list', () => listJobs(db));
   ipcMain.handle('jobs:get', (_event, jobId: string) => getJobWithSource(db, jobId));

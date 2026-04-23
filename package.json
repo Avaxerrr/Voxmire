@@ -9,7 +9,8 @@
                     "build":  "corepack pnpm -r build",
                     "typecheck":  "corepack pnpm -r typecheck",
                     "lint":  "corepack pnpm -r lint",
-                    "test":  "corepack pnpm exec vitest run"
+                    "test":  "corepack pnpm exec vitest run",
+                    "resources:check":  "node scripts/check-resources.mjs"
                 },
     "devDependencies":  {
                             "@types/node":  "^24.10.1",

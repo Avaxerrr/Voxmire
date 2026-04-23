@@ -5,6 +5,7 @@ import type {
   JobWithSource,
   ModelId,
   ModelProfile,
+  ResourceStatus,
   TranscriptSegment,
   TranscriptionProgressEvent
 } from '@voxmire/contracts';
@@ -22,6 +23,7 @@ export function App(): ReactElement {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [engines, setEngines] = useState<EngineAvailability[]>([]);
   const [models, setModels] = useState<ModelProfile[]>([]);
+  const [resources, setResources] = useState<ResourceStatus[]>([]);
   const [selectedModelId, setSelectedModelId] = useState<ModelId>('large-v3-turbo');
   const [jobs, setJobs] = useState<JobWithSource[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -54,16 +56,18 @@ export function App(): ReactElement {
   }, [selectedJob?.job.id]);
 
   async function loadInitialState(): Promise<void> {
-    const [info, engineAvailability, modelProfiles, jobList] = await Promise.all([
+    const [info, engineAvailability, modelProfiles, resourceStatus, jobList] = await Promise.all([
       window.voxmire.app.getInfo(),
       window.voxmire.system.getEngineAvailability(),
       window.voxmire.models.list(),
+      window.voxmire.system.getResourceStatus(),
       window.voxmire.jobs.list()
     ]);
 
     setAppInfo(info);
     setEngines(engineAvailability);
     setModels(modelProfiles);
+    setResources(resourceStatus);
     setJobs(jobList);
     setSelectedJobId(jobList[0]?.job.id ?? null);
   }
@@ -188,7 +192,7 @@ export function App(): ReactElement {
                   >
                     <div>
                       <strong>{entry.sourceFile.name}</strong>
-                      <p>{entry.job.status} · {Math.round(entry.job.progress * 100)}%</p>
+                      <p>{entry.job.status} Â· {Math.round(entry.job.progress * 100)}%</p>
                     </div>
                     <span>{entry.job.modelId}</span>
                   </button>
@@ -257,17 +261,17 @@ export function App(): ReactElement {
         <section className="content-grid">
           <article className="panel">
             <div className="panel-header">
-              <h3>Engine Availability</h3>
-              <span>Local resources</span>
+              <h3>Resource Status</h3>
+              <span>{resources.filter((resource) => resource.available).length}/{resources.length} present</span>
             </div>
             <div className="model-list">
-              {engines.map((engine) => (
-                <div className="model-row" key={engine.id}>
+              {resources.map((resource) => (
+                <div className="model-row" key={resource.id}>
                   <div>
-                    <strong>{engine.label}</strong>
-                    <p>{engine.available ? engine.executablePath : engine.reason}</p>
+                    <strong>{resource.label}</strong>
+                    <p>{resource.available ? resource.path : resource.reason}</p>
                   </div>
-                  <span>{engine.available ? 'Ready' : 'Missing'}</span>
+                  <span>{resource.available ? 'Ready' : resource.required ? 'Required' : 'Optional'}</span>
                 </div>
               ))}
             </div>
