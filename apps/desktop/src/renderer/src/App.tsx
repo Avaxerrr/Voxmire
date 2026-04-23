@@ -30,6 +30,7 @@ export function App(): ReactElement {
   const [segments, setSegments] = useState<TranscriptSegment[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const api = window.voxmire;
 
   const selectedJob = useMemo(
     () => jobs.find((entry) => entry.job.id === selectedJobId) ?? jobs[0] ?? null,
@@ -37,14 +38,19 @@ export function App(): ReactElement {
   );
 
   useEffect(() => {
+    if (!api) {
+      setMessage('Voxmire desktop bridge is unavailable. Run the app through Electron, not a browser tab.');
+      return;
+    }
+
     void loadInitialState();
 
-    const unsubscribe = window.voxmire.jobs.onProgress((event) => {
+    const unsubscribe = api.jobs.onProgress((event) => {
       void handleProgress(event);
     });
 
     return unsubscribe;
-  }, []);
+  }, [api]);
 
   useEffect(() => {
     if (!selectedJob) {
@@ -52,16 +58,25 @@ export function App(): ReactElement {
       return;
     }
 
-    void window.voxmire.transcripts.get(selectedJob.job.id).then(setSegments);
-  }, [selectedJob?.job.id]);
+    if (!api) {
+      setSegments([]);
+      return;
+    }
+
+    void api.transcripts.get(selectedJob.job.id).then(setSegments);
+  }, [api, selectedJob?.job.id]);
 
   async function loadInitialState(): Promise<void> {
+    if (!api) {
+      return;
+    }
+
     const [info, engineAvailability, modelProfiles, resourceStatus, jobList] = await Promise.all([
-      window.voxmire.app.getInfo(),
-      window.voxmire.system.getEngineAvailability(),
-      window.voxmire.models.list(),
-      window.voxmire.system.getResourceStatus(),
-      window.voxmire.jobs.list()
+      api.app.getInfo(),
+      api.system.getEngineAvailability(),
+      api.models.list(),
+      api.system.getResourceStatus(),
+      api.jobs.list()
     ]);
 
     setAppInfo(info);
@@ -74,12 +89,16 @@ export function App(): ReactElement {
 
   async function handleProgress(event: TranscriptionProgressEvent): Promise<void> {
     setMessage(event.message);
-    const updated = await window.voxmire.jobs.list();
+    if (!api) {
+      return;
+    }
+
+    const updated = await api.jobs.list();
     setJobs(updated);
     setSelectedJobId((current) => current ?? event.jobId);
 
     if (event.segment || selectedJobId === event.jobId) {
-      const updatedSegments = await window.voxmire.transcripts.get(event.jobId);
+      const updatedSegments = await api.transcripts.get(event.jobId);
       setSegments(updatedSegments);
     }
   }
@@ -89,9 +108,14 @@ export function App(): ReactElement {
     setMessage(null);
 
     try {
-      const created = await window.voxmire.jobs.create({ modelId: selectedModelId });
+      if (!api) {
+        setMessage('Voxmire desktop bridge is unavailable.');
+        return;
+      }
+
+      const created = await api.jobs.create({ modelId: selectedModelId });
       if (created) {
-        const updated = await window.voxmire.jobs.list();
+        const updated = await api.jobs.list();
         setJobs(updated);
         setSelectedJobId(created.job.id);
         setMessage('Job created. Local transcription will start automatically.');
@@ -104,8 +128,12 @@ export function App(): ReactElement {
   }
 
   async function cancelJob(jobId: string): Promise<void> {
-    await window.voxmire.jobs.cancel(jobId);
-    setJobs(await window.voxmire.jobs.list());
+    if (!api) {
+      return;
+    }
+
+    await api.jobs.cancel(jobId);
+    setJobs(await api.jobs.list());
     setMessage('Job canceled.');
   }
 
@@ -115,7 +143,12 @@ export function App(): ReactElement {
     }
 
     try {
-      const result = await window.voxmire.exports.create(selectedJob.job.id, format);
+      if (!api) {
+        setMessage('Voxmire desktop bridge is unavailable.');
+        return;
+      }
+
+      const result = await api.exports.create(selectedJob.job.id, format);
       setMessage(`Exported ${format.toUpperCase()} to ${result.path}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : `Failed to export ${format}.`);
@@ -192,7 +225,7 @@ export function App(): ReactElement {
                   >
                     <div>
                       <strong>{entry.sourceFile.name}</strong>
-                      <p>{entry.job.status} Â· {Math.round(entry.job.progress * 100)}%</p>
+                      <p>{entry.job.status} ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· {Math.round(entry.job.progress * 100)}%</p>
                     </div>
                     <span>{entry.job.modelId}</span>
                   </button>
