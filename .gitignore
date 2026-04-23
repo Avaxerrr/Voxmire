@@ -22,3 +22,13 @@ resources/engines/**/*
 !resources/engines/
 !resources/engines/*/
 !resources/engines/*/.gitkeep
+# Local downloaded resource staging files
+/ffmpeg.exe
+/ffprobe.exe
+/ffplay.exe
+/ggml-*.bin
+/whisper/
+/ffmpeg-*/
+/whisper-bin-*/
+*.zip
+*.7z
