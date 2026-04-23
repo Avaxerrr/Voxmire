@@ -20,8 +20,14 @@ body {
   background: #f4f6f8;
 }
 
-button {
+button,
+select {
   font: inherit;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .app-shell {
@@ -62,10 +68,14 @@ button {
 .brand-block p,
 .topbar h2,
 .eyebrow,
-.hero-panel h3,
-.hero-panel p,
 .panel h3,
-.model-row p {
+.model-row p,
+.job-row p,
+.empty-state h4,
+.empty-state p,
+.error-text,
+.runtime-card p,
+.segment-row p {
   margin: 0;
 }
 
@@ -124,10 +134,16 @@ button {
   font-size: 14px;
 }
 
+.runtime-card p {
+  margin-top: 8px;
+  color: #9da7b7;
+  font-size: 13px;
+}
+
 .workspace {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 18px;
   padding: 28px;
 }
 
@@ -152,6 +168,22 @@ button {
   line-height: 1.2;
 }
 
+.toolbar,
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbar select {
+  min-height: 40px;
+  min-width: 180px;
+  padding: 0 10px;
+  border: 1px solid #c6ced8;
+  border-radius: 7px;
+  background: #ffffff;
+}
+
 .primary-action,
 .secondary-action {
   min-height: 40px;
@@ -167,38 +199,29 @@ button {
 }
 
 .secondary-action {
-  padding: 0 16px;
+  padding: 0 12px;
   border: 1px solid #c6ced8;
   color: #1d2430;
   background: #ffffff;
 }
 
-.hero-panel {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 28px;
-  border: 1px dashed #aab5c4;
+.message-bar {
+  padding: 12px 14px;
+  border: 1px solid #c6d7e3;
   border-radius: 8px;
-  background: #ffffff;
-}
-
-.hero-panel h3 {
-  font-size: 22px;
-}
-
-.hero-panel p {
-  max-width: 680px;
-  margin-top: 8px;
-  color: #5d6878;
-  line-height: 1.5;
+  color: #24465b;
+  background: #eef7fb;
+  font-size: 14px;
 }
 
 .content-grid {
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
   gap: 18px;
+}
+
+.main-grid {
+  grid-template-columns: minmax(280px, 0.85fr) minmax(0, 1.35fr);
 }
 
 .panel {
@@ -209,9 +232,14 @@ button {
   background: #ffffff;
 }
 
+.job-panel,
+.transcript-panel {
+  min-height: 360px;
+}
+
 .panel-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 16px;
@@ -222,42 +250,65 @@ button {
 }
 
 .panel-header span {
+  display: block;
+  margin-top: 4px;
   color: #697386;
   font-size: 13px;
 }
 
-.step-list {
+.empty-state {
+  display: grid;
+  gap: 8px;
+  padding: 24px;
+  border: 1px dashed #c6ced8;
+  border-radius: 8px;
+  color: #697386;
+  background: #fafbfc;
+}
+
+.empty-state h4 {
+  color: #1d2430;
+  font-size: 16px;
+}
+
+.job-list,
+.model-list,
+.segment-list {
   display: grid;
   gap: 10px;
-  margin: 0;
-  padding-left: 22px;
-  color: #334155;
 }
 
-.step-list li {
-  padding-left: 4px;
-}
-
-.model-list {
-  display: grid;
-  gap: 10px;
-}
-
+.job-row,
 .model-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  width: 100%;
   padding: 12px;
   border: 1px solid #e3e8ef;
   border-radius: 7px;
+  background: #ffffff;
+  text-align: left;
 }
 
+.job-row {
+  cursor: pointer;
+}
+
+.job-row.selected,
+.job-row:hover {
+  border-color: #91b8ca;
+  background: #f2f8fb;
+}
+
+.job-row strong,
 .model-row strong {
   display: block;
   font-size: 14px;
 }
 
+.job-row p,
 .model-row p {
   margin-top: 4px;
   color: #697386;
@@ -265,9 +316,55 @@ button {
   line-height: 1.4;
 }
 
+.job-row span,
 .model-row span {
   flex: 0 0 auto;
   color: #2b6f8f;
   font-size: 12px;
   font-weight: 700;
+}
+
+.progress-track {
+  height: 8px;
+  margin-bottom: 14px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e7edf3;
+}
+
+.progress-track div {
+  height: 100%;
+  background: #2b6f8f;
+  transition: width 160ms ease;
+}
+
+.error-text {
+  margin-bottom: 14px;
+  color: #9f2f2f;
+  font-size: 14px;
+}
+
+.segment-list {
+  max-height: 420px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.segment-row {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid #e3e8ef;
+  border-radius: 7px;
+}
+
+.segment-row time {
+  color: #697386;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.segment-row p {
+  color: #1d2430;
+  line-height: 1.5;
 }

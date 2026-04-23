@@ -8,9 +8,12 @@
                     "dev":  "corepack pnpm --filter @voxmire/desktop dev",
                     "build":  "corepack pnpm -r build",
                     "typecheck":  "corepack pnpm -r typecheck",
-                    "lint":  "corepack pnpm -r lint"
+                    "lint":  "corepack pnpm -r lint",
+                    "test":  "corepack pnpm exec vitest run"
                 },
     "devDependencies":  {
-                            "typescript":  "^5.8.0"
+                            "@types/node":  "^24.10.1",
+                            "typescript":  "^5.8.0",
+                            "vitest":  "^4.1.5"
                         }
 }

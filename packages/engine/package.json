@@ -1,13 +1,16 @@
 {
-    "version":  "0.0.0",
-    "name":  "@voxmire/engine",
-    "main":  "./src/index.ts",
-    "scripts":  {
-                    "build":  "tsc --noEmit",
-                    "typecheck":  "tsc --noEmit",
-                    "lint":  "echo \"lint not configured yet\""
-                },
-    "type":  "module",
-    "types":  "./src/index.ts",
-    "private":  true
+  "name": "@voxmire/engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo \"lint not configured yet\""
+  },
+  "dependencies": {
+    "@voxmire/contracts": "workspace:*"
+  }
 }

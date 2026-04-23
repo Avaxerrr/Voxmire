@@ -1,4 +1,13 @@
-import { type ReactElement, useEffect, useState } from 'react';
+import { type ReactElement, useEffect, useMemo, useState } from 'react';
+import type {
+  EngineAvailability,
+  ExportFormat,
+  JobWithSource,
+  ModelId,
+  ModelProfile,
+  TranscriptSegment,
+  TranscriptionProgressEvent
+} from '@voxmire/contracts';
 
 type AppInfo = {
   name: string;
@@ -7,28 +16,109 @@ type AppInfo = {
   arch: string;
 };
 
-const modelProfiles = [
-  { name: 'large-v3-turbo', purpose: 'Default', detail: 'Balanced quality and speed for most machines.' },
-  { name: 'large-v3', purpose: 'Quality', detail: 'Best quality mode when time and memory allow.' },
-  { name: 'distil-large-v3.5', purpose: 'Fast English', detail: 'Fast option for English-heavy work.' },
-  { name: 'medium', purpose: 'Fallback', detail: 'Lower memory option for older hardware.' }
-];
-
-const pipelineSteps = [
-  'Import source file',
-  'Probe with ffmpeg',
-  'Prepare audio chunks',
-  'Transcribe with whisper.cpp',
-  'Save transcript segments',
-  'Export when ready'
-];
+const exportFormats: ExportFormat[] = ['txt', 'json', 'srt', 'vtt'];
 
 export function App(): ReactElement {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
+  const [engines, setEngines] = useState<EngineAvailability[]>([]);
+  const [models, setModels] = useState<ModelProfile[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState<ModelId>('large-v3-turbo');
+  const [jobs, setJobs] = useState<JobWithSource[]>([]);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [segments, setSegments] = useState<TranscriptSegment[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const selectedJob = useMemo(
+    () => jobs.find((entry) => entry.job.id === selectedJobId) ?? jobs[0] ?? null,
+    [jobs, selectedJobId]
+  );
 
   useEffect(() => {
-    void window.voxmire.app.getInfo().then(setAppInfo);
+    void loadInitialState();
+
+    const unsubscribe = window.voxmire.jobs.onProgress((event) => {
+      void handleProgress(event);
+    });
+
+    return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    if (!selectedJob) {
+      setSegments([]);
+      return;
+    }
+
+    void window.voxmire.transcripts.get(selectedJob.job.id).then(setSegments);
+  }, [selectedJob?.job.id]);
+
+  async function loadInitialState(): Promise<void> {
+    const [info, engineAvailability, modelProfiles, jobList] = await Promise.all([
+      window.voxmire.app.getInfo(),
+      window.voxmire.system.getEngineAvailability(),
+      window.voxmire.models.list(),
+      window.voxmire.jobs.list()
+    ]);
+
+    setAppInfo(info);
+    setEngines(engineAvailability);
+    setModels(modelProfiles);
+    setJobs(jobList);
+    setSelectedJobId(jobList[0]?.job.id ?? null);
+  }
+
+  async function handleProgress(event: TranscriptionProgressEvent): Promise<void> {
+    setMessage(event.message);
+    const updated = await window.voxmire.jobs.list();
+    setJobs(updated);
+    setSelectedJobId((current) => current ?? event.jobId);
+
+    if (event.segment || selectedJobId === event.jobId) {
+      const updatedSegments = await window.voxmire.transcripts.get(event.jobId);
+      setSegments(updatedSegments);
+    }
+  }
+
+  async function createJob(): Promise<void> {
+    setBusy(true);
+    setMessage(null);
+
+    try {
+      const created = await window.voxmire.jobs.create({ modelId: selectedModelId });
+      if (created) {
+        const updated = await window.voxmire.jobs.list();
+        setJobs(updated);
+        setSelectedJobId(created.job.id);
+        setMessage('Job created. Local transcription will start automatically.');
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to create transcription job.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cancelJob(jobId: string): Promise<void> {
+    await window.voxmire.jobs.cancel(jobId);
+    setJobs(await window.voxmire.jobs.list());
+    setMessage('Job canceled.');
+  }
+
+  async function exportTranscript(format: ExportFormat): Promise<void> {
+    if (!selectedJob) {
+      return;
+    }
+
+    try {
+      const result = await window.voxmire.exports.create(selectedJob.job.id, format);
+      setMessage(`Exported ${format.toUpperCase()} to ${result.path}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : `Failed to export ${format}.`);
+    }
+  }
+
+  const cpuEngine = engines.find((engine) => engine.backend === 'cpu');
 
   return (
     <main className="app-shell">
@@ -51,6 +141,7 @@ export function App(): ReactElement {
         <div className="runtime-card">
           <span>Runtime</span>
           <strong>{appInfo ? `${appInfo.platform} ${appInfo.arch}` : 'Detecting...'}</strong>
+          <p>{cpuEngine?.available ? 'CPU engine detected' : 'CPU engine missing'}</p>
         </div>
       </aside>
 
@@ -60,30 +151,126 @@ export function App(): ReactElement {
             <p className="eyebrow">Desktop MVP</p>
             <h2>Transcription Queue</h2>
           </div>
-          <button className="primary-action" type="button">Import audio</button>
+          <div className="toolbar">
+            <select value={selectedModelId} onChange={(event) => setSelectedModelId(event.target.value as ModelId)}>
+              {models.map((model) => (
+                <option key={model.id} value={model.id}>{model.label}</option>
+              ))}
+            </select>
+            <button className="primary-action" disabled={busy} onClick={createJob} type="button">
+              {busy ? 'Importing...' : 'Import audio'}
+            </button>
+          </div>
         </header>
 
-        <section className="hero-panel" aria-label="Import audio">
-          <div>
-            <h3>Drop a long recording to start</h3>
-            <p>
-              Voxmire will prepare the audio locally, run a selected Whisper model, and keep progress durable for long sessions.
-            </p>
-          </div>
-          <button className="secondary-action" type="button">Choose file</button>
+        {message ? <div className="message-bar">{message}</div> : null}
+
+        <section className="content-grid main-grid">
+          <article className="panel job-panel">
+            <div className="panel-header">
+              <h3>Jobs</h3>
+              <span>{jobs.length} total</span>
+            </div>
+
+            {jobs.length === 0 ? (
+              <div className="empty-state">
+                <h4>No jobs yet</h4>
+                <p>Import an audio or video file to create the first local transcription job.</p>
+              </div>
+            ) : (
+              <div className="job-list">
+                {jobs.map((entry) => (
+                  <button
+                    className={`job-row ${selectedJob?.job.id === entry.job.id ? 'selected' : ''}`}
+                    key={entry.job.id}
+                    onClick={() => setSelectedJobId(entry.job.id)}
+                    type="button"
+                  >
+                    <div>
+                      <strong>{entry.sourceFile.name}</strong>
+                      <p>{entry.job.status} · {Math.round(entry.job.progress * 100)}%</p>
+                    </div>
+                    <span>{entry.job.modelId}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </article>
+
+          <article className="panel transcript-panel">
+            <div className="panel-header">
+              <div>
+                <h3>{selectedJob ? selectedJob.sourceFile.name : 'Transcript'}</h3>
+                <span>{selectedJob ? selectedJob.job.status : 'No job selected'}</span>
+              </div>
+              {selectedJob ? (
+                <div className="panel-actions">
+                  {selectedJob.job.status === 'transcribing' || selectedJob.job.status === 'queued' || selectedJob.job.status === 'preparing' ? (
+                    <button className="secondary-action" onClick={() => void cancelJob(selectedJob.job.id)} type="button">Cancel</button>
+                  ) : null}
+                  {exportFormats.map((format) => (
+                    <button
+                      className="secondary-action"
+                      disabled={segments.length === 0}
+                      key={format}
+                      onClick={() => void exportTranscript(format)}
+                      type="button"
+                    >
+                      {format.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+            {selectedJob ? (
+              <>
+                <div className="progress-track" aria-label="Progress">
+                  <div style={{ width: `${Math.round(selectedJob.job.progress * 100)}%` }} />
+                </div>
+                {selectedJob.job.errorMessage ? <p className="error-text">{selectedJob.job.errorMessage}</p> : null}
+                {segments.length === 0 ? (
+                  <div className="empty-state">
+                    <h4>Transcript pending</h4>
+                    <p>Segments will appear here as the local engine saves them.</p>
+                  </div>
+                ) : (
+                  <div className="segment-list">
+                    {segments.map((segment) => (
+                      <div className="segment-row" key={segment.id}>
+                        <time>{formatTime(segment.startSeconds)} - {formatTime(segment.endSeconds)}</time>
+                        <p>{segment.text}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="empty-state">
+                <h4>Select or create a job</h4>
+                <p>The transcript viewer is ready for the first imported file.</p>
+              </div>
+            )}
+          </article>
         </section>
 
         <section className="content-grid">
           <article className="panel">
             <div className="panel-header">
-              <h3>Pipeline</h3>
-              <span>Planned V1 flow</span>
+              <h3>Engine Availability</h3>
+              <span>Local resources</span>
             </div>
-            <ol className="step-list">
-              {pipelineSteps.map((step) => (
-                <li key={step}>{step}</li>
+            <div className="model-list">
+              {engines.map((engine) => (
+                <div className="model-row" key={engine.id}>
+                  <div>
+                    <strong>{engine.label}</strong>
+                    <p>{engine.available ? engine.executablePath : engine.reason}</p>
+                  </div>
+                  <span>{engine.available ? 'Ready' : 'Missing'}</span>
+                </div>
               ))}
-            </ol>
+            </div>
           </article>
 
           <article className="panel">
@@ -92,11 +279,11 @@ export function App(): ReactElement {
               <span>Initial shortlist</span>
             </div>
             <div className="model-list">
-              {modelProfiles.map((model) => (
-                <div className="model-row" key={model.name}>
+              {models.map((model) => (
+                <div className="model-row" key={model.id}>
                   <div>
-                    <strong>{model.name}</strong>
-                    <p>{model.detail}</p>
+                    <strong>{model.label}</strong>
+                    <p>{model.description}</p>
                   </div>
                   <span>{model.purpose}</span>
                 </div>
@@ -107,4 +294,10 @@ export function App(): ReactElement {
       </section>
     </main>
   );
+}
+
+function formatTime(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const remainder = Math.floor(seconds % 60);
+  return `${minutes}:${remainder.toString().padStart(2, '0')}`;
 }
