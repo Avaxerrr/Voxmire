@@ -15,8 +15,10 @@ coverage/
 
 # Packaged binaries and large local models should be added intentionally.
 resources/models/*
-resources/ffmpeg/*
-resources/engines/**/*
 !resources/models/.gitkeep
+resources/ffmpeg/*
 !resources/ffmpeg/.gitkeep
-!resources/engines/**/.gitkeep
+resources/engines/**/*
+!resources/engines/
+!resources/engines/*/
+!resources/engines/*/.gitkeep
