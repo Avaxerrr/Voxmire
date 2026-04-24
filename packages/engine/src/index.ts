@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import type {
   EngineAvailability,
@@ -19,11 +19,30 @@ export type ProbeResult = {
   formatName: string | null;
 };
 
+export type PreparedAudioChunk = {
+  index: number;
+  startSeconds: number;
+  endSeconds: number;
+  filePath: string;
+};
+
+export type PrepareAudioOptions = {
+  sourcePath: string;
+  jobId: string;
+  outputDirectory: string;
+  durationSeconds: number | null;
+  targetChunkSeconds: number;
+  overlapSeconds: number;
+  maxSecondsBeforeChunking: number;
+  signal?: AbortSignal;
+};
+
 export type TranscriptionInput = {
   jobId: string;
   sourcePath: string;
   modelPath: string;
   outputDirectory: string;
+  outputBaseName?: string;
   signal?: AbortSignal;
 };
 
@@ -157,6 +176,61 @@ export async function probeMediaFile(paths: ResourcePaths, filePath: string): Pr
   };
 }
 
+export async function prepareAudioChunks(
+  paths: ResourcePaths,
+  options: PrepareAudioOptions
+): Promise<PreparedAudioChunk[]> {
+  const ffmpegPath = resolveFfmpegExecutable(paths);
+  if (!existsSync(ffmpegPath)) {
+    throw new Error(`Missing ffmpeg executable at ${ffmpegPath}`);
+  }
+
+  const jobDirectory = join(options.outputDirectory, options.jobId);
+  mkdirSync(jobDirectory, { recursive: true });
+
+  const ranges = planAudioChunks(options);
+  const preparedChunks: PreparedAudioChunk[] = [];
+
+  for (const range of ranges) {
+    const filePath = join(jobDirectory, `chunk-${range.index.toString().padStart(4, '0')}.wav`);
+    const args = [
+      '-y',
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-ss',
+      range.startSeconds.toString()
+    ];
+
+    if (range.durationSeconds !== null) {
+      args.push('-t', range.durationSeconds.toString());
+    }
+
+    args.push(
+      '-i',
+      options.sourcePath,
+      '-vn',
+      '-ac',
+      '1',
+      '-ar',
+      '16000',
+      '-c:a',
+      'pcm_s16le',
+      filePath
+    );
+
+    await runProcess(ffmpegPath, args, undefined, options.signal);
+    preparedChunks.push({
+      index: range.index,
+      startSeconds: range.startSeconds,
+      endSeconds: range.endSeconds,
+      filePath
+    });
+  }
+
+  return preparedChunks;
+}
+
 export class WhisperCppCpuEngine implements TranscriptionEngine {
   readonly id = 'whisper.cpp-cpu';
   readonly backend = 'cpu';
@@ -185,7 +259,7 @@ export class WhisperCppCpuEngine implements TranscriptionEngine {
       segment: null
     };
 
-    const outputBase = join(input.outputDirectory, input.jobId);
+    const outputBase = join(input.outputDirectory, input.outputBaseName ?? input.jobId);
     const args = ['-m', input.modelPath, '-f', input.sourcePath, '-of', outputBase, '-oj', '-osrt', '-ovtt'];
 
     const result = await runProcess(
@@ -305,6 +379,46 @@ function runProcess(
       reject(new Error(`${basename(executablePath)} exited with code ${code}: ${stderr || stdout}`));
     });
   });
+}
+
+type PlannedChunkRange = {
+  index: number;
+  startSeconds: number;
+  endSeconds: number;
+  durationSeconds: number | null;
+};
+
+function planAudioChunks(options: PrepareAudioOptions): PlannedChunkRange[] {
+  const duration = options.durationSeconds;
+  if (duration === null || duration <= 0) {
+    return [{ index: 0, startSeconds: 0, endSeconds: 0, durationSeconds: null }];
+  }
+
+  if (duration <= options.maxSecondsBeforeChunking) {
+    return [{ index: 0, startSeconds: 0, endSeconds: duration, durationSeconds: duration }];
+  }
+
+  const ranges: PlannedChunkRange[] = [];
+  const stride = Math.max(1, options.targetChunkSeconds - options.overlapSeconds);
+  let start = 0;
+
+  while (start < duration) {
+    const end = Math.min(duration, start + options.targetChunkSeconds);
+    ranges.push({
+      index: ranges.length,
+      startSeconds: start,
+      endSeconds: end,
+      durationSeconds: end - start
+    });
+
+    if (end >= duration) {
+      break;
+    }
+
+    start += stride;
+  }
+
+  return ranges;
 }
 
 type WhisperJsonSegment = {

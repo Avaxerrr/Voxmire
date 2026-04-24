@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { transcriptSegmentSchema, transcriptionJobSchema } from './index';
+import { transcriptionChunkSchema, transcriptSegmentSchema, transcriptionJobSchema } from './index';
 
 describe('contracts', () => {
   it('validates transcription job payloads', () => {
@@ -32,5 +32,23 @@ describe('contracts', () => {
         createdAt: '2026-04-23T00:00:00.000Z'
       })
     ).toThrow();
+  });
+
+  it('validates transcription chunk payloads', () => {
+    expect(() =>
+      transcriptionChunkSchema.parse({
+        id: 'chunk_1',
+        jobId: 'job_1',
+        index: 0,
+        startSeconds: 0,
+        endSeconds: 600,
+        filePath: 'C:/audio/chunk-0000.wav',
+        status: 'queued',
+        errorMessage: null,
+        createdAt: '2026-04-23T00:00:00.000Z',
+        updatedAt: '2026-04-23T00:00:00.000Z',
+        completedAt: null
+      })
+    ).not.toThrow();
   });
 });

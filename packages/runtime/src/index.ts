@@ -7,13 +7,16 @@ import type {
   JobWithSource,
   ModelId,
   SourceFile,
+  TranscriptionChunk,
   TranscriptSegment,
   TranscriptionJob,
   TranscriptionProgressEvent
 } from '@voxmire/contracts';
+import { defaultChunkPolicy } from '@voxmire/core';
 import {
   WhisperCppCpuEngine,
   defaultModelPath,
+  prepareAudioChunks,
   probeMediaFile,
   sourceExtension,
   type ResourcePaths
@@ -24,10 +27,13 @@ import {
   createJobRecord,
   getJobWithSource,
   getTranscriptSegments,
+  getTranscriptionChunks,
   listJobs,
+  saveTranscriptionChunk,
   saveTranscriptSegment,
   updateJobProgress,
   updateJobStatus,
+  updateTranscriptionChunkStatus,
   type VoxmireDatabase
 } from '@voxmire/storage';
 
@@ -121,6 +127,7 @@ export class VoxmireRuntime {
   async runTranscriptionJob(jobId: string, modelId: ModelId): Promise<void> {
     const abortController = new AbortController();
     this.activeJobs.set(jobId, abortController);
+    let currentChunk: TranscriptionChunk | null = null;
 
     try {
       const jobWithSource = getJobWithSource(this.options.db, jobId);
@@ -132,31 +139,58 @@ export class VoxmireRuntime {
 
       const modelPath = defaultModelPath(this.options.resources, modelId);
       const outputDirectory = ensureDirectory(this.options.directories.engineOutputDirectory);
+      const preparedDirectory = ensureDirectory(join(outputDirectory, 'prepared-audio'));
 
       if (!existsSync(modelPath)) {
         throw new Error(`Missing model file: ${modelPath}`);
       }
 
+      const chunks = await this.prepareChunks(jobWithSource, preparedDirectory, abortController.signal);
+      if (abortController.signal.aborted) {
+        return;
+      }
+
       this.updateAndEmit(jobId, 'transcribing', 0.1, 'Starting local transcription engine.');
 
       const engine = new WhisperCppCpuEngine(this.options.resources);
-      for await (const event of engine.transcribe({
-        jobId,
-        sourcePath: jobWithSource.sourceFile.path,
-        modelPath,
-        outputDirectory,
-        signal: abortController.signal
-      })) {
-        if (abortController.signal.aborted) {
-          return;
+      let nextSegmentIndex = getTranscriptSegments(this.options.db, jobId).length;
+
+      for (const chunk of chunks) {
+        if (chunk.status === 'completed') {
+          continue;
         }
 
-        if (event.segment) {
-          saveTranscriptSegment(this.options.db, event.segment);
+        currentChunk = chunk;
+        updateTranscriptionChunkStatus(this.options.db, chunk.id, 'transcribing');
+
+        for await (const event of engine.transcribe({
+          jobId,
+          sourcePath: chunk.filePath,
+          modelPath,
+          outputDirectory,
+          outputBaseName: `${jobId}-chunk-${chunk.index.toString().padStart(4, '0')}`,
+          signal: abortController.signal
+        })) {
+          if (abortController.signal.aborted) {
+            return;
+          }
+
+          const progress = calculateChunkedProgress(chunk.index, chunks.length, event.progress);
+          const segment = event.segment
+            ? saveTranscriptSegment(this.options.db, offsetSegment(event.segment, chunk, nextSegmentIndex++))
+            : null;
+
+          updateJobProgress(this.options.db, jobId, progress);
+          this.emitProgress({
+            jobId,
+            status: 'transcribing',
+            progress,
+            message: segment ? 'Transcript segment saved.' : event.message,
+            segment
+          });
         }
 
-        updateJobProgress(this.options.db, jobId, event.progress);
-        this.emitProgress(event);
+        updateTranscriptionChunkStatus(this.options.db, chunk.id, 'completed');
       }
 
       this.updateAndEmit(jobId, 'completed', 1, 'Transcription completed.');
@@ -166,11 +200,53 @@ export class VoxmireRuntime {
       }
 
       const message = error instanceof Error ? error.message : 'Unknown transcription failure.';
+      if (currentChunk) {
+        updateTranscriptionChunkStatus(this.options.db, currentChunk.id, 'failed', message);
+      }
       updateJobStatus(this.options.db, jobId, 'failed', { errorMessage: message });
       this.emitProgress({ jobId, status: 'failed', progress: 0, message, segment: null });
     } finally {
       this.activeJobs.delete(jobId);
     }
+  }
+
+  private async prepareChunks(
+    jobWithSource: JobWithSource,
+    preparedDirectory: string,
+    signal: AbortSignal
+  ): Promise<TranscriptionChunk[]> {
+    const existingChunks = getTranscriptionChunks(this.options.db, jobWithSource.job.id);
+    if (existingChunks.length > 0) {
+      return existingChunks;
+    }
+
+    const preparedChunks = await prepareAudioChunks(this.options.resources, {
+      sourcePath: jobWithSource.sourceFile.path,
+      jobId: jobWithSource.job.id,
+      outputDirectory: preparedDirectory,
+      durationSeconds: jobWithSource.sourceFile.durationSeconds,
+      targetChunkSeconds: defaultChunkPolicy.targetSeconds,
+      overlapSeconds: defaultChunkPolicy.overlapSeconds,
+      maxSecondsBeforeChunking: defaultChunkPolicy.maxSecondsBeforeChunking,
+      signal
+    });
+
+    const now = new Date().toISOString();
+    return preparedChunks.map((chunk) =>
+      saveTranscriptionChunk(this.options.db, {
+        id: createId('chunk'),
+        jobId: jobWithSource.job.id,
+        index: chunk.index,
+        startSeconds: chunk.startSeconds,
+        endSeconds: chunk.endSeconds,
+        filePath: chunk.filePath,
+        status: 'queued',
+        errorMessage: null,
+        createdAt: now,
+        updatedAt: now,
+        completedAt: null
+      })
+    );
   }
 
   private async createSourceFile(filePath: string): Promise<SourceFile> {
@@ -212,6 +288,22 @@ export function createVoxmireRuntime(options: VoxmireRuntimeOptions): VoxmireRun
 function ensureDirectory(directory: string): string {
   mkdirSync(directory, { recursive: true });
   return directory;
+}
+
+function calculateChunkedProgress(chunkIndex: number, chunkCount: number, chunkProgress: number): number {
+  const safeChunkCount = Math.max(1, chunkCount);
+  const transcribeProgress = (chunkIndex + Math.max(0, Math.min(1, chunkProgress))) / safeChunkCount;
+  return Math.max(0.1, Math.min(0.99, 0.1 + transcribeProgress * 0.89));
+}
+
+function offsetSegment(segment: TranscriptSegment, chunk: TranscriptionChunk, index: number): TranscriptSegment {
+  return {
+    ...segment,
+    id: createId('seg'),
+    index,
+    startSeconds: chunk.startSeconds + segment.startSeconds,
+    endSeconds: chunk.startSeconds + segment.endSeconds
+  };
 }
 
 function sanitizeFileName(value: string): string {

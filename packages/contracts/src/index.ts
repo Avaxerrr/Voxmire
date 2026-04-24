@@ -52,6 +52,22 @@ export const transcriptSegmentSchema = z.object({
   createdAt: z.string().datetime()
 });
 
+export const transcriptionChunkStatusSchema = z.enum(['queued', 'preparing', 'transcribing', 'completed', 'failed', 'canceled']);
+
+export const transcriptionChunkSchema = z.object({
+  id: z.string().min(1),
+  jobId: z.string().min(1),
+  index: z.number().int().nonnegative(),
+  startSeconds: z.number().nonnegative(),
+  endSeconds: z.number().nonnegative(),
+  filePath: z.string().min(1),
+  status: transcriptionChunkStatusSchema,
+  errorMessage: z.string().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  completedAt: z.string().datetime().nullable()
+});
+
 export const modelProfileSchema = z.object({
   id: modelIdSchema,
   label: z.string().min(1),
@@ -128,6 +144,8 @@ export type ModelId = z.infer<typeof modelIdSchema>;
 export type SourceFile = z.infer<typeof sourceFileSchema>;
 export type TranscriptionJob = z.infer<typeof transcriptionJobSchema>;
 export type TranscriptSegment = z.infer<typeof transcriptSegmentSchema>;
+export type TranscriptionChunkStatus = z.infer<typeof transcriptionChunkStatusSchema>;
+export type TranscriptionChunk = z.infer<typeof transcriptionChunkSchema>;
 export type ModelProfile = z.infer<typeof modelProfileSchema>;
 export type EngineAvailability = z.infer<typeof engineAvailabilitySchema>;
 export type TranscriptionProgressEvent = z.infer<typeof transcriptionProgressEventSchema>;

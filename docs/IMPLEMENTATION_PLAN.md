@@ -4,31 +4,45 @@
 
 Build Voxmire in a pipeline-first order, with the first milestone proving the real local CPU transcription path: file import -> ffmpeg probe/prepare -> whisper.cpp CPU sidecar -> SQLite transcript storage -> renderer progress/transcript display.
 
-Also add `docs/IMPLEMENTATION_PLAN.md` as the repo source of truth before continuing implementation.
+`docs/IMPLEMENTATION_PLAN.md` is the repo source of truth for implementation status.
+
+Current focus: finish the desktop local transcription pipeline and long-audio reliability before adding optional agent-facing surfaces such as a CLI or MCP server.
+
+## Current Status
+
+- Done: monorepo foundation, docs, Electron desktop scaffold, React UI, shared packages, typed IPC, file import, SQLite job/transcript storage, resource checks, model presets, exports, and package tests.
+- Done: local runtime is pseudo-headless. Electron wraps `packages/runtime`, and the runtime can be exercised without the renderer.
+- Done: bundled ffmpeg/ffprobe and whisper.cpp CPU resources are present locally and intentionally ignored by git.
+- Done: ffmpeg preparation and chunk metadata foundation. Imported media is prepared into app-managed WAV chunks, chunks are stored durably, and whisper.cpp runs chunk-by-chunk.
+- In progress: long-audio reliability. The next slice is checkpoint/resume after app restart, followed by pause/resume and transcript virtualization.
+- Later: agent-friendly CLI/MCP/API wrappers over the runtime.
 
 ## Key Changes
 
-- Add `docs/IMPLEMENTATION_PLAN.md` with this plan, then commit it before coding the next feature layer.
-- Add shared contracts in `packages/contracts` using Zod:
+- [x] Add `docs/IMPLEMENTATION_PLAN.md` with this plan.
+- [x] Add shared contracts in `packages/contracts` using Zod:
   - `JobStatus`: `queued`, `preparing`, `transcribing`, `paused`, `completed`, `failed`, `canceled`
   - `ExportFormat`: `txt`, `json`, `srt`, `vtt`
-  - `SourceFile`, `TranscriptionJob`, `TranscriptSegment`, `ModelProfile`, `EngineAvailability`, `TranscriptionProgressEvent`
-- Add core logic in `packages/core`:
+  - `SourceFile`, `TranscriptionJob`, `TranscriptionChunk`, `TranscriptSegment`, `ModelProfile`, `EngineAvailability`, `TranscriptionProgressEvent`
+- [x] Add core logic in `packages/core`:
   - job state transition helpers
   - model shortlist defaults: `large-v3-turbo`, `large-v3`, `distil-large-v3.5`, `medium`
   - long-audio chunk policy defaults
-- Add `packages/storage` using built-in `node:sqlite`:
-  - migrations for jobs, source files, transcript segments, models, settings
-  - repository APIs for creating jobs, listing jobs, updating progress/status, saving segments, loading transcripts
-- Add `packages/engine`:
+- [x] Add `packages/storage` using built-in `node:sqlite`:
+  - migrations for jobs, source files, transcription chunks, transcript segments, and settings
+  - repository APIs for creating jobs, listing jobs, updating progress/status, saving chunks, saving segments, loading transcripts
+- [x] Add `packages/engine`:
   - `TranscriptionEngine` interface
   - ffmpeg probe wrapper
+  - ffmpeg audio preparation/chunking wrapper
   - whisper.cpp CPU engine wrapper first
   - resource path resolver for `resources/engines/win32/whisper-cpu.exe`
-- Add `packages/exporters`:
-  - TXT and JSON first
-  - SRT/VTT after timestamped segments are stable
-- Expand desktop IPC:
+- [x] Add `packages/runtime`:
+  - reusable local job orchestration outside Electron/React
+  - create jobs, prepare chunks, run CPU transcription, save segments, export transcripts
+- [x] Add `packages/exporters`:
+  - TXT, JSON, SRT, and VTT
+- [x] Expand desktop IPC:
   - `jobs:create`
   - `jobs:list`
   - `jobs:get`
@@ -36,49 +50,61 @@ Also add `docs/IMPLEMENTATION_PLAN.md` as the repo source of truth before contin
   - `transcripts:get`
   - `exports:create`
   - `system:get-engine-availability`
-- Update desktop UI:
+- [x] Update desktop UI:
   - real import button/file picker
   - job list
   - progress states
-  - transcript viewer placeholder, then segment rendering
+  - transcript segment rendering
   - export actions once data exists
+- [ ] Finish long-audio reliability:
+  - resume after interruption
+  - checkpoint recovery from completed chunks
+  - pause/resume state handling
+  - virtualized transcript viewer
+- [ ] Add agent-friendly surfaces after runtime reliability:
+  - CLI first for automation and testability
+  - MCP server second for agent workflows
+  - optional local HTTP API later, opt-in and localhost-only
 
 ## Build Order
 
-1. **Plan document**
-   Create `docs/IMPLEMENTATION_PLAN.md` and commit.
+1. **Plan document** - Done
+   Created `docs/IMPLEMENTATION_PLAN.md`.
 
-2. **Contracts**
+2. **Contracts** - Done
    Implement shared Zod schemas and exported TypeScript types. No Electron-specific imports.
 
-3. **Core**
+3. **Core** - Done
    Implement job status transitions, model defaults, and chunking policy helpers.
 
-4. **Storage**
-   Add SQLite connection, migrations, and repositories. Store durable job and transcript state from the start.
+4. **Storage** - Mostly done
+   Add SQLite connection, migrations, and repositories. Store durable job, chunk, and transcript state from the start.
 
-5. **Desktop IPC**
+5. **Desktop IPC** - Done
    Wire typed IPC in main/preload/renderer. Renderer must not access filesystem, SQLite, ffmpeg, or Whisper directly.
 
-6. **File import**
+6. **File import** - Done
    Use Electron file picker to create a job from a selected audio/video file.
 
-7. **ffmpeg**
+7. **ffmpeg** - Done for probe and first preparation/chunking pass
    Add file probing first, then audio preparation/chunking.
 
-8. **whisper.cpp CPU**
-   Add real CPU sidecar execution. Stream progress and save segments incrementally.
+8. **whisper.cpp CPU** - Partly done
+   Add real CPU sidecar execution. Current implementation runs CPU transcription chunk-by-chunk and saves segments after each chunk. Remaining work: parse/stream progress while a chunk is running.
 
-9. **Long-audio reliability**
+9. **Long-audio reliability** - In progress
    Add checkpointing, resume after interruption, cancel, and paused state handling.
 
-10. **Exports**
+10. **Exports** - Done
    Implement TXT and JSON, then SRT and VTT.
 
-11. **Hardware profiles**
+11. **Agent interface** - Planned
+   Add CLI first, then MCP server, both wrapping the runtime instead of renderer UI. Keep any local HTTP API optional and disabled by default.
+
+12. **Hardware profiles** - Planned
    Add CUDA/Vulkan detection after the CPU path works.
 
-12. **Packaging**
+13. **Packaging** - Planned
    Add electron-builder and resource packaging once the transcription path is functional.
 
 ## Test Plan
@@ -98,6 +124,10 @@ Also add `docs/IMPLEMENTATION_PLAN.md` as the repo source of truth before contin
   - transcript segments appear incrementally
   - cancel works
   - completed transcript exports to TXT/JSON
+- Future agent checks:
+  - CLI can create a transcription job without Electron
+  - CLI can list jobs and export transcript output
+  - MCP tools return job IDs for long-running work and allow status polling
 
 ## Assumptions
 
@@ -108,3 +138,4 @@ Also add `docs/IMPLEMENTATION_PLAN.md` as the repo source of truth before contin
 - `faster-whisper` remains optional future work.
 - CPU fallback is mandatory; CUDA/Vulkan come later.
 - Large model files and binaries are not committed unless explicitly intended.
+- Agent interfaces must remain local-first and opt-in. Do not expose a network API by default.

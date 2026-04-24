@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@voxmire/contracts": "workspace:*",
+    "@voxmire/core": "workspace:*",
     "@voxmire/engine": "workspace:*",
     "@voxmire/exporters": "workspace:*",
     "@voxmire/storage": "workspace:*"
