@@ -563,6 +563,7 @@ function TranscriptView({
   const isCancelable = selectedJob ? activeStatuses.includes(selectedJob.job.status) || selectedJob.job.status === 'paused' : false;
   const isPausable = selectedJob ? activeStatuses.includes(selectedJob.job.status) : false;
   const isResumable = selectedJob?.job.status === 'paused';
+  const isWorking = selectedJob ? activeStatuses.includes(selectedJob.job.status) : false;
 
   return (
     <div className="view transcript-view">
@@ -606,7 +607,9 @@ function TranscriptView({
         {selectedJob ? (
           <>
             <div className="job-progress-row">
-              <div className="progress-track" aria-label="Progress"><div style={{ width: `${progress}%` }} /></div>
+              <div className={`progress-track ${isWorking ? 'working' : ''}`} aria-label="Progress">
+                <div style={{ width: `${progress}%` }} />
+              </div>
               <div className="job-inline-actions" aria-label="Transcription controls">
                 {isPausable ? (
                   <button className="secondary-action" onClick={() => void onPause(selectedJob.job.id)} type="button">

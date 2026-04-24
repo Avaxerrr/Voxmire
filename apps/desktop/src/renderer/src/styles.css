@@ -537,9 +537,26 @@ textarea,
   gap: 8px;
   min-width: max-content;
 }
-.progress-track { height: 5px; max-width: 980px; margin: 0 auto 22px; overflow: hidden; border-radius: 999px; background: #29292f; }
+.progress-track { position: relative; height: 5px; max-width: 980px; margin: 0 auto 22px; overflow: hidden; border-radius: 999px; background: #29292f; }
 .job-progress-row .progress-track { width: 100%; max-width: none; margin: 0; }
 .progress-track div { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--violet), var(--cyan)); transition: width 180ms ease; }
+.progress-track.working::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.22) 45%, transparent 70%),
+    repeating-linear-gradient(115deg, transparent 0 12px, rgba(255, 255, 255, 0.08) 12px 20px);
+  background-size: 180px 100%, 34px 100%;
+  mix-blend-mode: screen;
+  opacity: 0.95;
+  animation: progress-working-sweep 1.15s linear infinite;
+}
+
+@keyframes progress-working-sweep {
+  from { background-position: -180px 0, 0 0; }
+  to { background-position: 100% 0, 34px 0; }
+}
 .error-text { display: flex; align-items: center; gap: 8px; max-width: 980px; margin: 0 auto 16px; color: #fca5a5; font-size: 13px; }
 .segment-list { display: grid; max-width: 980px; margin: 0 auto; gap: 18px; }
 .segment-row { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 20px; padding: 15px 16px; border-left: 2px solid transparent; border-radius: 8px; }
