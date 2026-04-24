@@ -1,9 +1,11 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron';
-import { mkdirSync } from 'node:fs';
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, protocol, shell } from 'electron';
+import { createReadStream, existsSync, mkdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { spawn } from 'node:child_process';
+import { Readable } from 'node:stream';
 import { modelProfiles, resolveTranscriptionPreset } from '@voxmire/core';
 import { type TranscriptionProgressEvent, createJobInputSchema, exportTranscriptInputSchema } from '@voxmire/contracts';
-import { detectWhisperEngines, getMachineProfile, getResourceStatus, type ResourcePaths } from '@voxmire/engine';
+import { detectWhisperEngines, getMachineProfile, getResourceStatus, resolveFfmpegExecutable, type ResourcePaths } from '@voxmire/engine';
 import { createJsonlRuntimeLogger, createVoxmireRuntime, type VoxmireRuntime } from '@voxmire/runtime';
 import { openVoxmireDatabase, type VoxmireDatabase } from '@voxmire/storage';
 
@@ -11,6 +13,24 @@ const isDev = !app.isPackaged;
 let db: VoxmireDatabase;
 let resources: ResourcePaths;
 let runtime: VoxmireRuntime;
+const waveformCache = new Map<string, Promise<MediaWaveformResult | null>>();
+
+type MediaWaveformResult = {
+  durationSeconds: number | null;
+  peaks: number[];
+};
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'voxmire-media',
+    privileges: {
+      secure: true,
+      standard: true,
+      stream: true,
+      supportFetchAPI: true
+    }
+  }
+]);
 
 function createMainWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -63,6 +83,27 @@ function registerIpcHandlers(): void {
   ipcMain.handle('jobs:list', () => runtime.listJobs());
   ipcMain.handle('jobs:get', (_event, jobId: string) => runtime.getJob(jobId));
   ipcMain.handle('transcripts:get', (_event, jobId: string) => runtime.getTranscriptSegments(jobId));
+  ipcMain.handle('media:get-source-url', (_event, jobId: string) => {
+    const job = runtime.getJob(jobId);
+    return job ? `voxmire-media://job/${encodeURIComponent(jobId)}` : null;
+  });
+  ipcMain.handle('media:get-waveform', (_event, jobId: string) => {
+    const job = runtime.getJob(jobId);
+    if (!job) {
+      return null;
+    }
+
+    let cached = waveformCache.get(jobId);
+    if (!cached) {
+      cached = createWaveformPeaks(job.sourceFile.path, job.sourceFile.durationSeconds).catch(() => {
+        waveformCache.delete(jobId);
+        return null;
+      });
+      waveformCache.set(jobId, cached);
+    }
+
+    return cached;
+  });
 
   ipcMain.handle('jobs:create', async (_event, rawInput: unknown) => {
     const input = createJobInputSchema.parse(rawInput ?? {});
@@ -145,6 +186,228 @@ function broadcastProgress(event: TranscriptionProgressEvent): void {
   }
 }
 
+function registerMediaProtocol(): void {
+  protocol.handle('voxmire-media', (request) => {
+    const jobId = mediaJobIdFromUrl(request.url);
+    if (!jobId) {
+      return new Response('Invalid media URL.', { status: 400 });
+    }
+
+    const job = runtime.getJob(jobId);
+    if (!job) {
+      return new Response('Media job not found.', { status: 404 });
+    }
+
+    return streamMediaFile(request, job.sourceFile.path);
+  });
+}
+
+function streamMediaFile(request: Request, sourcePath: string): Response {
+  if (!existsSync(sourcePath)) {
+    return new Response('Media source unavailable.', { status: 404 });
+  }
+
+  const stats = statSync(sourcePath);
+  if (!stats.isFile()) {
+    return new Response('Media source unavailable.', { status: 404 });
+  }
+
+  const fileSize = stats.size;
+  const contentType = mediaContentType(sourcePath);
+  const range = parseRangeHeader(request.headers.get('range'), fileSize);
+  if (range === 'unsatisfiable') {
+    return new Response(null, {
+      status: 416,
+      headers: {
+        'Accept-Ranges': 'bytes',
+        'Content-Range': `bytes */${fileSize}`
+      }
+    });
+  }
+
+  const baseHeaders = {
+    'Accept-Ranges': 'bytes',
+    'Content-Type': contentType
+  };
+
+  if (!range) {
+    return new Response(request.method === 'HEAD' ? null : nodeReadableToWeb(createReadStream(sourcePath)), {
+      status: 200,
+      headers: {
+        ...baseHeaders,
+        'Content-Length': fileSize.toString()
+      }
+    });
+  }
+
+  const contentLength = range.end - range.start + 1;
+  return new Response(request.method === 'HEAD' ? null : nodeReadableToWeb(createReadStream(sourcePath, { start: range.start, end: range.end })), {
+    status: 206,
+    headers: {
+      ...baseHeaders,
+      'Content-Length': contentLength.toString(),
+      'Content-Range': `bytes ${range.start}-${range.end}/${fileSize}`
+    }
+  });
+}
+
+function nodeReadableToWeb(stream: NodeJS.ReadableStream): ReadableStream<Uint8Array> {
+  return Readable.toWeb(stream as Readable) as ReadableStream<Uint8Array>;
+}
+
+type ByteRange = { start: number; end: number };
+
+function parseRangeHeader(header: string | null, fileSize: number): ByteRange | 'unsatisfiable' | null {
+  if (!header) {
+    return null;
+  }
+
+  const match = /^bytes=(?<start>\d*)-(?<end>\d*)$/.exec(header.trim());
+  if (!match?.groups) {
+    return 'unsatisfiable';
+  }
+
+  const startText = match.groups.start;
+  const endText = match.groups.end;
+  if (!startText && !endText) {
+    return 'unsatisfiable';
+  }
+
+  let start: number;
+  let end: number;
+  if (!startText) {
+    const suffixLength = Number(endText);
+    if (!Number.isFinite(suffixLength) || suffixLength <= 0) {
+      return 'unsatisfiable';
+    }
+
+    start = Math.max(0, fileSize - suffixLength);
+    end = fileSize - 1;
+  } else {
+    start = Number(startText);
+    end = endText ? Number(endText) : fileSize - 1;
+  }
+
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || start >= fileSize) {
+    return 'unsatisfiable';
+  }
+
+  return { start, end: Math.min(end, fileSize - 1) };
+}
+
+function mediaContentType(filePath: string): string {
+  const extension = filePath.split('.').pop()?.toLowerCase();
+  switch (extension) {
+    case 'mp3':
+      return 'audio/mpeg';
+    case 'wav':
+      return 'audio/wav';
+    case 'm4a':
+      return 'audio/mp4';
+    case 'flac':
+      return 'audio/flac';
+    case 'ogg':
+      return 'audio/ogg';
+    case 'mp4':
+      return 'video/mp4';
+    case 'mov':
+      return 'video/quicktime';
+    case 'webm':
+      return 'video/webm';
+    default:
+      return 'application/octet-stream';
+  }
+}
+
+async function createWaveformPeaks(sourcePath: string, durationSeconds: number | null): Promise<MediaWaveformResult | null> {
+  if (!existsSync(sourcePath) || !statSync(sourcePath).isFile()) {
+    return null;
+  }
+
+  const ffmpegPath = resolveFfmpegExecutable(resources);
+  if (!existsSync(ffmpegPath)) {
+    return null;
+  }
+
+  const sampleRate = 500;
+  const targetPeaks = 1200;
+  const pcm = await runBufferedProcess(ffmpegPath, [
+    '-v',
+    'error',
+    '-i',
+    sourcePath,
+    '-vn',
+    '-ac',
+    '1',
+    '-ar',
+    sampleRate.toString(),
+    '-f',
+    's16le',
+    'pipe:1'
+  ]);
+
+  return {
+    durationSeconds,
+    peaks: pcmToPeaks(pcm, targetPeaks)
+  };
+}
+
+function pcmToPeaks(buffer: Buffer, targetPeaks: number): number[] {
+  const sampleCount = Math.floor(buffer.length / 2);
+  if (sampleCount === 0) {
+    return [];
+  }
+
+  const peaks: number[] = [];
+  const samplesPerPeak = Math.max(1, Math.ceil(sampleCount / targetPeaks));
+
+  for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex += samplesPerPeak) {
+    let peak = 0;
+    const end = Math.min(sampleCount, sampleIndex + samplesPerPeak);
+    for (let current = sampleIndex; current < end; current += 1) {
+      peak = Math.max(peak, Math.abs(buffer.readInt16LE(current * 2)) / 32768);
+    }
+
+    peaks.push(Math.max(0.02, Math.min(1, peak)));
+  }
+
+  return peaks;
+}
+
+function runBufferedProcess(executablePath: string, args: readonly string[]): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(executablePath, [...args], { windowsHide: true });
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+
+    child.stdout.on('data', (chunk: Buffer) => stdoutChunks.push(chunk));
+    child.stderr.on('data', (chunk: Buffer) => stderrChunks.push(chunk));
+    child.on('error', reject);
+    child.on('close', (code: number | null) => {
+      if (code === 0) {
+        resolve(Buffer.concat(stdoutChunks));
+        return;
+      }
+
+      reject(new Error(`${executablePath} exited with code ${code}: ${Buffer.concat(stderrChunks).toString('utf8')}`));
+    });
+  });
+}
+
+function mediaJobIdFromUrl(rawUrl: string): string | null {
+  try {
+    const url = new URL(rawUrl);
+    if (url.protocol !== 'voxmire-media:' || url.hostname !== 'job') {
+      return null;
+    }
+
+    const jobId = decodeURIComponent(url.pathname.replace(/^\//, ''));
+    return jobId.length > 0 ? jobId : null;
+  } catch {
+    return null;
+  }
+}
+
 function ensureAppDirectory(name: string): string {
   const directory = join(app.getPath('userData'), name);
   mkdirSync(directory, { recursive: true });
@@ -173,6 +436,7 @@ void app.whenReady().then(() => {
     onProgress: broadcastProgress
   });
 
+  registerMediaProtocol();
   registerIpcHandlers();
   createMainWindow();
   void runtime.recoverInterruptedJobs();

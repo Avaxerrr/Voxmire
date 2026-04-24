@@ -8,6 +8,8 @@ Build Voxmire in a pipeline-first order, with the first milestone proving the re
 
 Current focus: finish the remaining hardware and packaging work after the first machine profile, model inventory, and performance preset pass.
 
+Synchronized audio playback first pass is implemented for the transcript editor, and playback polish is in progress. See `docs/AUDIO_SYNC_PLAN.md` for remaining polish.
+
 ## Current Status
 
 - Done: monorepo foundation, docs, Electron desktop scaffold, React UI, shared packages, typed IPC, file import, SQLite job/transcript storage, resource checks, model presets, exports, and package tests.
@@ -18,6 +20,8 @@ Current focus: finish the remaining hardware and packaging work after the first 
 - Done: agent-friendly development surfaces. CLI, structured runtime JSONL logs, and a local stdio MCP server exist for debugging and automation.
 - Done: machine profile first pass. Voxmire detects CPU/memory, backend binary/runtime availability, recommends a backend/model, and can resolve practical performance presets through desktop, CLI, and MCP.
 - Done: model inventory first pass. Settings shows installed/missing local models and disables missing models for new imports.
+- Done: synchronized audio playback first pass. The transcript editor now resolves a safe Electron media URL, plays through a native audio element, highlights active transcript rows, and seeks when a segment is clicked.
+- Done: playback polish first pass. Media streaming now handles byte ranges directly, the audio deck has volume/mute controls, sits lower in the transcript view, and renders backend-generated waveform peaks.
 - Started: packaging and real GPU sidecar support. CUDA/Vulkan remain blocked until the sidecar binaries and runtime DLL packaging are intentionally added.
 
 ## Key Changes
@@ -167,7 +171,10 @@ Current focus: finish the remaining hardware and packaging work after the first 
 12. **Hardware profiles** - Started
    Machine detection, model inventory, backend selection, and performance presets are in place. Remaining hardware work is real CUDA/Vulkan sidecar execution after binaries and runtime DLLs are available.
 
-13. **Packaging** - Planned
+13. **Synchronized audio playback** - Done for first pass
+   The transcript editor now uses a safe `voxmire-media://` URL from main/preload, native audio playback, current-time/duration display, skip/seek controls, active segment highlighting, click-to-seek against virtualized transcript rows, direct byte-range streaming, volume/mute controls, and backend-generated waveform peaks. Remaining polish is manual-scroll follow behavior, waveform persistence, and wider media-container edge testing.
+
+14. **Packaging** - Planned
    Add electron-builder and resource packaging. Sidecar executables and runtime DLLs must be packaged outside ASAR under `process.resourcesPath/resources/...`.
 
 ## Test Plan

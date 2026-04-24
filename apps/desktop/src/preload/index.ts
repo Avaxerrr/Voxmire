@@ -51,6 +51,11 @@ const api = {
   transcripts: {
     get: (jobId: string): Promise<TranscriptSegment[]> => ipcRenderer.invoke('transcripts:get', jobId)
   },
+  media: {
+    getSourceUrl: (jobId: string): Promise<string | null> => ipcRenderer.invoke('media:get-source-url', jobId),
+    getWaveform: (jobId: string): Promise<{ durationSeconds: number | null; peaks: number[] } | null> =>
+      ipcRenderer.invoke('media:get-waveform', jobId)
+  },
   exports: {
     create: (jobId: string, format: ExportFormat): Promise<ExportTranscriptResult> =>
       ipcRenderer.invoke('exports:create', { jobId, format })

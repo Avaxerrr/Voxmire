@@ -1,4 +1,4 @@
-import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
+import { type MutableRefObject, type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   AlertTriangle,
@@ -29,6 +29,8 @@ import {
   Sparkles,
   Square,
   UploadCloud,
+  Volume2,
+  VolumeX,
   X,
   Zap
 } from 'lucide-react';
@@ -63,9 +65,11 @@ type AppInfo = {
 type ViewId = 'dashboard' | 'transcript' | 'voice' | 'settings';
 
 type StatusTone = 'ready' | 'active' | 'warning' | 'error';
+type WaveformScaleMode = 'actual' | 'boost' | 'db';
 
 const exportFormats: ExportFormat[] = ['txt', 'srt', 'vtt', 'json'];
 const activeStatuses: JobStatus[] = ['queued', 'preparing', 'transcribing'];
+const waveformScaleModes: WaveformScaleMode[] = ['actual', 'boost', 'db'];
 
 const fallbackModels: ModelProfile[] = [
   {
@@ -616,13 +620,23 @@ function TranscriptView({
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [switcherQuery, setSwitcherQuery] = useState('');
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+  const [mediaError, setMediaError] = useState<string | null>(null);
+  const [playbackTime, setPlaybackTime] = useState(0);
+  const [playbackDuration, setPlaybackDuration] = useState<number | null>(null);
+  const [waveformPeaks, setWaveformPeaks] = useState<number[]>([]);
+  const [waveformLoading, setWaveformLoading] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const mediaApi = window.voxmire?.media;
   const progress = selectedJob ? Math.round(selectedJob.job.progress * 100) : 0;
   const isCancelable = selectedJob ? activeStatuses.includes(selectedJob.job.status) || selectedJob.job.status === 'paused' : false;
   const isPausable = selectedJob ? activeStatuses.includes(selectedJob.job.status) : false;
   const isResumable = selectedJob?.job.status === 'paused';
   const isWorking = selectedJob ? activeStatuses.includes(selectedJob.job.status) : false;
   const selectedSubtitle = selectedJob ? transcriptSubtitle(selectedJob, progress) : 'Choose a project from Library or import a recording.';
+  const activeSegmentIndex = useMemo(() => findActiveSegmentIndex(segments, playbackTime), [playbackTime, segments]);
+  const resolvedPlaybackDuration = playbackDuration ?? selectedJob?.sourceFile.durationSeconds ?? null;
   const visibleJobs = useMemo(() => {
     const query = switcherQuery.trim().toLowerCase();
 
@@ -659,6 +673,85 @@ function TranscriptView({
       window.removeEventListener('mousedown', handlePointerDown);
     };
   }, [exportMenuOpen, switcherOpen]);
+
+  useEffect(() => {
+    let canceled = false;
+
+    setPlaying(false);
+    setPlaybackTime(0);
+    setPlaybackDuration(null);
+    setMediaError(null);
+    setWaveformPeaks([]);
+    setWaveformLoading(false);
+
+    if (!selectedJob) {
+      setMediaUrl(null);
+      return () => {
+        canceled = true;
+      };
+    }
+
+    if (!mediaApi) {
+      setMediaUrl(null);
+      setMediaError('Audio playback is available in the desktop app.');
+      return () => {
+        canceled = true;
+      };
+    }
+
+    void mediaApi.getSourceUrl(selectedJob.job.id)
+      .then((url) => {
+        if (canceled) {
+          return;
+        }
+
+        setMediaUrl(url);
+        if (!url) {
+          setMediaError('Original media source is unavailable.');
+        }
+      })
+      .catch(() => {
+        if (!canceled) {
+          setMediaUrl(null);
+          setMediaError('Audio source could not be prepared.');
+        }
+      });
+
+    setWaveformLoading(true);
+    void mediaApi.getWaveform(selectedJob.job.id)
+      .then((waveform) => {
+        if (canceled) {
+          return;
+        }
+
+        setWaveformPeaks(waveform?.peaks ?? []);
+        setPlaybackDuration(waveform?.durationSeconds ?? null);
+      })
+      .catch(() => {
+        if (!canceled) {
+          setWaveformPeaks([]);
+        }
+      })
+      .finally(() => {
+        if (!canceled) {
+          setWaveformLoading(false);
+        }
+      });
+
+    return () => {
+      canceled = true;
+    };
+  }, [mediaApi, selectedJob?.job.id, setPlaying]);
+
+  function seekToSegment(segment: TranscriptSegment): void {
+    const nextTime = Math.max(0, segment.startSeconds);
+    const audio = audioRef.current;
+
+    setPlaybackTime(nextTime);
+    if (audio) {
+      audio.currentTime = nextTime;
+    }
+  }
 
   return (
     <div className="view transcript-view">
@@ -814,7 +907,7 @@ function TranscriptView({
                 {segments.length === 0 ? (
                   <EmptyState title="Transcript pending" body="Transcript text will appear here as the job progresses." />
                 ) : (
-                  <VirtualizedSegmentList segments={segments} />
+                  <VirtualizedSegmentList activeSegmentIndex={activeSegmentIndex} onSeek={seekToSegment} segments={segments} />
                 )}
               </>
             ) : (
@@ -837,10 +930,18 @@ function TranscriptView({
           </section>
 
           <AudioDeck
-            disabled={!selectedJob || segments.length === 0}
-            duration={selectedJob?.sourceFile.durationSeconds ?? null}
+            audioRef={audioRef}
+            currentTime={playbackTime}
+            disabled={!selectedJob}
+            duration={resolvedPlaybackDuration}
+            mediaError={mediaError}
+            mediaUrl={mediaUrl}
+            onDurationChange={setPlaybackDuration}
+            onError={setMediaError}
+            onTimeChange={setPlaybackTime}
             playing={playing}
-            progress={progress}
+            waveformLoading={waveformLoading}
+            waveformPeaks={waveformPeaks}
             setPlaying={setPlaying}
           />
         </div>
@@ -1117,7 +1218,13 @@ function ImportModal({ busy, createJob, models, resources, onClose, selectedPres
   );
 }
 
-function VirtualizedSegmentList({ segments }: { segments: TranscriptSegment[] }): ReactElement {
+type VirtualizedSegmentListProps = {
+  activeSegmentIndex: number;
+  onSeek: (segment: TranscriptSegment) => void;
+  segments: TranscriptSegment[];
+};
+
+function VirtualizedSegmentList({ activeSegmentIndex, onSeek, segments }: VirtualizedSegmentListProps): ReactElement {
   const scrollParentRef = useRef<HTMLDivElement | null>(null);
   const rowVirtualizer = useVirtualizer({
     count: segments.length,
@@ -1126,6 +1233,12 @@ function VirtualizedSegmentList({ segments }: { segments: TranscriptSegment[] })
     getScrollElement: () => scrollParentRef.current,
     overscan: 8
   });
+
+  useEffect(() => {
+    if (activeSegmentIndex >= 0) {
+      rowVirtualizer.scrollToIndex(activeSegmentIndex, { align: 'center' });
+    }
+  }, [activeSegmentIndex]);
 
   return (
     <div className="segment-list virtualized" ref={scrollParentRef}>
@@ -1136,6 +1249,8 @@ function VirtualizedSegmentList({ segments }: { segments: TranscriptSegment[] })
             return null;
           }
 
+          const active = virtualRow.index === activeSegmentIndex;
+
           return (
             <div
               className="segment-virtual-row"
@@ -1144,10 +1259,10 @@ function VirtualizedSegmentList({ segments }: { segments: TranscriptSegment[] })
               ref={rowVirtualizer.measureElement}
               style={{ transform: `translateY(${virtualRow.start}px)` }}
             >
-              <article className={`segment-row ${virtualRow.index === 0 ? 'active' : ''}`}>
+              <button className={`segment-row ${active ? 'active' : ''}`} onClick={() => onSeek(segment)} type="button">
                 <time>{formatTime(segment.startSeconds)} - {formatTime(segment.endSeconds)}</time>
                 <p>{segment.text}</p>
-              </article>
+              </button>
             </div>
           );
         })}
@@ -1156,38 +1271,260 @@ function VirtualizedSegmentList({ segments }: { segments: TranscriptSegment[] })
   );
 }
 
-type AudioDeckProps = {
-  disabled: boolean;
-  duration: number | null;
-  playing: boolean;
+type WaveformGraphProps = {
+  loading: boolean;
+  peaks: number[];
   progress: number;
-  setPlaying: (playing: boolean) => void;
+  scaleMode: WaveformScaleMode;
 };
 
-function AudioDeck({ disabled, duration, playing, progress, setPlaying }: AudioDeckProps): ReactElement {
-  const playedBars = Math.round((progress / 100) * waveformBars.length);
+function WaveformGraph({ loading, peaks, progress, scaleMode }: WaveformGraphProps): ReactElement {
+  const rawPeaks = peaks.length > 0 ? peaks : waveformBars.map((height) => height / 100);
+  const displayPeaks = rawPeaks.map((peak) => scaleWaveformPeak(peak, scaleMode));
+  const playedCount = Math.round(progress * displayPeaks.length);
+  const width = 1200;
+  const height = 96;
+  const barWidth = Math.max(1, width / displayPeaks.length);
+
+  return (
+    <svg
+      aria-hidden="true"
+      className={`waveform ${loading ? 'loading' : ''}`}
+      focusable="false"
+      preserveAspectRatio="none"
+      viewBox={`0 0 ${width} ${height}`}
+    >
+      {displayPeaks.map((peak, index) => {
+        const clampedPeak = Math.max(0, Math.min(1, peak));
+        const barHeight = Math.max(2, clampedPeak * height);
+        const x = index * barWidth;
+        const y = (height - barHeight) / 2;
+
+        return (
+          <rect
+            className={index <= playedCount ? 'played' : ''}
+            height={barHeight}
+            key={`wave-${index}-${peak.toFixed(3)}`}
+            rx={1.6}
+            width={Math.max(1, barWidth * 0.62)}
+            x={x}
+            y={y}
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
+type AudioDeckProps = {
+  audioRef: MutableRefObject<HTMLAudioElement | null>;
+  currentTime: number;
+  disabled: boolean;
+  duration: number | null;
+  mediaError: string | null;
+  mediaUrl: string | null;
+  onDurationChange: (duration: number | null) => void;
+  onError: (message: string | null) => void;
+  onTimeChange: (time: number) => void;
+  playing: boolean;
+  setPlaying: (playing: boolean) => void;
+  waveformLoading: boolean;
+  waveformPeaks: number[];
+};
+
+function AudioDeck({
+  audioRef,
+  currentTime,
+  disabled,
+  duration,
+  mediaError,
+  mediaUrl,
+  onDurationChange,
+  onError,
+  onTimeChange,
+  playing,
+  setPlaying,
+  waveformLoading,
+  waveformPeaks
+}: AudioDeckProps): ReactElement {
+  const [volume, setVolume] = useState(1);
+  const [muted, setMuted] = useState(false);
+  const [volumeOpen, setVolumeOpen] = useState(false);
+  const [waveformScaleMode, setWaveformScaleMode] = useState<WaveformScaleMode>('actual');
+  const resolvedDuration = duration && Number.isFinite(duration) && duration > 0 ? duration : null;
+  const currentProgress = resolvedDuration ? Math.min(1, Math.max(0, currentTime / resolvedDuration)) : 0;
+  const canPlay = !disabled && Boolean(mediaUrl) && !mediaError;
+  const volumePercent = Math.round((muted ? 0 : volume) * 100);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) {
+      return;
+    }
+
+    if (!canPlay) {
+      audio.pause();
+      if (playing) {
+        setPlaying(false);
+      }
+      return;
+    }
+
+    if (playing) {
+      void audio.play().catch(() => {
+        setPlaying(false);
+        onError('Audio playback could not start.');
+      });
+    } else {
+      audio.pause();
+    }
+  }, [audioRef, canPlay, onError, playing, setPlaying]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) {
+      return;
+    }
+
+    audio.volume = volume;
+    audio.muted = muted;
+  }, [audioRef, muted, volume]);
+
+  function skipBy(seconds: number): void {
+    const audio = audioRef.current;
+    if (!audio || !canPlay) {
+      return;
+    }
+
+    const unclamped = audio.currentTime + seconds;
+    const nextTime = resolvedDuration ? Math.min(resolvedDuration, Math.max(0, unclamped)) : Math.max(0, unclamped);
+    audio.currentTime = nextTime;
+    onTimeChange(nextTime);
+  }
+
+  function seekTo(seconds: number): void {
+    const audio = audioRef.current;
+    if (!audio || !canPlay || !resolvedDuration) {
+      return;
+    }
+
+    const nextTime = Math.min(resolvedDuration, Math.max(0, seconds));
+    audio.currentTime = nextTime;
+    onTimeChange(nextTime);
+  }
 
   return (
     <section className="audio-deck panel-glow" aria-label="Audio controls">
+      <audio
+        onDurationChange={(event) => {
+          const nextDuration = event.currentTarget.duration;
+          onDurationChange(Number.isFinite(nextDuration) ? nextDuration : null);
+        }}
+        onEnded={(event) => {
+          onTimeChange(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : event.currentTarget.currentTime);
+          setPlaying(false);
+        }}
+        onError={() => {
+          setPlaying(false);
+          onError('Audio source could not be loaded.');
+        }}
+        onLoadedMetadata={(event) => {
+          const nextDuration = event.currentTarget.duration;
+          onDurationChange(Number.isFinite(nextDuration) ? nextDuration : null);
+          onTimeChange(event.currentTarget.currentTime);
+        }}
+        onPause={() => setPlaying(false)}
+        onPlay={() => setPlaying(true)}
+        onSeeked={(event) => onTimeChange(event.currentTarget.currentTime)}
+        onTimeUpdate={(event) => onTimeChange(event.currentTarget.currentTime)}
+        preload="metadata"
+        ref={audioRef}
+        src={mediaUrl ?? undefined}
+      />
       <div className="deck-controls">
-        <button className="icon-button" disabled={disabled} title="Skip back" type="button"><SkipBack size={18} /></button>
-        <button className="play-button" disabled={disabled} onClick={() => setPlaying(!playing)} title={playing ? 'Pause' : 'Play'} type="button">
+        <button className="icon-button" disabled={!canPlay} onClick={() => skipBy(-10)} title="Skip back 10 seconds" type="button"><SkipBack size={18} /></button>
+        <button className="play-button" disabled={!canPlay} onClick={() => setPlaying(!playing)} title={playing ? 'Pause' : 'Play'} type="button">
           {playing ? <Pause size={22} /> : <Play size={22} />}
         </button>
-        <button className="icon-button" disabled={disabled} title="Skip forward" type="button"><SkipForward size={18} /></button>
+        <button className="icon-button" disabled={!canPlay} onClick={() => skipBy(10)} title="Skip forward 10 seconds" type="button"><SkipForward size={18} /></button>
       </div>
       <div className="waveform-wrap">
         <div className="waveform-times">
-          <span>{formatTime(duration ? duration * (progress / 100) : 0)}</span>
-          <span>{formatDuration(duration)}</span>
+          <span>{formatTime(currentTime)}</span>
+          <div className="waveform-scale-toggle" aria-label="Waveform scale">
+            {waveformScaleModes.map((mode) => (
+              <button
+                className={mode === waveformScaleMode ? 'active' : ''}
+                key={mode}
+                onClick={() => setWaveformScaleMode(mode)}
+                title={waveformScaleDescription(mode)}
+                type="button"
+              >
+                {waveformScaleLabel(mode)}
+              </button>
+            ))}
+          </div>
+          <span>{formatDuration(resolvedDuration)}</span>
         </div>
-        <div className="waveform" aria-hidden="true">
-          {waveformBars.map((height, index) => (
-            <span className={index <= playedBars ? 'played' : ''} key={`${height}-${index}`} style={{ height: `${height}%` }} />
-          ))}
+        <div className="waveform-control">
+          <WaveformGraph loading={waveformLoading} peaks={waveformPeaks} progress={currentProgress} scaleMode={waveformScaleMode} />
+          <input
+            aria-label="Seek audio"
+            className="audio-seek"
+            disabled={!canPlay || !resolvedDuration}
+            max={resolvedDuration ?? 0}
+            min={0}
+            onChange={(event) => seekTo(Number(event.target.value))}
+            step={0.01}
+            type="range"
+            value={resolvedDuration ? Math.min(currentTime, resolvedDuration) : 0}
+          />
         </div>
       </div>
-      <div className="deck-meta"><Zap size={15} /><span>1.0x</span></div>
+      <div className={`deck-meta ${mediaError ? 'error' : ''}`}>
+        {mediaError ? (
+          <>
+            <Zap size={15} />
+            <span>{mediaError}</span>
+          </>
+        ) : (
+          <div className="volume-control">
+            <button
+              aria-expanded={volumeOpen}
+              className={`volume-button ${volumeOpen ? 'active' : ''}`}
+              disabled={!mediaUrl}
+              onClick={() => setVolumeOpen((open) => !open)}
+              title="Volume"
+              type="button"
+            >
+              {muted || volume === 0 ? <VolumeX size={15} /> : <Volume2 size={15} />}
+            </button>
+            {volumeOpen ? (
+              <div className="volume-popover">
+                <button className="volume-mute-button" onClick={() => setMuted((value) => !value)} title={muted || volume === 0 ? 'Unmute' : 'Mute'} type="button">
+                  {muted || volume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                </button>
+                <input
+                  aria-label="Volume"
+                  className="volume-slider"
+                  disabled={!mediaUrl}
+                  max={1}
+                  min={0}
+                  onChange={(event) => {
+                    const nextVolume = Number(event.target.value);
+                    setVolume(nextVolume);
+                    setMuted(nextVolume === 0);
+                  }}
+                  step={0.01}
+                  type="range"
+                  value={muted ? 0 : volume}
+                />
+                <span>{volumePercent}%</span>
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
     </section>
   );
 }
@@ -1320,6 +1657,78 @@ function modelLabel(models: ModelProfile[], modelId: ModelId): string {
 function formatBytes(value: number): string {
   const gib = value / 1024 / 1024 / 1024;
   return `${gib.toFixed(gib >= 10 ? 0 : 1)} GiB`;
+}
+
+function findActiveSegmentIndex(segments: TranscriptSegment[], time: number): number {
+  if (segments.length === 0 || !Number.isFinite(time)) {
+    return -1;
+  }
+
+  const firstSegment = segments[0];
+  if (!firstSegment || time < firstSegment.startSeconds) {
+    return -1;
+  }
+
+  let low = 0;
+  let high = segments.length - 1;
+  let candidate = -1;
+
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    const segment = segments[middle];
+
+    if (!segment || segment.startSeconds > time) {
+      high = middle - 1;
+      continue;
+    }
+
+    candidate = middle;
+    low = middle + 1;
+  }
+
+  return candidate;
+}
+
+function scaleWaveformPeak(peak: number, mode: WaveformScaleMode): number {
+  const clampedPeak = Math.max(0, Math.min(1, peak));
+
+  if (mode === 'actual') {
+    return clampedPeak;
+  }
+
+  if (mode === 'boost') {
+    return Math.pow(clampedPeak, 0.72);
+  }
+
+  const floorDb = -60;
+  const db = 20 * Math.log10(Math.max(clampedPeak, 0.001));
+  return Math.max(0, Math.min(1, (db - floorDb) / Math.abs(floorDb)));
+}
+
+function waveformScaleLabel(mode: WaveformScaleMode): string {
+  switch (mode) {
+    case 'actual':
+      return 'Actual';
+    case 'boost':
+      return 'Boost';
+    case 'db':
+      return 'dB';
+    default:
+      return mode;
+  }
+}
+
+function waveformScaleDescription(mode: WaveformScaleMode): string {
+  switch (mode) {
+    case 'actual':
+      return 'Linear full-scale peaks. Most truthful for quiet vs loud audio.';
+    case 'boost':
+      return 'Visual boost for inspecting quiet audio without normalizing to the loudest peak.';
+    case 'db':
+      return 'Logarithmic dB-style peak view for low-level detail.';
+    default:
+      return String(mode);
+  }
 }
 
 function statusClass(status: JobStatus): string {

@@ -57,6 +57,10 @@ declare global {
       transcripts: {
         get: (jobId: string) => Promise<TranscriptSegment[]>;
       };
+      media: {
+        getSourceUrl: (jobId: string) => Promise<string | null>;
+        getWaveform: (jobId: string) => Promise<{ durationSeconds: number | null; peaks: number[] } | null>;
+      };
       exports: {
         create: (jobId: string, format: ExportFormat) => Promise<ExportTranscriptResult>;
       };
