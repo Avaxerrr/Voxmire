@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "corepack pnpm --filter @voxmire/desktop dev",
     "cli": "corepack pnpm --filter @voxmire/cli cli",
+    "mcp": "corepack pnpm --filter @voxmire/mcp mcp",
     "build": "corepack pnpm -r build",
     "typecheck": "corepack pnpm -r typecheck",
     "lint": "corepack pnpm -r lint",

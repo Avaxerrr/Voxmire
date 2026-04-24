@@ -6,7 +6,7 @@ Build Voxmire in a pipeline-first order, with the first milestone proving the re
 
 `docs/IMPLEMENTATION_PLAN.md` is the repo source of truth for implementation status.
 
-Current focus: add the MCP surface on top of the runtime and CLI foundations.
+Current focus: move from agent surfaces into the next planned product slice: machine profiles and packaging.
 
 ## Current Status
 
@@ -15,7 +15,7 @@ Current focus: add the MCP surface on top of the runtime and CLI foundations.
 - Done: bundled ffmpeg/ffprobe and whisper.cpp CPU resources are present locally and intentionally ignored by git.
 - Done: ffmpeg preparation and chunk metadata foundation. Imported media is prepared into app-managed WAV chunks, chunks are stored durably, and whisper.cpp runs chunk-by-chunk.
 - Done: long-audio reliability first pass. Checkpoint/resume, pause/resume, progress streaming, and transcript virtualization are implemented.
-- Done: first agent-friendly development surface. A CLI and structured runtime JSONL logs exist for debugging and automation; MCP remains later.
+- Done: agent-friendly development surfaces. CLI, structured runtime JSONL logs, and a local stdio MCP server exist for debugging and automation.
 
 ## Key Changes
 
@@ -62,11 +62,11 @@ Current focus: add the MCP surface on top of the runtime and CLI foundations.
   - [x] pause/resume state handling
   - [x] stream whisper.cpp progress while a chunk is running
   - [x] virtualized transcript viewer
-- [ ] Add agent-friendly surfaces after runtime reliability:
+- [x] Add agent-friendly surfaces after runtime reliability:
   - [x] first CLI pass for automation and testability
   - [x] structured JSONL runtime logs for desktop and CLI runs
   - [x] CLI defaults to the Electron dev data directory when running from the workspace
-  - MCP server second for agent workflows
+  - [x] MCP server second for agent workflows
   - optional local HTTP API later, opt-in and localhost-only
 
 ## Build Order
@@ -118,7 +118,7 @@ Current focus: add the MCP surface on top of the runtime and CLI foundations.
 10. **Exports** - Done
    Implement TXT and JSON, then SRT and VTT.
 
-11. **Agent interface** - Started
+11. **Agent interface** - Done for CLI and MCP
    Add CLI first, then MCP server, both wrapping the runtime instead of renderer UI. Keep any local HTTP API optional and disabled by default.
 
    First CLI scope:
@@ -136,6 +136,22 @@ Current focus: add the MCP surface on top of the runtime and CLI foundations.
    - `npm run cli -- export <jobId> --format txt`
    - `npm run cli -- logs tail`
    - `npm run cli -- dev seed-transcript --segments 20000`
+
+   MCP scope:
+   - `npm run mcp`
+   - `voxmire_paths`
+   - `voxmire_resources`
+   - `voxmire_jobs_list`
+   - `voxmire_jobs_status`
+   - `voxmire_jobs_create`
+   - `voxmire_jobs_run`
+   - `voxmire_jobs_pause`
+   - `voxmire_jobs_resume`
+   - `voxmire_jobs_recover`
+   - `voxmire_transcript_get`
+   - `voxmire_export_transcript`
+   - `voxmire_logs_tail`
+   - `voxmire_dev_seed_transcript`
 
 12. **Hardware profiles** - Planned
    Add CUDA/Vulkan detection after the CPU path works.
@@ -168,6 +184,7 @@ Current focus: add the MCP surface on top of the runtime and CLI foundations.
   - CLI can export transcript output
   - CLI can seed a large completed transcript for renderer stress testing
   - MCP tools return job IDs for long-running work and allow status polling
+  - MCP smoke test starts the stdio server, lists tools, seeds a transcript, lists jobs, reads a transcript slice, and exports TXT
 
 ## Assumptions
 
