@@ -70,6 +70,7 @@ type WaveformScaleMode = 'actual' | 'boost' | 'db';
 const exportFormats: ExportFormat[] = ['txt', 'srt', 'vtt', 'json'];
 const activeStatuses: JobStatus[] = ['queued', 'preparing', 'transcribing'];
 const waveformScaleModes: WaveformScaleMode[] = ['actual', 'boost', 'db'];
+const playbackSpeeds = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 
 const fallbackModels: ModelProfile[] = [
   {
@@ -1350,6 +1351,8 @@ function AudioDeck({
   const [volume, setVolume] = useState(1);
   const [muted, setMuted] = useState(false);
   const [volumeOpen, setVolumeOpen] = useState(false);
+  const [speedOpen, setSpeedOpen] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [waveformScaleMode, setWaveformScaleMode] = useState<WaveformScaleMode>('actual');
   const resolvedDuration = duration && Number.isFinite(duration) && duration > 0 ? duration : null;
   const currentProgress = resolvedDuration ? Math.min(1, Math.max(0, currentTime / resolvedDuration)) : 0;
@@ -1389,6 +1392,15 @@ function AudioDeck({
     audio.volume = volume;
     audio.muted = muted;
   }, [audioRef, muted, volume]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) {
+      return;
+    }
+
+    audio.playbackRate = playbackSpeed;
+  }, [audioRef, playbackSpeed]);
 
   function skipBy(seconds: number): void {
     const audio = audioRef.current;
@@ -1430,6 +1442,7 @@ function AudioDeck({
         }}
         onLoadedMetadata={(event) => {
           const nextDuration = event.currentTarget.duration;
+          event.currentTarget.playbackRate = playbackSpeed;
           onDurationChange(Number.isFinite(nextDuration) ? nextDuration : null);
           onTimeChange(event.currentTarget.currentTime);
         }}
@@ -1449,7 +1462,21 @@ function AudioDeck({
         <button className="icon-button" disabled={!canPlay} onClick={() => skipBy(10)} title="Skip forward 10 seconds" type="button"><SkipForward size={18} /></button>
       </div>
       <div className="waveform-wrap">
-        <div className="waveform-times">
+        <div className="waveform-control">
+          <WaveformGraph loading={waveformLoading} peaks={waveformPeaks} progress={currentProgress} scaleMode={waveformScaleMode} />
+          <input
+            aria-label="Seek audio"
+            className="audio-seek"
+            disabled={!canPlay || !resolvedDuration}
+            max={resolvedDuration ?? 0}
+            min={0}
+            onChange={(event) => seekTo(Number(event.target.value))}
+            step={0.01}
+            type="range"
+            value={resolvedDuration ? Math.min(currentTime, resolvedDuration) : 0}
+          />
+        </div>
+        <div className="waveform-footer">
           <span>{formatTime(currentTime)}</span>
           <div className="waveform-scale-toggle" aria-label="Waveform scale">
             {waveformScaleModes.map((mode) => (
@@ -1466,63 +1493,86 @@ function AudioDeck({
           </div>
           <span>{formatDuration(resolvedDuration)}</span>
         </div>
-        <div className="waveform-control">
-          <WaveformGraph loading={waveformLoading} peaks={waveformPeaks} progress={currentProgress} scaleMode={waveformScaleMode} />
-          <input
-            aria-label="Seek audio"
-            className="audio-seek"
-            disabled={!canPlay || !resolvedDuration}
-            max={resolvedDuration ?? 0}
-            min={0}
-            onChange={(event) => seekTo(Number(event.target.value))}
-            step={0.01}
-            type="range"
-            value={resolvedDuration ? Math.min(currentTime, resolvedDuration) : 0}
-          />
-        </div>
       </div>
-      <div className={`deck-meta ${mediaError ? 'error' : ''}`}>
+      <div className={`deck-tools ${mediaError ? 'error' : ''}`}>
         {mediaError ? (
           <>
             <Zap size={15} />
             <span>{mediaError}</span>
           </>
         ) : (
-          <div className="volume-control">
-            <button
-              aria-expanded={volumeOpen}
-              className={`volume-button ${volumeOpen ? 'active' : ''}`}
-              disabled={!mediaUrl}
-              onClick={() => setVolumeOpen((open) => !open)}
-              title="Volume"
-              type="button"
-            >
-              {muted || volume === 0 ? <VolumeX size={15} /> : <Volume2 size={15} />}
-            </button>
-            {volumeOpen ? (
-              <div className="volume-popover">
-                <button className="volume-mute-button" onClick={() => setMuted((value) => !value)} title={muted || volume === 0 ? 'Unmute' : 'Mute'} type="button">
-                  {muted || volume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}
-                </button>
-                <input
-                  aria-label="Volume"
-                  className="volume-slider"
-                  disabled={!mediaUrl}
-                  max={1}
-                  min={0}
-                  onChange={(event) => {
-                    const nextVolume = Number(event.target.value);
-                    setVolume(nextVolume);
-                    setMuted(nextVolume === 0);
-                  }}
-                  step={0.01}
-                  type="range"
-                  value={muted ? 0 : volume}
-                />
-                <span>{volumePercent}%</span>
-              </div>
-            ) : null}
-          </div>
+          <>
+            <div className="speed-control">
+              <button
+                aria-expanded={speedOpen}
+                className={`speed-button ${speedOpen ? 'active' : ''}`}
+                disabled={!mediaUrl}
+                onClick={() => {
+                  setSpeedOpen((open) => !open);
+                  setVolumeOpen(false);
+                }}
+                title="Playback speed"
+                type="button"
+              >
+                {formatPlaybackSpeed(playbackSpeed)}
+              </button>
+              {speedOpen ? (
+                <div className="speed-popover">
+                  {playbackSpeeds.map((speed) => (
+                    <button
+                      className={speed === playbackSpeed ? 'active' : ''}
+                      key={speed}
+                      onClick={() => {
+                        setPlaybackSpeed(speed);
+                        setSpeedOpen(false);
+                      }}
+                      type="button"
+                    >
+                      {formatPlaybackSpeed(speed)}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <div className="volume-control">
+              <button
+                aria-expanded={volumeOpen}
+                className={`volume-button ${volumeOpen ? 'active' : ''}`}
+                disabled={!mediaUrl}
+                onClick={() => {
+                  setVolumeOpen((open) => !open);
+                  setSpeedOpen(false);
+                }}
+                title="Volume"
+                type="button"
+              >
+                {muted || volume === 0 ? <VolumeX size={15} /> : <Volume2 size={15} />}
+              </button>
+              {volumeOpen ? (
+                <div className="volume-popover">
+                  <button className="volume-mute-button" onClick={() => setMuted((value) => !value)} title={muted || volume === 0 ? 'Unmute' : 'Mute'} type="button">
+                    {muted || volume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                  </button>
+                  <input
+                    aria-label="Volume"
+                    className="volume-slider"
+                    disabled={!mediaUrl}
+                    max={1}
+                    min={0}
+                    onChange={(event) => {
+                      const nextVolume = Number(event.target.value);
+                      setVolume(nextVolume);
+                      setMuted(nextVolume === 0);
+                    }}
+                    step={0.01}
+                    type="range"
+                    value={muted ? 0 : volume}
+                  />
+                  <span>{volumePercent}%</span>
+                </div>
+              ) : null}
+            </div>
+          </>
         )}
       </div>
     </section>
@@ -1703,6 +1753,10 @@ function scaleWaveformPeak(peak: number, mode: WaveformScaleMode): number {
   const floorDb = -60;
   const db = 20 * Math.log10(Math.max(clampedPeak, 0.001));
   return Math.max(0, Math.min(1, (db - floorDb) / Math.abs(floorDb)));
+}
+
+function formatPlaybackSpeed(speed: number): string {
+  return Number.isInteger(speed) ? `${speed}x` : `${speed.toFixed(2).replace(/0$/, '')}x`;
 }
 
 function waveformScaleLabel(mode: WaveformScaleMode): string {
