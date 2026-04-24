@@ -274,7 +274,6 @@ export function App(): ReactElement {
       }
 
       const created = await api.jobs.create({
-        presetId: selectedPresetId,
         modelId: selectedPresetResolution.modelId,
         engineBackend: selectedPresetResolution.engineBackend
       });
@@ -430,6 +429,7 @@ export function App(): ReactElement {
         <ImportModal
           busy={busy}
           createJob={createJob}
+          models={models}
           resources={resources}
           onClose={() => setImportOpen(false)}
           selectedPresetId={selectedPresetId}
@@ -766,6 +766,8 @@ type SettingsViewProps = {
 
 function SettingsView({ appInfo, engines, machineProfile, models, resources, selectedPresetId, selectedPresetResolution, setSelectedPresetId }: SettingsViewProps): ReactElement {
   const readyResources = resources.filter((resource) => resource.available).length;
+  const selectablePresets = visiblePresetOptions(resources);
+  const installedModels = models.filter((model) => modelInstalled(resources, model.id));
 
   return (
     <div className="view settings-view">
@@ -780,14 +782,14 @@ function SettingsView({ appInfo, engines, machineProfile, models, resources, sel
             <SlidersHorizontal size={18} />
             <div>
               <h3>Transcription defaults</h3>
-              <p>Choose the default quality preset used for new imports.</p>
+              <p>Choose the default local model used for new imports.</p>
             </div>
           </div>
           <div className="settings-field-grid">
             <label>
-              <span className="field-label">Performance preset</span>
+              <span className="field-label">Default model</span>
               <select value={selectedPresetId} onChange={(event) => setSelectedPresetId(event.target.value as TranscriptionPresetId)}>
-                {transcriptionPresets.map((preset) => <option disabled={!presetUsable(resources, preset)} key={preset.id} value={preset.id}>{preset.label}</option>)}
+                {selectablePresets.map((preset) => <option key={preset.id} value={preset.id}>{presetModelOptionLabel(models, preset)}</option>)}
               </select>
             </label>
             <label>
@@ -804,21 +806,28 @@ function SettingsView({ appInfo, engines, machineProfile, models, resources, sel
             <FileText size={18} />
             <div>
               <h3>Model manager</h3>
-              <p>Installed models can be used for new transcription jobs. Missing models stay visible for planning.</p>
+              <p>Installed local models available for new transcription jobs.</p>
             </div>
           </div>
           <div className="model-manager-list">
-            {models.map((model) => {
+            {installedModels.length === 0 ? (
+              <div className="model-row missing">
+                <span>
+                  <strong>No installed models found</strong>
+                  <small>Add a local ggml model file under resources/models.</small>
+                </span>
+                <em>Missing</em>
+              </div>
+            ) : installedModels.map((model) => {
               const resource = modelResource(resources, model.id);
-              const installed = resource?.available ?? false;
 
               return (
-                <div className={`model-row ${installed ? 'installed' : 'missing'}`} key={model.id}>
+                <div className="model-row installed" key={model.id}>
                   <span>
                     <strong>{model.label}</strong>
                     <small>{model.purpose} / {model.relativeSpeed} / {model.relativeQuality}</small>
                   </span>
-                  <em>{installed ? 'Installed' : 'Missing'}</em>
+                  <em>Installed</em>
                   <p>{resource?.path ?? 'Model path unavailable.'}</p>
                 </div>
               );
@@ -912,6 +921,7 @@ function DiagnosticRow({ detail, label, status }: { detail: string | null; label
 type ImportModalProps = {
   busy: boolean;
   createJob: () => Promise<void>;
+  models: ModelProfile[];
   resources: ResourceStatus[];
   onClose: () => void;
   selectedPresetId: TranscriptionPresetId;
@@ -919,7 +929,7 @@ type ImportModalProps = {
   setSelectedPresetId: (presetId: TranscriptionPresetId) => void;
 };
 
-function ImportModal({ busy, createJob, resources, onClose, selectedPresetId, selectedPresetResolution, setSelectedPresetId }: ImportModalProps): ReactElement {
+function ImportModal({ busy, createJob, models, resources, onClose, selectedPresetId, selectedPresetResolution, setSelectedPresetId }: ImportModalProps): ReactElement {
   return (
     <div className="modal-backdrop" role="presentation">
       <section className="import-modal" aria-labelledby="import-title" role="dialog">
@@ -934,9 +944,9 @@ function ImportModal({ busy, createJob, resources, onClose, selectedPresetId, se
 
         <div className="settings-field-grid modal-field-grid">
           <label>
-            <span className="field-label">Transcription preset</span>
+            <span className="field-label">Transcription model</span>
             <select value={selectedPresetId} onChange={(event) => setSelectedPresetId(event.target.value as TranscriptionPresetId)}>
-              {transcriptionPresets.map((preset) => <option disabled={!presetUsable(resources, preset)} key={preset.id} value={preset.id}>{preset.label}</option>)}
+              {visiblePresetOptions(resources).map((preset) => <option key={preset.id} value={preset.id}>{presetModelOptionLabel(models, preset)}</option>)}
             </select>
           </label>
           <label>
@@ -1092,6 +1102,21 @@ function modelInstalled(resources: ResourceStatus[], modelId: ModelId): boolean 
 
 function presetUsable(resources: ResourceStatus[], preset: TranscriptionPresetProfile): boolean {
   return modelInstalled(resources, preset.modelId);
+}
+
+function visiblePresetOptions(resources: ResourceStatus[]): readonly TranscriptionPresetProfile[] {
+  const installed = transcriptionPresets.filter((preset) => presetUsable(resources, preset));
+  if (installed.length > 0) {
+    return installed;
+  }
+
+  return transcriptionPresets.filter((preset) => preset.recommended);
+}
+
+function presetModelOptionLabel(models: ModelProfile[], preset: TranscriptionPresetProfile): string {
+  return models.find((model) => model.id === preset.modelId)?.label
+    ?? fallbackModels.find((model) => model.id === preset.modelId)?.label
+    ?? preset.modelId;
 }
 
 function selectUsablePreset(recommendedModelId: ModelId, resources: ResourceStatus[]): TranscriptionPresetId {
