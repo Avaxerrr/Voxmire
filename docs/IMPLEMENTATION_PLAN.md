@@ -6,7 +6,7 @@ Build Voxmire in a pipeline-first order, with the first milestone proving the re
 
 `docs/IMPLEMENTATION_PLAN.md` is the repo source of truth for implementation status.
 
-Current focus: move from agent surfaces into the next planned product slice: machine profiles and packaging.
+Current focus: continue machine profiles, then packaging.
 
 ## Current Status
 
@@ -16,6 +16,7 @@ Current focus: move from agent surfaces into the next planned product slice: mac
 - Done: ffmpeg preparation and chunk metadata foundation. Imported media is prepared into app-managed WAV chunks, chunks are stored durably, and whisper.cpp runs chunk-by-chunk.
 - Done: long-audio reliability first pass. Checkpoint/resume, pause/resume, progress streaming, and transcript virtualization are implemented.
 - Done: agent-friendly development surfaces. CLI, structured runtime JSONL logs, and a local stdio MCP server exist for debugging and automation.
+- Started: machine profiles. Voxmire now detects CPU/memory, backend binary/runtime availability, and recommends a backend/model through desktop, CLI, and MCP.
 
 ## Key Changes
 
@@ -68,6 +69,12 @@ Current focus: move from agent surfaces into the next planned product slice: mac
   - [x] CLI defaults to the Electron dev data directory when running from the workspace
   - [x] MCP server second for agent workflows
   - optional local HTTP API later, opt-in and localhost-only
+- [ ] Add machine profiles and hardware support:
+  - [x] first machine profile detection for CPU cores, RAM, CUDA runtime, Vulkan runtime, and backend binaries
+  - [x] recommended backend/model exposed through desktop Settings, CLI, and MCP
+  - [ ] real CUDA/Vulkan transcription engine selection after sidecar binaries are available
+  - [ ] model manager and download/install flow
+  - [ ] user-facing performance presets
 
 ## Build Order
 
@@ -141,6 +148,7 @@ Current focus: move from agent surfaces into the next planned product slice: mac
    - `npm run mcp`
    - `voxmire_paths`
    - `voxmire_resources`
+   - `voxmire_machine_profile`
    - `voxmire_jobs_list`
    - `voxmire_jobs_status`
    - `voxmire_jobs_create`
@@ -184,7 +192,8 @@ Current focus: move from agent surfaces into the next planned product slice: mac
   - CLI can export transcript output
   - CLI can seed a large completed transcript for renderer stress testing
   - MCP tools return job IDs for long-running work and allow status polling
-  - MCP smoke test starts the stdio server, lists tools, seeds a transcript, lists jobs, reads a transcript slice, and exports TXT
+  - MCP smoke test starts the stdio server, lists tools, reads the machine profile, seeds a transcript, lists jobs, reads a transcript slice, and exports TXT
+  - CLI can print the local machine profile with `npm run cli -- profile`
 
 ## Assumptions
 

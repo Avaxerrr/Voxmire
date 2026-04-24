@@ -5,6 +5,7 @@ import type {
   ExportFormat,
   ExportTranscriptResult,
   JobWithSource,
+  MachineProfile,
   ModelProfile,
   ResourceStatus,
   TranscriptSegment,
@@ -26,7 +27,8 @@ const api = {
   },
   system: {
     getEngineAvailability: (): Promise<EngineAvailability[]> => ipcRenderer.invoke('system:get-engine-availability'),
-    getResourceStatus: (): Promise<ResourceStatus[]> => ipcRenderer.invoke('system:get-resource-status')
+    getResourceStatus: (): Promise<ResourceStatus[]> => ipcRenderer.invoke('system:get-resource-status'),
+    getMachineProfile: (): Promise<MachineProfile> => ipcRenderer.invoke('system:get-machine-profile')
   },
   models: {
     list: (): Promise<ModelProfile[]> => ipcRenderer.invoke('models:list')

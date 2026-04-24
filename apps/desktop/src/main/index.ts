@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { modelProfiles } from '@voxmire/core';
 import { type TranscriptionProgressEvent, createJobInputSchema, exportTranscriptInputSchema } from '@voxmire/contracts';
-import { detectWhisperEngines, getResourceStatus, type ResourcePaths } from '@voxmire/engine';
+import { detectWhisperEngines, getMachineProfile, getResourceStatus, type ResourcePaths } from '@voxmire/engine';
 import { createJsonlRuntimeLogger, createVoxmireRuntime, type VoxmireRuntime } from '@voxmire/runtime';
 import { openVoxmireDatabase, type VoxmireDatabase } from '@voxmire/storage';
 
@@ -58,6 +58,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('system:get-engine-availability', () => detectWhisperEngines(resources));
   ipcMain.handle('system:get-resource-status', () => getResourceStatus(resources));
+  ipcMain.handle('system:get-machine-profile', () => getMachineProfile(resources));
   ipcMain.handle('models:list', () => modelProfiles);
   ipcMain.handle('jobs:list', () => runtime.listJobs());
   ipcMain.handle('jobs:get', (_event, jobId: string) => runtime.getJob(jobId));

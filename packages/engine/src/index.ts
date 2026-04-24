@@ -1,9 +1,11 @@
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { cpus, totalmem } from 'node:os';
 import { basename, extname, join } from 'node:path';
 import type {
   EngineAvailability,
   EngineBackend,
+  MachineProfile,
   ModelId,
   ResourceStatus,
   TranscriptSegment,
@@ -86,6 +88,40 @@ export function detectWhisperEngine(paths: ResourcePaths, backend: EngineBackend
 export function detectWhisperEngines(paths: ResourcePaths): EngineAvailability[] {
   return ['cpu', 'cuda', 'vulkan'].map((backend) => detectWhisperEngine(paths, backend as EngineBackend));
 }
+
+export async function getMachineProfile(paths: ResourcePaths): Promise<MachineProfile> {
+  const engines = detectWhisperEngines(paths);
+  const nvidiaGpu = await detectCommand('nvidia-smi', ['--query-gpu=name', '--format=csv,noheader'], 1600);
+  const vulkanRuntime = await detectCommand('vulkaninfo', ['--summary'], 1600);
+  const recommendedBackend = chooseRecommendedBackend(engines, nvidiaGpu.available, vulkanRuntime.available);
+  const totalMemoryBytes = totalmem();
+
+  return {
+    platform: process.platform,
+    arch: process.arch,
+    logicalCpuCores: Math.max(1, cpus().length),
+    totalMemoryBytes,
+    recommendedBackend,
+    recommendedModelId: chooseRecommendedModel(totalMemoryBytes),
+    backends: engines.map((engine) => {
+      const runtimeAvailable =
+        engine.backend === 'cpu' ||
+        (engine.backend === 'cuda' && nvidiaGpu.available) ||
+        (engine.backend === 'vulkan' && vulkanRuntime.available);
+      const runtimeOutput = engine.backend === 'cuda' ? nvidiaGpu.output : engine.backend === 'vulkan' ? vulkanRuntime.output : null;
+      return {
+        backend: engine.backend,
+        label: engine.label,
+        executableAvailable: engine.available,
+        runtimeAvailable,
+        recommended: engine.backend === recommendedBackend,
+        reason: backendReason(engine, runtimeAvailable, runtimeOutput)
+      };
+    }),
+    notes: buildMachineProfileNotes(nvidiaGpu, vulkanRuntime)
+  };
+}
+
 export function getResourceStatus(paths: ResourcePaths): ResourceStatus[] {
   const ffmpegPath = resolveFfmpegExecutable(paths);
   const ffprobePath = resolveFfprobeExecutable(paths);
@@ -128,6 +164,113 @@ export function getResourceStatus(paths: ResourcePaths): ResourceStatus[] {
       );
     })
   ];
+}
+
+function chooseRecommendedBackend(
+  engines: EngineAvailability[],
+  hasNvidiaGpu: boolean,
+  hasVulkanRuntime: boolean
+): EngineBackend {
+  const available = new Map(engines.map((engine) => [engine.backend, engine.available]));
+  if (available.get('cuda') && hasNvidiaGpu) {
+    return 'cuda';
+  }
+
+  if (available.get('vulkan') && hasVulkanRuntime) {
+    return 'vulkan';
+  }
+
+  return 'cpu';
+}
+
+function chooseRecommendedModel(totalMemoryBytes: number): ModelId {
+  const gib = totalMemoryBytes / 1024 / 1024 / 1024;
+  if (gib >= 24) {
+    return 'large-v3';
+  }
+
+  if (gib >= 12) {
+    return 'large-v3-turbo';
+  }
+
+  if (gib >= 8) {
+    return 'distil-large-v3.5';
+  }
+
+  return 'medium';
+}
+
+function backendReason(engine: EngineAvailability, runtimeAvailable: boolean, runtimeOutput: string | null): string | null {
+  if (!engine.available) {
+    return engine.reason;
+  }
+
+  if (!runtimeAvailable) {
+    return engine.backend === 'cuda'
+      ? 'CUDA binary is present, but nvidia-smi did not report an NVIDIA GPU.'
+      : 'Vulkan binary is present, but vulkaninfo was not available.';
+  }
+
+  if (engine.backend === 'cpu') {
+    return 'CPU fallback is available.';
+  }
+
+  return runtimeOutput?.split(/\r?\n/).find(Boolean)?.trim() ?? null;
+}
+
+function buildMachineProfileNotes(
+  nvidiaGpu: CommandDetectionResult,
+  vulkanRuntime: CommandDetectionResult
+): string[] {
+  const notes = ['CPU fallback remains available for every supported machine.'];
+  if (nvidiaGpu.available && nvidiaGpu.output) {
+    notes.push(`NVIDIA GPU detected: ${nvidiaGpu.output.split(/\r?\n/)[0]?.trim() ?? 'available'}.`);
+  }
+
+  if (!nvidiaGpu.available) {
+    notes.push('CUDA requires a whisper CUDA binary and a detectable NVIDIA runtime.');
+  }
+
+  if (!vulkanRuntime.available) {
+    notes.push('Vulkan requires a whisper Vulkan binary and a local vulkaninfo runtime check.');
+  }
+
+  return notes;
+}
+
+type CommandDetectionResult = {
+  available: boolean;
+  output: string | null;
+};
+
+function detectCommand(command: string, args: readonly string[], timeoutMilliseconds: number): Promise<CommandDetectionResult> {
+  return new Promise((resolve) => {
+    const child = spawn(command, [...args], { windowsHide: true });
+    const chunks: string[] = [];
+    let settled = false;
+    const finish = (result: CommandDetectionResult) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+    const timer = setTimeout(() => {
+      child.kill();
+      finish({ available: false, output: null });
+    }, timeoutMilliseconds);
+
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => chunks.push(chunk));
+    child.stderr.on('data', (chunk: string) => chunks.push(chunk));
+    child.on('error', () => finish({ available: false, output: null }));
+    child.on('close', (code: number | null) => {
+      finish({ available: code === 0, output: chunks.join('').trim() || null });
+    });
+  });
 }
 
 function resourceStatus(

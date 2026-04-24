@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
-import type { ExportFormat, JobWithSource, ModelId, ResourceStatus, TranscriptSegment, TranscriptionJob } from '@voxmire/contracts';
-import { getResourceStatus, type ResourcePaths } from '@voxmire/engine';
+import type { ExportFormat, JobWithSource, MachineProfile, ModelId, ResourceStatus, TranscriptSegment, TranscriptionJob } from '@voxmire/contracts';
+import { getMachineProfile, getResourceStatus, type ResourcePaths } from '@voxmire/engine';
 import {
   createJsonlRuntimeLogger,
   createVoxmireRuntime,
@@ -76,6 +76,10 @@ export class VoxmireAgentApi {
 
   getResourceStatus(): ResourceStatus[] {
     return getResourceStatus(this.resources);
+  }
+
+  getMachineProfile(): Promise<MachineProfile> {
+    return getMachineProfile(this.resources);
   }
 
   listJobs(): JobWithSource[] {

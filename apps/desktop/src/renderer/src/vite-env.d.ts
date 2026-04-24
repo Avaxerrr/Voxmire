@@ -6,6 +6,7 @@ import type {
   ExportFormat,
   ExportTranscriptResult,
   JobWithSource,
+  MachineProfile,
   ModelProfile,
   ResourceStatus,
   TranscriptSegment,
@@ -37,6 +38,7 @@ declare global {
       system: {
         getEngineAvailability: () => Promise<EngineAvailability[]>;
         getResourceStatus: () => Promise<ResourceStatus[]>;
+        getMachineProfile: () => Promise<MachineProfile>;
       };
       models: {
         list: () => Promise<ModelProfile[]>;

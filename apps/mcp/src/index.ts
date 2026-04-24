@@ -57,6 +57,15 @@ server.registerTool(
 );
 
 server.registerTool(
+  'voxmire_machine_profile',
+  {
+    title: 'Voxmire machine profile',
+    description: 'Return local CPU, memory, backend availability, and recommended backend/model.'
+  },
+  async () => jsonResult(await api.getMachineProfile())
+);
+
+server.registerTool(
   'voxmire_jobs_list',
   {
     title: 'List Voxmire jobs',

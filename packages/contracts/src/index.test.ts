@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { transcriptionChunkSchema, transcriptSegmentSchema, transcriptionJobSchema } from './index';
+import { machineProfileSchema, transcriptionChunkSchema, transcriptSegmentSchema, transcriptionJobSchema } from './index';
 
 describe('contracts', () => {
   it('validates transcription job payloads', () => {
@@ -32,6 +32,30 @@ describe('contracts', () => {
         createdAt: '2026-04-23T00:00:00.000Z'
       })
     ).toThrow();
+  });
+
+  it('validates machine profile payloads', () => {
+    expect(() =>
+      machineProfileSchema.parse({
+        platform: 'win32',
+        arch: 'x64',
+        logicalCpuCores: 12,
+        totalMemoryBytes: 17179869184,
+        recommendedBackend: 'cpu',
+        recommendedModelId: 'large-v3-turbo',
+        backends: [
+          {
+            backend: 'cpu',
+            label: 'whisper.cpp CPU',
+            executableAvailable: true,
+            runtimeAvailable: true,
+            recommended: true,
+            reason: 'CPU fallback is available.'
+          }
+        ],
+        notes: ['CPU fallback remains available.']
+      })
+    ).not.toThrow();
   });
 
   it('validates transcription chunk payloads', () => {

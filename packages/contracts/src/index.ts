@@ -89,6 +89,26 @@ export const engineAvailabilitySchema = z.object({
   reason: z.string().nullable()
 });
 
+export const machineBackendProfileSchema = z.object({
+  backend: engineBackendSchema,
+  label: z.string().min(1),
+  executableAvailable: z.boolean(),
+  runtimeAvailable: z.boolean(),
+  recommended: z.boolean(),
+  reason: z.string().nullable()
+});
+
+export const machineProfileSchema = z.object({
+  platform: z.string().min(1),
+  arch: z.string().min(1),
+  logicalCpuCores: z.number().int().positive(),
+  totalMemoryBytes: z.number().int().positive(),
+  recommendedBackend: engineBackendSchema,
+  recommendedModelId: modelIdSchema,
+  backends: z.array(machineBackendProfileSchema),
+  notes: z.array(z.string())
+});
+
 export const transcriptionProgressEventSchema = z.object({
   jobId: z.string().min(1),
   status: jobStatusSchema,
@@ -148,6 +168,8 @@ export type TranscriptionChunkStatus = z.infer<typeof transcriptionChunkStatusSc
 export type TranscriptionChunk = z.infer<typeof transcriptionChunkSchema>;
 export type ModelProfile = z.infer<typeof modelProfileSchema>;
 export type EngineAvailability = z.infer<typeof engineAvailabilitySchema>;
+export type MachineBackendProfile = z.infer<typeof machineBackendProfileSchema>;
+export type MachineProfile = z.infer<typeof machineProfileSchema>;
 export type TranscriptionProgressEvent = z.infer<typeof transcriptionProgressEventSchema>;
 export type CreateJobInput = z.input<typeof createJobInputSchema>;
 export type CreateJobResult = z.infer<typeof createJobResultSchema>;

@@ -658,6 +658,16 @@ textarea,
 .settings-panel-heading p { margin-top: 4px; color: var(--muted); font-size: 13px; line-height: 1.45; }
 .field-label { display: block; margin-bottom: 8px; color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; }
 .settings-panel select { max-width: 360px; height: 38px; }
+.machine-profile-grid { display: grid; gap: 12px; }
+.machine-recommendation { display: grid; gap: 4px; padding: 13px; border: 1px solid rgba(34, 211, 238, 0.22); border-radius: 8px; background: rgba(34, 211, 238, 0.07); }
+.machine-recommendation span { color: var(--cyan); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.machine-recommendation strong { color: var(--text); font-size: 15px; }
+.backend-list { display: grid; gap: 8px; }
+.backend-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, 0.025); }
+.backend-row.recommended { border-color: rgba(34, 211, 238, 0.28); background: rgba(34, 211, 238, 0.06); }
+.backend-row strong { min-width: 0; overflow: hidden; color: var(--text); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.backend-row span { color: var(--cyan); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.backend-row p { grid-column: 1 / -1; margin: 0; color: var(--faint); font-size: 11px; line-height: 1.4; }
 .advanced-panel { color: inherit; }
 .advanced-panel summary { cursor: pointer; list-style: none; }
 .advanced-panel summary::-webkit-details-marker { display: none; }

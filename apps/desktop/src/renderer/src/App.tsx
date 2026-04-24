@@ -7,6 +7,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Clock3,
+  Cpu,
   Download,
   FileAudio,
   FileText,
@@ -36,6 +37,7 @@ import type {
   ExportFormat,
   JobStatus,
   JobWithSource,
+  MachineProfile,
   ModelId,
   ModelProfile,
   ResourceStatus,
@@ -112,6 +114,7 @@ export function App(): ReactElement {
   const [engines, setEngines] = useState<EngineAvailability[]>([]);
   const [models, setModels] = useState<ModelProfile[]>(fallbackModels);
   const [resources, setResources] = useState<ResourceStatus[]>([]);
+  const [machineProfile, setMachineProfile] = useState<MachineProfile | null>(null);
   const [selectedModelId, setSelectedModelId] = useState<ModelId>('large-v3-turbo');
   const [jobs, setJobs] = useState<JobWithSource[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -203,11 +206,12 @@ export function App(): ReactElement {
       return;
     }
 
-    const [info, engineAvailability, modelProfiles, resourceStatus, jobList] = await Promise.all([
+    const [info, engineAvailability, modelProfiles, resourceStatus, detectedMachineProfile, jobList] = await Promise.all([
       api.app.getInfo(),
       api.system.getEngineAvailability(),
       api.models.list(),
       api.system.getResourceStatus(),
+      api.system.getMachineProfile(),
       api.jobs.list()
     ]);
 
@@ -215,6 +219,7 @@ export function App(): ReactElement {
     setEngines(engineAvailability);
     setModels(modelProfiles);
     setResources(resourceStatus);
+    setMachineProfile(detectedMachineProfile);
     setJobs(jobList);
     setSelectedJobId(jobList[0]?.job.id ?? null);
   }
@@ -390,6 +395,7 @@ export function App(): ReactElement {
           <SettingsView
             appInfo={appInfo}
             engines={engines}
+            machineProfile={machineProfile}
             models={models}
             resources={resources}
             selectedModelId={selectedModelId}
@@ -728,13 +734,14 @@ function TuningSlider({ label, value }: { label: string; value: string }): React
 type SettingsViewProps = {
   appInfo: AppInfo | null;
   engines: EngineAvailability[];
+  machineProfile: MachineProfile | null;
   models: ModelProfile[];
   resources: ResourceStatus[];
   selectedModelId: ModelId;
   setSelectedModelId: (modelId: ModelId) => void;
 };
 
-function SettingsView({ appInfo, engines, models, resources, selectedModelId, setSelectedModelId }: SettingsViewProps): ReactElement {
+function SettingsView({ appInfo, engines, machineProfile, models, resources, selectedModelId, setSelectedModelId }: SettingsViewProps): ReactElement {
   const readyResources = resources.filter((resource) => resource.available).length;
 
   return (
@@ -757,6 +764,33 @@ function SettingsView({ appInfo, engines, models, resources, selectedModelId, se
           <select id="settings-model" value={selectedModelId} onChange={(event) => setSelectedModelId(event.target.value as ModelId)}>
             {models.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
           </select>
+        </section>
+
+        <section className="settings-panel panel-glow">
+          <div className="settings-panel-heading">
+            <Cpu size={18} />
+            <div>
+              <h3>Machine profile</h3>
+              <p>{machineProfile ? `${machineProfile.platform} ${machineProfile.arch} / ${machineProfile.logicalCpuCores} CPU threads / ${formatBytes(machineProfile.totalMemoryBytes)} RAM` : 'Detecting local hardware profile.'}</p>
+            </div>
+          </div>
+          {machineProfile ? (
+            <div className="machine-profile-grid">
+              <div className="machine-recommendation">
+                <span>Recommended</span>
+                <strong>{machineProfile.recommendedBackend.toUpperCase()} / {modelLabel(models, machineProfile.recommendedModelId)}</strong>
+              </div>
+              <div className="backend-list">
+                {machineProfile.backends.map((backend) => (
+                  <div className={`backend-row ${backend.recommended ? 'recommended' : ''}`} key={backend.backend}>
+                    <strong>{backend.label}</strong>
+                    <span>{backend.executableAvailable && backend.runtimeAvailable ? 'Ready' : backend.executableAvailable ? 'Runtime missing' : 'Binary missing'}</span>
+                    <p>{backend.reason ?? 'Available for local transcription.'}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </section>
 
         <section className="settings-panel panel-glow">
@@ -957,6 +991,15 @@ function EmptyState({ body, title }: { body: string; title: string }): ReactElem
       <p>{body}</p>
     </div>
   );
+}
+
+function modelLabel(models: ModelProfile[], modelId: ModelId): string {
+  return models.find((model) => model.id === modelId)?.label ?? modelId;
+}
+
+function formatBytes(value: number): string {
+  const gib = value / 1024 / 1024 / 1024;
+  return `${gib.toFixed(gib >= 10 ? 0 : 1)} GiB`;
 }
 
 function statusClass(status: JobStatus): string {

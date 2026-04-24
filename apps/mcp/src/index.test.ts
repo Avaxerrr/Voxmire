@@ -2,23 +2,27 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 describe('Voxmire MCP server', () => {
   it('exposes tools and can seed/read/export a transcript through stdio', async () => {
+    const appDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+    const projectRoot = resolve(appDirectory, '..', '..');
     const dataDirectory = mkdtempSync(resolve(tmpdir(), 'voxmire-mcp-'));
     const client = new Client({
       name: 'voxmire-mcp-smoke-test',
       version: '0.1.0'
     });
     const transport = new StdioClientTransport({
-      command: resolve('apps', 'mcp', 'node_modules', '.bin', process.platform === 'win32' ? 'tsx.CMD' : 'tsx'),
+      command: resolve(appDirectory, 'node_modules', '.bin', process.platform === 'win32' ? 'tsx.CMD' : 'tsx'),
       args: ['src/index.ts'],
-      cwd: join(resolve('.'), 'apps', 'mcp'),
+      cwd: appDirectory,
       env: {
+        ...process.env,
         VOXMIRE_DATA_DIR: dataDirectory,
-        VOXMIRE_PROJECT_ROOT: resolve('.')
+        VOXMIRE_PROJECT_ROOT: projectRoot
       },
       stderr: 'pipe'
     });
@@ -30,11 +34,20 @@ describe('Voxmire MCP server', () => {
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
           'voxmire_paths',
+          'voxmire_machine_profile',
           'voxmire_jobs_list',
           'voxmire_transcript_get',
           'voxmire_dev_seed_transcript'
         ])
       );
+
+      const profileResult = await client.callTool({
+        name: 'voxmire_machine_profile',
+        arguments: {}
+      });
+      const profile = parseJsonToolResult<{ recommendedBackend: string; logicalCpuCores: number }>(profileResult);
+      expect(profile.logicalCpuCores).toBeGreaterThan(0);
+      expect(profile.recommendedBackend).toBeTruthy();
 
       const seedResult = await client.callTool({
         name: 'voxmire_dev_seed_transcript',

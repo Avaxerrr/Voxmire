@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseWhisperProgressLine } from './index';
+import { getMachineProfile, parseWhisperProgressLine } from './index';
 
 describe('parseWhisperProgressLine', () => {
   it('parses whisper.cpp progress output', () => {
@@ -9,5 +9,16 @@ describe('parseWhisperProgressLine', () => {
 
   it('ignores unrelated output', () => {
     expect(parseWhisperProgressLine('whisper_init_from_file_with_params: loading model')).toBeNull();
+  });
+});
+
+describe('getMachineProfile', () => {
+  it('builds a machine profile with a fallback recommendation', async () => {
+    const profile = await getMachineProfile({ projectRoot: 'C:/missing-voxmire-root' });
+
+    expect(profile.logicalCpuCores).toBeGreaterThan(0);
+    expect(profile.totalMemoryBytes).toBeGreaterThan(0);
+    expect(profile.recommendedBackend).toBe('cpu');
+    expect(profile.backends.map((backend: { backend: string }) => backend.backend)).toEqual(['cpu', 'cuda', 'vulkan']);
   });
 });

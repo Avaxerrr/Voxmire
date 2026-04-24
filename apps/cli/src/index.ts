@@ -38,6 +38,11 @@ async function main(rawArgs: string[]): Promise<void> {
       case 'resources':
         print(json, api.getResourceStatus(), formatResources(api.getResourceStatus()));
         break;
+      case 'profile': {
+        const profile = await api.getMachineProfile();
+        print(json, profile, formatMachineProfile(profile));
+        break;
+      }
       case 'jobs':
         await handleJobs(api, options, json);
         break;
@@ -288,6 +293,22 @@ function formatResources(resources: ResourceStatus[]): string {
     .join('\n');
 }
 
+function formatMachineProfile(profile: Awaited<ReturnType<ReturnType<typeof createVoxmireAgentApi>['getMachineProfile']>>): string {
+  return [
+    `Machine: ${profile.platform} ${profile.arch}, ${profile.logicalCpuCores} CPU threads, ${formatBytes(profile.totalMemoryBytes)} RAM`,
+    `Recommended: ${profile.recommendedBackend.toUpperCase()} with ${profile.recommendedModelId}`,
+    ...profile.backends.map((backend) => {
+      const state = backend.executableAvailable && backend.runtimeAvailable ? 'OK  ' : 'MISS';
+      return `${state} ${backend.recommended ? 'recommended' : 'available  '} ${backend.label} ${backend.reason ?? ''}`;
+    })
+  ].join('\n');
+}
+
+function formatBytes(value: number): string {
+  const gib = value / 1024 / 1024 / 1024;
+  return `${gib.toFixed(gib >= 10 ? 0 : 1)} GiB`;
+}
+
 function formatPaths(paths: ReturnType<typeof resolveAgentPaths>): string {
   return [
     `Data: ${paths.dataDirectory}`,
@@ -309,6 +330,7 @@ function printHelp(): void {
 Usage:
   corepack pnpm --filter @voxmire/cli cli -- paths [--json]
   corepack pnpm --filter @voxmire/cli cli -- resources [--json]
+  corepack pnpm --filter @voxmire/cli cli -- profile [--json]
   corepack pnpm --filter @voxmire/cli cli -- jobs list [--json]
   corepack pnpm --filter @voxmire/cli cli -- jobs status <jobId> [--json]
   corepack pnpm --filter @voxmire/cli cli -- jobs create <sourcePath> [--model large-v3-turbo] [--json]
