@@ -1,4 +1,4 @@
-import { type MutableRefObject, type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
+import { type MutableRefObject, type ReactElement, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   AlertTriangle,
@@ -1280,39 +1280,44 @@ type WaveformGraphProps = {
 };
 
 function WaveformGraph({ loading, peaks, progress, scaleMode }: WaveformGraphProps): ReactElement {
-  const rawPeaks = peaks.length > 0 ? peaks : waveformBars.map((height) => height / 100);
-  const displayPeaks = rawPeaks.map((peak) => scaleWaveformPeak(peak, scaleMode));
-  const playedCount = Math.round(progress * displayPeaks.length);
+  const clipId = useId().replace(/:/g, '');
   const width = 1200;
   const height = 96;
-  const barWidth = Math.max(1, width / displayPeaks.length);
+  const bars = useMemo(() => {
+    const rawPeaks = peaks.length > 0 ? peaks : waveformBars.map((barHeight) => barHeight / 100);
+    const displayPeaks = rawPeaks.map((peak) => scaleWaveformPeak(peak, scaleMode));
+    const barWidth = Math.max(1, width / displayPeaks.length);
+
+    return displayPeaks.map((peak, index) => {
+      const normalizedHeight = Math.max(3, peak * height);
+      return {
+        height: normalizedHeight,
+        key: `${index}-${peak.toFixed(3)}`,
+        width: Math.max(1, barWidth * 0.72),
+        x: index * barWidth,
+        y: (height - normalizedHeight) / 2
+      };
+    });
+  }, [peaks, scaleMode]);
+  const playedWidth = Math.max(0, Math.min(width, progress * width));
 
   return (
-    <svg
-      aria-hidden="true"
-      className={`waveform ${loading ? 'loading' : ''}`}
-      focusable="false"
-      preserveAspectRatio="none"
-      viewBox={`0 0 ${width} ${height}`}
-    >
-      {displayPeaks.map((peak, index) => {
-        const clampedPeak = Math.max(0, Math.min(1, peak));
-        const barHeight = Math.max(2, clampedPeak * height);
-        const x = index * barWidth;
-        const y = (height - barHeight) / 2;
-
-        return (
-          <rect
-            className={index <= playedCount ? 'played' : ''}
-            height={barHeight}
-            key={`wave-${index}-${peak.toFixed(3)}`}
-            rx={1.6}
-            width={Math.max(1, barWidth * 0.62)}
-            x={x}
-            y={y}
-          />
-        );
-      })}
+    <svg className={`waveform ${loading ? 'loading' : ''}`} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <clipPath id={clipId}>
+          <rect height={height} width={playedWidth} x={0} y={0} />
+        </clipPath>
+      </defs>
+      <g>
+        {bars.map((bar) => (
+          <rect height={bar.height} key={bar.key} rx={1.5} width={bar.width} x={bar.x} y={bar.y} />
+        ))}
+      </g>
+      <g clipPath={`url(#${clipId})`}>
+        {bars.map((bar) => (
+          <rect className="played" height={bar.height} key={`played-${bar.key}`} rx={1.5} width={bar.width} x={bar.x} y={bar.y} />
+        ))}
+      </g>
     </svg>
   );
 }
@@ -1354,9 +1359,11 @@ function AudioDeck({
   const [speedOpen, setSpeedOpen] = useState(false);
   const [scaleOpen, setScaleOpen] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [visualTime, setVisualTime] = useState(currentTime);
   const [waveformScaleMode, setWaveformScaleMode] = useState<WaveformScaleMode>('actual');
   const resolvedDuration = duration && Number.isFinite(duration) && duration > 0 ? duration : null;
-  const currentProgress = resolvedDuration ? Math.min(1, Math.max(0, currentTime / resolvedDuration)) : 0;
+  const displayTime = resolvedDuration ? Math.min(visualTime, resolvedDuration) : visualTime;
+  const currentProgress = resolvedDuration ? Math.min(1, Math.max(0, displayTime / resolvedDuration)) : 0;
   const canPlay = !disabled && Boolean(mediaUrl) && !mediaError;
   const volumePercent = Math.round((muted ? 0 : volume) * 100);
 
@@ -1403,6 +1410,32 @@ function AudioDeck({
     audio.playbackRate = playbackSpeed;
   }, [audioRef, playbackSpeed]);
 
+  useEffect(() => {
+    if (!playing) {
+      setVisualTime(currentTime);
+    }
+  }, [currentTime, playing]);
+
+  useEffect(() => {
+    if (!playing || !canPlay) {
+      return;
+    }
+
+    let animationFrame = 0;
+
+    const updateVisualTime = (): void => {
+      const audio = audioRef.current;
+      if (audio) {
+        setVisualTime(audio.currentTime);
+      }
+      animationFrame = window.requestAnimationFrame(updateVisualTime);
+    };
+
+    animationFrame = window.requestAnimationFrame(updateVisualTime);
+
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [audioRef, canPlay, playing]);
+
   function skipBy(seconds: number): void {
     const audio = audioRef.current;
     if (!audio || !canPlay) {
@@ -1412,6 +1445,7 @@ function AudioDeck({
     const unclamped = audio.currentTime + seconds;
     const nextTime = resolvedDuration ? Math.min(resolvedDuration, Math.max(0, unclamped)) : Math.max(0, unclamped);
     audio.currentTime = nextTime;
+    setVisualTime(nextTime);
     onTimeChange(nextTime);
   }
 
@@ -1423,6 +1457,7 @@ function AudioDeck({
 
     const nextTime = Math.min(resolvedDuration, Math.max(0, seconds));
     audio.currentTime = nextTime;
+    setVisualTime(nextTime);
     onTimeChange(nextTime);
   }
 
@@ -1434,7 +1469,9 @@ function AudioDeck({
           onDurationChange(Number.isFinite(nextDuration) ? nextDuration : null);
         }}
         onEnded={(event) => {
-          onTimeChange(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : event.currentTarget.currentTime);
+          const nextTime = Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : event.currentTarget.currentTime;
+          setVisualTime(nextTime);
+          onTimeChange(nextTime);
           setPlaying(false);
         }}
         onError={() => {
@@ -1444,13 +1481,20 @@ function AudioDeck({
         onLoadedMetadata={(event) => {
           const nextDuration = event.currentTarget.duration;
           event.currentTarget.playbackRate = playbackSpeed;
+          setVisualTime(event.currentTarget.currentTime);
           onDurationChange(Number.isFinite(nextDuration) ? nextDuration : null);
           onTimeChange(event.currentTarget.currentTime);
         }}
         onPause={() => setPlaying(false)}
         onPlay={() => setPlaying(true)}
-        onSeeked={(event) => onTimeChange(event.currentTarget.currentTime)}
-        onTimeUpdate={(event) => onTimeChange(event.currentTarget.currentTime)}
+        onSeeked={(event) => {
+          setVisualTime(event.currentTarget.currentTime);
+          onTimeChange(event.currentTarget.currentTime);
+        }}
+        onTimeUpdate={(event) => {
+          setVisualTime(event.currentTarget.currentTime);
+          onTimeChange(event.currentTarget.currentTime);
+        }}
         preload="metadata"
         ref={audioRef}
         src={mediaUrl ?? undefined}
@@ -1470,7 +1514,7 @@ function AudioDeck({
             <button className="icon-button" disabled={!canPlay} onClick={() => skipBy(10)} title="Skip forward 10 seconds" type="button"><SkipForward size={18} /></button>
           </div>
           <div className="deck-time-group" aria-label="Playback time">
-            <span className="deck-time current">{formatTime(currentTime)}</span>
+            <span className="deck-time current">{formatTime(displayTime)}</span>
             <span className="deck-time-divider">/</span>
             <span className="deck-time">{formatDuration(resolvedDuration)}</span>
           </div>
@@ -1486,7 +1530,7 @@ function AudioDeck({
                 onChange={(event) => seekTo(Number(event.target.value))}
                 step={0.01}
                 type="range"
-                value={resolvedDuration ? Math.min(currentTime, resolvedDuration) : 0}
+                value={resolvedDuration ? Math.min(displayTime, resolvedDuration) : 0}
               />
             </div>
           </div>
