@@ -64,7 +64,7 @@ type ViewId = 'dashboard' | 'transcript' | 'voice' | 'settings';
 
 type StatusTone = 'ready' | 'active' | 'warning' | 'error';
 
-const exportFormats: ExportFormat[] = ['txt', 'json', 'srt', 'vtt'];
+const exportFormats: ExportFormat[] = ['txt', 'srt', 'vtt', 'json'];
 const activeStatuses: JobStatus[] = ['queued', 'preparing', 'transcribing'];
 
 const fallbackModels: ModelProfile[] = [
@@ -365,6 +365,7 @@ export function App(): ReactElement {
         <nav className="nav-list" aria-label="Primary">
           <NavButton active={view === 'dashboard'} collapsed={sidebarCollapsed} icon={<Home size={18} />} label="Library" onClick={() => setView('dashboard')} />
           <NavButton active={view === 'transcript'} collapsed={sidebarCollapsed} icon={<FileText size={18} />} label="Transcript" onClick={() => setView('transcript')} />
+
           <NavButton active={view === 'voice'} collapsed={sidebarCollapsed} icon={<MicVocal size={18} />} label="Voice Studio" onClick={() => setView('voice')} badge="Soon" />
           <NavButton active={view === 'settings'} collapsed={sidebarCollapsed} icon={<Settings size={18} />} label="Settings" onClick={() => setView('settings')} />
         </nav>
@@ -396,6 +397,7 @@ export function App(): ReactElement {
             exportTranscript={exportTranscript}
             jobs={jobs}
             onCancel={cancelJob}
+            onBrowseLibrary={() => setView('dashboard')}
             onImport={() => setImportOpen(true)}
             onPause={pauseJob}
             onResume={resumeJob}
@@ -547,7 +549,7 @@ function DashboardView({ jobs, onImport, onOpenJob, onOpenVoice, selectedBackend
             <div className="library-controls">
               <label className="search-field">
                 <Search size={15} />
-                <input placeholder="Search projects" type="search" />
+                <input aria-label="Search projects" name="projectSearch" placeholder="Search projects" type="search" />
               </label>
               <button className="secondary-action" type="button">All</button>
               <button className="secondary-action" type="button">Active</button>
@@ -560,6 +562,7 @@ function DashboardView({ jobs, onImport, onOpenJob, onOpenVoice, selectedBackend
             <div className="project-list">
               {jobs.map((entry) => {
                 const isLive = activeStatuses.includes(entry.job.status);
+                const showStatus = entry.job.status !== 'completed';
 
                 return (
                   <button className={`project-row ${isLive ? 'live' : ''}`} key={entry.job.id} onClick={() => onOpenJob(entry.job.id)} type="button">
@@ -568,7 +571,7 @@ function DashboardView({ jobs, onImport, onOpenJob, onOpenVoice, selectedBackend
                       <strong>{entry.sourceFile.name}</strong>
                       <small>{formatDuration(entry.sourceFile.durationSeconds)} / {formatDate(entry.job.createdAt)}</small>
                     </span>
-                    <ProgressPill job={entry} />
+                    {showStatus ? <ProgressPill job={entry} /> : null}
                   </button>
                 );
               })}
@@ -584,6 +587,7 @@ type TranscriptViewProps = {
   exportTranscript: (format: ExportFormat) => Promise<void>;
   jobs: JobWithSource[];
   onCancel: (jobId: string) => Promise<void>;
+  onBrowseLibrary: () => void;
   onImport: () => void;
   onPause: (jobId: string) => Promise<void>;
   onResume: (jobId: string) => Promise<void>;
@@ -599,6 +603,7 @@ function TranscriptView({
   exportTranscript,
   jobs,
   onCancel,
+  onBrowseLibrary,
   onImport,
   onPause,
   onResume,
@@ -606,76 +611,175 @@ function TranscriptView({
   playing,
   selectedJob,
   segments,
-  setPlaying
+  setPlaying,
 }: TranscriptViewProps): ReactElement {
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [switcherQuery, setSwitcherQuery] = useState('');
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement | null>(null);
   const progress = selectedJob ? Math.round(selectedJob.job.progress * 100) : 0;
   const isCancelable = selectedJob ? activeStatuses.includes(selectedJob.job.status) || selectedJob.job.status === 'paused' : false;
   const isPausable = selectedJob ? activeStatuses.includes(selectedJob.job.status) : false;
   const isResumable = selectedJob?.job.status === 'paused';
   const isWorking = selectedJob ? activeStatuses.includes(selectedJob.job.status) : false;
+  const selectedSubtitle = selectedJob ? transcriptSubtitle(selectedJob, progress) : 'Choose a project from Library or import a recording.';
+  const visibleJobs = useMemo(() => {
+    const query = switcherQuery.trim().toLowerCase();
+
+    if (!query) {
+      return jobs;
+    }
+
+    return jobs.filter((entry) => entry.sourceFile.name.toLowerCase().includes(query));
+  }, [jobs, switcherQuery]);
+
+  useEffect(() => {
+    if (!switcherOpen && !exportMenuOpen) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key === 'Escape') {
+        setSwitcherOpen(false);
+        setExportMenuOpen(false);
+      }
+    }
+
+    function handlePointerDown(event: MouseEvent): void {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('mousedown', handlePointerDown);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('mousedown', handlePointerDown);
+    };
+  }, [exportMenuOpen, switcherOpen]);
 
   return (
     <div className="view transcript-view">
       <header className="transcript-topbar glass-bar">
         <div className="title-stack">
           <p className="eyebrow">Transcript</p>
-          <h2>{selectedJob?.sourceFile.name ?? 'No transcript selected'}</h2>
-          <span>{selectedJob ? `${statusLabel(selectedJob.job.status)} / ${progress}%` : 'Choose a project from Library or import a recording.'}</span>
+          <div className="transcript-title-row">
+            <h2>{selectedJob?.sourceFile.name ?? 'No transcript selected'}</h2>
+            <button
+              aria-expanded={switcherOpen}
+              aria-label="Switch transcript"
+              className={`icon-button transcript-switch-button ${switcherOpen ? 'active' : ''}`}
+              onClick={() => setSwitcherOpen((open) => !open)}
+              title="Switch transcript"
+              type="button"
+            >
+              <FolderOpen size={15} />
+            </button>
+          </div>
+          <span>{selectedSubtitle}</span>
         </div>
 
         <div className="transcript-actions">
-          <button className="icon-button" title="Search transcript" type="button"><Search size={17} /></button>
-          {exportFormats.map((format) => (
+          <button aria-label="Search transcript" className="icon-button" title="Search transcript" type="button"><Search size={17} /></button>
+          <div className="export-menu" ref={exportMenuRef}>
             <button
-              className="secondary-action"
+              aria-expanded={exportMenuOpen}
+              aria-label="Export transcript"
+              className={`icon-button export-trigger ${exportMenuOpen ? 'active' : ''}`}
               disabled={!selectedJob || segments.length === 0}
-              key={format}
-              onClick={() => void exportTranscript(format)}
+              onClick={() => setExportMenuOpen((open) => !open)}
+              title="Export transcript"
               type="button"
             >
-              <Download size={14} />
-              {format.toUpperCase()}
+              <Download size={16} />
             </button>
-          ))}
-          <button className="primary-action compact" disabled={busy} onClick={onImport} type="button">
-            <Plus size={16} />
-            Import
+            {exportMenuOpen ? (
+              <div className="export-menu-popover" role="menu">
+                {exportFormats.map((format) => (
+                  <button
+                    key={format}
+                    onClick={() => {
+                      setExportMenuOpen(false);
+                      void exportTranscript(format);
+                    }}
+                    role="menuitem"
+                    type="button"
+                  >
+                    <Download size={14} />
+                    <span>{exportFormatLabel(format)}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+          <button aria-label="Import transcript" className="primary-action icon-action" disabled={busy} onClick={onImport} title="Import transcript" type="button">
+            <Plus size={17} />
           </button>
         </div>
       </header>
 
       <section className="transcript-layout">
-        <aside className="transcript-project-rail" aria-label="Transcript projects">
-          <div className="rail-heading">
-            <div>
-              <p className="eyebrow">Projects</p>
-              <h3>Transcripts</h3>
-            </div>
-            <span>{jobs.length}</span>
-          </div>
-          <label className="search-field rail-search">
-            <Search size={15} />
-            <input placeholder="Find transcript" type="search" />
-          </label>
-          <div className="project-switch-list">
-            {jobs.length === 0 ? (
-              <EmptyState title="No transcripts" body="Import a recording to create your first project." />
-            ) : jobs.map((entry) => {
-              const isSelected = entry.job.id === selectedJob?.job.id;
-              const isLive = activeStatuses.includes(entry.job.status);
-
-              return (
-                <button className={`project-switch-row ${isSelected ? 'selected' : ''} ${isLive ? 'live' : ''}`} key={entry.job.id} onClick={() => onSelectJob(entry.job.id)} type="button">
-                  <span className="project-main">
-                    <strong>{entry.sourceFile.name}</strong>
-                    <small>{formatDuration(entry.sourceFile.durationSeconds)} / {formatDate(entry.job.createdAt)}</small>
-                  </span>
-                  <ProgressPill job={entry} />
+        {switcherOpen ? (
+          <div className="transcript-switcher-layer" onClick={() => setSwitcherOpen(false)} role="presentation">
+            <aside className="transcript-switcher-drawer" aria-label="Transcript switcher" onClick={(event) => event.stopPropagation()}>
+              <div className="switcher-heading">
+                <div>
+                  <p className="eyebrow">Switch transcript</p>
+                  <h3>Transcript projects</h3>
+                </div>
+                <button className="icon-button" onClick={() => setSwitcherOpen(false)} title="Close transcript switcher" type="button">
+                  <X size={15} />
                 </button>
-              );
-            })}
+              </div>
+
+              <label className="search-field switcher-search">
+                <Search size={15} />
+                <input
+                  aria-label="Find transcript"
+                  name="transcriptSwitcherSearch"
+                  onChange={(event) => setSwitcherQuery(event.target.value)}
+                  placeholder="Find transcript"
+                  type="search"
+                  value={switcherQuery}
+                />
+              </label>
+
+              <div className="transcript-switcher-list">
+                {jobs.length === 0 ? (
+                  <EmptyState title="No transcripts yet" body="Import a recording to create your first transcript." />
+                ) : visibleJobs.length === 0 ? (
+                  <EmptyState title="No matches" body="Try a different transcript name." />
+                ) : (
+                  visibleJobs.map((entry) => {
+                    const isSelected = entry.job.id === selectedJob?.job.id;
+                    const isLive = activeStatuses.includes(entry.job.status);
+                    const showStatus = entry.job.status !== 'completed';
+
+                    return (
+                      <button
+                        className={`transcript-switcher-row ${isSelected ? 'selected' : ''} ${isLive ? 'live' : ''}`}
+                        key={entry.job.id}
+                        onClick={() => {
+                          onSelectJob(entry.job.id);
+                          setSwitcherOpen(false);
+                        }}
+                        type="button"
+                      >
+                        <span className="project-main">
+                          <strong>{entry.sourceFile.name}</strong>
+                          <small>{formatDuration(entry.sourceFile.durationSeconds)} / {formatDate(entry.job.createdAt)}</small>
+                        </span>
+                        {showStatus ? <ProgressPill job={entry} /> : null}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </aside>
           </div>
-        </aside>
+        ) : null}
 
         <div className="transcript-main">
           <section className="transcript-stage">
@@ -714,7 +818,21 @@ function TranscriptView({
                 )}
               </>
             ) : (
-              <EmptyState title="Open a transcript" body="Use the project list to switch transcripts, or import a recording." />
+              <div className="empty-state transcript-empty-state">
+                <FileText size={20} />
+                <h4>Open a transcript</h4>
+                <p>Choose a transcript from Library or import a recording.</p>
+                <div className="empty-actions">
+                  <button className="secondary-action" onClick={onBrowseLibrary} type="button">
+                    <FolderOpen size={14} />
+                    Browse Library
+                  </button>
+                  <button className="primary-action compact" disabled={busy} onClick={onImport} type="button">
+                    <Plus size={16} />
+                    Import
+                  </button>
+                </div>
+              </div>
             )}
           </section>
 
@@ -1214,6 +1332,37 @@ function statusClass(status: JobStatus): string {
 
 function statusLabel(status: JobStatus): string {
   return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function transcriptSubtitle(job: JobWithSource, progress: number): string {
+  if (activeStatuses.includes(job.job.status) || job.job.status === 'paused') {
+    return `${statusLabel(job.job.status)} / ${progress}%`;
+  }
+
+  if (job.job.status === 'failed') {
+    return 'Failed. Check the job error below.';
+  }
+
+  if (job.job.status === 'canceled') {
+    return 'Canceled';
+  }
+
+  return `${formatDuration(job.sourceFile.durationSeconds)} audio`;
+}
+
+function exportFormatLabel(format: ExportFormat): string {
+  switch (format) {
+    case 'txt':
+      return 'Text (.txt)';
+    case 'srt':
+      return 'SubRip subtitles (.srt)';
+    case 'vtt':
+      return 'WebVTT (.vtt)';
+    case 'json':
+      return 'JSON (.json)';
+    default:
+      return String(format).toUpperCase();
+  }
 }
 
 function formatTime(seconds: number): string {
