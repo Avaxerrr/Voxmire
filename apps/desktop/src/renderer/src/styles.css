@@ -293,7 +293,7 @@ textarea,
   height: calc(100vh - 32px);
   min-height: 0;
   overflow: hidden;
-  padding: 36px;
+  padding: 56px 36px 36px;
 }
 
 .eyebrow {
@@ -336,7 +336,7 @@ textarea,
   flex: 0 0 auto;
   width: 100%;
   max-width: 1180px;
-  margin: 0 auto 22px;
+  margin: 0 auto 18px;
 }
 
 .dashboard-header h2,
@@ -345,7 +345,7 @@ textarea,
   margin-top: 4px;
   color: var(--text);
   font-family: "Space Grotesk", Inter, sans-serif;
-  font-size: 40px;
+  font-size: 34px;
   line-height: 1.05;
   font-weight: 700;
   letter-spacing: 0;
@@ -408,21 +408,31 @@ textarea,
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 18px 45px rgba(0, 0, 0, 0.28);
 }
 
+.dashboard-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
+}
+
 .quick-actions {
   display: grid;
-  flex: 0 0 auto;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
+  gap: 12px;
   width: 100%;
   max-width: 1180px;
-  margin: 0 auto 30px;
+  margin: 0 auto 18px;
 }
 
 .action-tile {
   position: relative;
-  min-height: 240px;
+  display: grid;
+  grid-template-columns: 50px minmax(0, 1fr);
+  align-items: center;
+  gap: 18px;
+  min-height: 118px;
   overflow: hidden;
-  padding: 26px;
+  padding: 18px 20px;
   border: 1px solid var(--line);
   border-radius: 8px;
   color: inherit;
@@ -443,10 +453,11 @@ textarea,
 .action-tile:hover::before { opacity: 1; }
 .action-tile > * { position: relative; z-index: 1; }
 .tile-icon { width: 50px; height: 50px; border-radius: 10px; }
+.tile-copy { min-width: 0; }
 .voice-tile .tile-icon { background: linear-gradient(135deg, #06b6d4 0%, #22c55e 100%); box-shadow: 0 0 22px rgba(34, 211, 238, 0.28); }
-.action-tile strong { display: block; margin-top: 44px; color: var(--text); font-family: "Space Grotesk", Inter, sans-serif; font-size: 24px; font-weight: 700; }
-.action-tile p { max-width: 430px; margin-top: 9px; color: var(--muted); font-size: 14px; line-height: 1.5; }
-.action-tile small { display: inline-flex; margin-top: 24px; padding: 5px 9px; border-radius: 7px; color: var(--cyan); background: rgba(34, 211, 238, 0.1); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.action-tile strong { display: block; color: var(--text); font-family: "Space Grotesk", Inter, sans-serif; font-size: 20px; font-weight: 700; }
+.action-tile p { max-width: 430px; margin-top: 6px; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.action-tile small { display: inline-flex; margin-top: 10px; padding: 5px 9px; border-radius: 7px; color: var(--cyan); background: rgba(34, 211, 238, 0.1); font-size: 11px; font-weight: 800; text-transform: uppercase; }
 
 .library-section {
   display: flex;
@@ -523,20 +534,76 @@ textarea,
 
 .glass-bar { background: rgba(9, 9, 11, 0.76); backdrop-filter: blur(16px); }
 .transcript-view,
-.voice-view { display: flex; flex-direction: column; gap: 16px; overflow: hidden; padding: 0; }
+.voice-view { display: flex; flex-direction: column; gap: 0; overflow: hidden; padding: 0; }
 .transcript-topbar,
 .voice-header {
-  min-height: 82px;
-  padding: 14px 160px 14px 24px;
+  min-height: 104px;
+  padding: 42px 160px 14px 24px;
   border-bottom: 1px solid var(--line);
 }
 .title-stack { min-width: 0; }
-.title-stack h2 { color: var(--text); font-family: "Space Grotesk", Inter, sans-serif; font-size: 22px; }
+.title-stack h2 { max-width: min(640px, 56vw); overflow: hidden; color: var(--text); font-family: "Space Grotesk", Inter, sans-serif; font-size: 22px; text-overflow: ellipsis; white-space: nowrap; }
 .title-stack span,
 .voice-header span { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
 .job-select { width: min(520px, 52vw); height: 34px; margin-top: 4px; color: var(--text); font-family: "Space Grotesk", Inter, sans-serif; font-size: 20px; font-weight: 600; background: transparent; border-color: transparent; padding: 0 26px 0 0; }
 .job-select:focus { border-color: var(--line-strong); }
 .transcript-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+
+.transcript-layout {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 304px minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.transcript-project-rail {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 18px 12px 48px 16px;
+  border-right: 1px solid var(--line);
+  background: rgba(8, 8, 10, 0.62);
+}
+
+.rail-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.rail-heading h3 { color: var(--text); font-family: "Space Grotesk", Inter, sans-serif; font-size: 18px; }
+.rail-heading span { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 26px; border-radius: 7px; color: var(--cyan); background: rgba(34, 211, 238, 0.1); font-size: 11px; font-weight: 800; }
+.rail-search { flex: 0 0 auto; width: 100%; margin-bottom: 12px; }
+.project-switch-list { display: grid; align-content: start; gap: 8px; min-height: 0; overflow: auto; padding-right: 4px; }
+.project-switch-row {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  min-height: 74px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  text-align: left;
+}
+.project-switch-row:hover { border-color: rgba(34, 211, 238, 0.34); background: rgba(34, 211, 238, 0.06); }
+.project-switch-row.selected { border-color: rgba(34, 211, 238, 0.5); background: rgba(34, 211, 238, 0.1); }
+.project-switch-row.live { box-shadow: inset 2px 0 0 var(--cyan); }
+.project-switch-row .progress-pill { justify-self: start; }
+
+.transcript-main {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
 
 .transcript-stage {
   display: flex;
@@ -791,13 +858,15 @@ textarea,
 .drop-zone small { color: var(--muted); font-size: 12px; }
 
 @media (max-width: 1180px) {
-  .view { padding: 28px; }
+  .view { padding: 52px 28px 28px; }
   .transcript-view,
   .voice-view { padding: 0; }
+  .transcript-layout { grid-template-columns: 260px minmax(0, 1fr); }
   .quick-actions,
   .voice-layout,
   .diagnostic-grid { grid-template-columns: 1fr; }
   .library-toolbar { align-items: flex-start; flex-direction: column; }
   .library-controls { width: 100%; flex-wrap: wrap; }
   .search-field { flex: 1 1 260px; }
+  .rail-search { flex: 0 0 36px; }
 }

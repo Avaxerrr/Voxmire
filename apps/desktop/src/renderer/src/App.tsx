@@ -517,63 +517,68 @@ function DashboardView({ jobs, onImport, onOpenJob, onOpenVoice, selectedBackend
         </button>
       </header>
 
-      <section className="quick-actions" aria-label="Quick actions">
-        <button className="action-tile transcribe-tile" onClick={onImport} type="button">
-          <span className="tile-icon"><UploadCloud size={24} /></span>
-          <strong>Transcribe Audio</strong>
-          <p>Create a private transcript from an audio or video file.</p>
-          <small>{selectedModel?.label ?? 'Recommended preset'} / {selectedBackend.toUpperCase()}</small>
-        </button>
+      <div className="dashboard-scroll">
+        <section className="quick-actions" aria-label="Quick actions">
+          <button className="action-tile transcribe-tile" onClick={onImport} type="button">
+            <span className="tile-icon"><UploadCloud size={24} /></span>
+            <span className="tile-copy">
+              <strong>Transcribe Audio</strong>
+              <p>Create a private transcript from an audio or video file.</p>
+              <small>{selectedModel?.label ?? 'Recommended preset'} / {selectedBackend.toUpperCase()}</small>
+            </span>
+          </button>
 
-        <button className="action-tile voice-tile" onClick={onOpenVoice} type="button">
-          <span className="tile-icon"><MicVocal size={24} /></span>
-          <strong>Voice Generation</strong>
-          <p>Draft speech from text. This workspace is designed, but not connected yet.</p>
-          <small>Coming soon</small>
-        </button>
-      </section>
+          <button className="action-tile voice-tile" onClick={onOpenVoice} type="button">
+            <span className="tile-icon"><MicVocal size={24} /></span>
+            <span className="tile-copy">
+              <strong>Voice Generation</strong>
+              <p>Draft speech from text. This workspace is designed, but not connected yet.</p>
+              <small>Coming soon</small>
+            </span>
+          </button>
+        </section>
 
-      <section className="library-section">
-        <div className="library-toolbar">
-          <div>
-            <p className="eyebrow">Library</p>
-            <h3>Transcript projects</h3>
+        <section className="library-section">
+          <div className="library-toolbar">
+            <div>
+              <p className="eyebrow">Library</p>
+              <h3>Transcript projects</h3>
+            </div>
+            <div className="library-controls">
+              <label className="search-field">
+                <Search size={15} />
+                <input placeholder="Search projects" type="search" />
+              </label>
+              <button className="secondary-action" type="button">All</button>
+              <button className="secondary-action" type="button">Active</button>
+            </div>
           </div>
-          <div className="library-controls">
-            <label className="search-field">
-              <Search size={15} />
-              <input placeholder="Search projects" type="search" />
-            </label>
-            <button className="secondary-action" type="button">All</button>
-            <button className="secondary-action" type="button">Active</button>
-          </div>
-        </div>
 
-        {jobs.length === 0 ? (
-          <EmptyState title="No transcript projects yet" body="Import a recording to start building your local library." />
-        ) : (
-          <div className="project-list">
-            {jobs.map((entry) => {
-              const isLive = activeStatuses.includes(entry.job.status);
+          {jobs.length === 0 ? (
+            <EmptyState title="No transcript projects yet" body="Import a recording to start building your local library." />
+          ) : (
+            <div className="project-list">
+              {jobs.map((entry) => {
+                const isLive = activeStatuses.includes(entry.job.status);
 
-              return (
-                <button className={`project-row ${isLive ? 'live' : ''}`} key={entry.job.id} onClick={() => onOpenJob(entry.job.id)} type="button">
-                  <span className="project-icon"><FileAudio size={17} /></span>
-                  <span className="project-main">
-                    <strong>{entry.sourceFile.name}</strong>
-                    <small>{formatDuration(entry.sourceFile.durationSeconds)} / {formatDate(entry.job.createdAt)}</small>
-                  </span>
-                  <ProgressPill job={entry} />
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </section>
+                return (
+                  <button className={`project-row ${isLive ? 'live' : ''}`} key={entry.job.id} onClick={() => onOpenJob(entry.job.id)} type="button">
+                    <span className="project-icon"><FileAudio size={17} /></span>
+                    <span className="project-main">
+                      <strong>{entry.sourceFile.name}</strong>
+                      <small>{formatDuration(entry.sourceFile.durationSeconds)} / {formatDate(entry.job.createdAt)}</small>
+                    </span>
+                    <ProgressPill job={entry} />
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   );
 }
-
 type TranscriptViewProps = {
   busy: boolean;
   exportTranscript: (format: ExportFormat) => Promise<void>;
@@ -614,15 +619,7 @@ function TranscriptView({
       <header className="transcript-topbar glass-bar">
         <div className="title-stack">
           <p className="eyebrow">Transcript</p>
-          {jobs.length > 0 ? (
-            <select className="job-select" value={selectedJob?.job.id ?? ''} onChange={(event) => onSelectJob(event.target.value)}>
-              {jobs.map((entry) => (
-                <option key={entry.job.id} value={entry.job.id}>{entry.sourceFile.name}</option>
-              ))}
-            </select>
-          ) : (
-            <h2>No transcript selected</h2>
-          )}
+          <h2>{selectedJob?.sourceFile.name ?? 'No transcript selected'}</h2>
           <span>{selectedJob ? `${statusLabel(selectedJob.job.status)} / ${progress}%` : 'Choose a project from Library or import a recording.'}</span>
         </div>
 
@@ -647,57 +644,92 @@ function TranscriptView({
         </div>
       </header>
 
-      <section className="transcript-stage">
-        {selectedJob ? (
-          <>
-            <div className="job-progress-row">
-              <div className={`progress-track ${isWorking ? 'working' : ''}`} aria-label="Progress">
-                <div style={{ width: `${progress}%` }} />
-              </div>
-              <div className="job-inline-actions" aria-label="Transcription controls">
-                {isPausable ? (
-                  <button className="secondary-action" onClick={() => void onPause(selectedJob.job.id)} type="button">
-                    <Pause size={14} />
-                    Pause
-                  </button>
-                ) : null}
-                {isResumable ? (
-                  <button className="secondary-action" onClick={() => void onResume(selectedJob.job.id)} type="button">
-                    <Play size={14} />
-                    Resume
-                  </button>
-                ) : null}
-                {isCancelable ? (
-                  <button className="secondary-action danger" onClick={() => void onCancel(selectedJob.job.id)} type="button">
-                    <Square size={14} />
-                    Stop
-                  </button>
-                ) : null}
-              </div>
+      <section className="transcript-layout">
+        <aside className="transcript-project-rail" aria-label="Transcript projects">
+          <div className="rail-heading">
+            <div>
+              <p className="eyebrow">Projects</p>
+              <h3>Transcripts</h3>
             </div>
-            {selectedJob.job.errorMessage ? <div className="error-text"><AlertTriangle size={16} /> {selectedJob.job.errorMessage}</div> : null}
-            {segments.length === 0 ? (
-              <EmptyState title="Transcript pending" body="Transcript text will appear here as the job progresses." />
-            ) : (
-              <VirtualizedSegmentList segments={segments} />
-            )}
-          </>
-        ) : (
-          <EmptyState title="Open a transcript" body="Use Library for many projects, then edit one transcript here." />
-        )}
-      </section>
+            <span>{jobs.length}</span>
+          </div>
+          <label className="search-field rail-search">
+            <Search size={15} />
+            <input placeholder="Find transcript" type="search" />
+          </label>
+          <div className="project-switch-list">
+            {jobs.length === 0 ? (
+              <EmptyState title="No transcripts" body="Import a recording to create your first project." />
+            ) : jobs.map((entry) => {
+              const isSelected = entry.job.id === selectedJob?.job.id;
+              const isLive = activeStatuses.includes(entry.job.status);
 
-      <AudioDeck
-        disabled={!selectedJob || segments.length === 0}
-        duration={selectedJob?.sourceFile.durationSeconds ?? null}
-        playing={playing}
-        progress={progress}
-        setPlaying={setPlaying}
-      />
+              return (
+                <button className={`project-switch-row ${isSelected ? 'selected' : ''} ${isLive ? 'live' : ''}`} key={entry.job.id} onClick={() => onSelectJob(entry.job.id)} type="button">
+                  <span className="project-main">
+                    <strong>{entry.sourceFile.name}</strong>
+                    <small>{formatDuration(entry.sourceFile.durationSeconds)} / {formatDate(entry.job.createdAt)}</small>
+                  </span>
+                  <ProgressPill job={entry} />
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+
+        <div className="transcript-main">
+          <section className="transcript-stage">
+            {selectedJob ? (
+              <>
+                <div className="job-progress-row">
+                  <div className={`progress-track ${isWorking ? 'working' : ''}`} aria-label="Progress">
+                    <div style={{ width: `${progress}%` }} />
+                  </div>
+                  <div className="job-inline-actions" aria-label="Transcription controls">
+                    {isPausable ? (
+                      <button className="secondary-action" onClick={() => void onPause(selectedJob.job.id)} type="button">
+                        <Pause size={14} />
+                        Pause
+                      </button>
+                    ) : null}
+                    {isResumable ? (
+                      <button className="secondary-action" onClick={() => void onResume(selectedJob.job.id)} type="button">
+                        <Play size={14} />
+                        Resume
+                      </button>
+                    ) : null}
+                    {isCancelable ? (
+                      <button className="secondary-action danger" onClick={() => void onCancel(selectedJob.job.id)} type="button">
+                        <Square size={14} />
+                        Stop
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+                {selectedJob.job.errorMessage ? <div className="error-text"><AlertTriangle size={16} /> {selectedJob.job.errorMessage}</div> : null}
+                {segments.length === 0 ? (
+                  <EmptyState title="Transcript pending" body="Transcript text will appear here as the job progresses." />
+                ) : (
+                  <VirtualizedSegmentList segments={segments} />
+                )}
+              </>
+            ) : (
+              <EmptyState title="Open a transcript" body="Use the project list to switch transcripts, or import a recording." />
+            )}
+          </section>
+
+          <AudioDeck
+            disabled={!selectedJob || segments.length === 0}
+            duration={selectedJob?.sourceFile.durationSeconds ?? null}
+            playing={playing}
+            progress={progress}
+            setPlaying={setPlaying}
+          />
+        </div>
+      </section>
     </div>
   );
 }
-
 function VoiceStudioView(): ReactElement {
   return (
     <div className="view voice-view">
