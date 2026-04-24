@@ -10,7 +10,14 @@ import {
   type VoxmireRuntime,
   type VoxmireRuntimeLogEvent
 } from '@voxmire/runtime';
-import { openVoxmireDatabase, type VoxmireDatabase } from '@voxmire/storage';
+import {
+  createId,
+  createJobRecord,
+  openVoxmireDatabase,
+  saveTranscriptSegment,
+  updateJobStatus,
+  type VoxmireDatabase
+} from '@voxmire/storage';
 
 export type VoxmireAgentPaths = {
   dataDirectory: string;
@@ -30,6 +37,17 @@ export type VoxmireAgentOptions = {
 export type ReadLogsOptions = {
   jobId?: string;
   limit?: number;
+};
+
+export type SeedTranscriptOptions = {
+  name?: string;
+  segments?: number;
+  wordsPerSegment?: number;
+};
+
+export type SeedTranscriptResult = {
+  job: JobWithSource;
+  segmentCount: number;
 };
 
 export class VoxmireAgentApi {
@@ -130,6 +148,54 @@ export class VoxmireAgentApi {
 
     return entries.slice(Math.max(0, entries.length - limit));
   }
+
+  seedTranscript(options: SeedTranscriptOptions = {}): SeedTranscriptResult {
+    const segmentCount = clampInteger(options.segments ?? 5000, 1, 100000);
+    const wordsPerSegment = clampInteger(options.wordsPerSegment ?? 18, 1, 240);
+    const name = options.name?.trim() || `Dev stress transcript ${segmentCount}`;
+    const now = new Date().toISOString();
+    const durationSeconds = segmentCount * 4;
+    const created = createJobRecord(this.db, {
+      sourceFile: {
+        id: createId('src'),
+        path: join(this.paths.dataDirectory, 'dev-seed', `${sanitizeFileName(name)}.wav`),
+        name: `${name}.wav`,
+        extension: 'wav',
+        sizeBytes: 0,
+        durationSeconds,
+        createdAt: now
+      },
+      modelId: 'large-v3-turbo'
+    });
+
+    this.db.exec('BEGIN');
+    try {
+      for (let index = 0; index < segmentCount; index += 1) {
+        const startSeconds = index * 4;
+        saveTranscriptSegment(this.db, {
+          id: createId('seg'),
+          jobId: created.job.id,
+          index,
+          startSeconds,
+          endSeconds: startSeconds + 3.4,
+          text: buildSeedSegmentText(index, wordsPerSegment),
+          confidence: null,
+          createdAt: now
+        });
+      }
+
+      updateJobStatus(this.db, created.job.id, 'completed', { progress: 1 });
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+
+    return {
+      job: this.runtime.getJob(created.job.id) ?? created,
+      segmentCount
+    };
+  }
 }
 
 export function createVoxmireAgentApi(options: VoxmireAgentOptions = {}): VoxmireAgentApi {
@@ -192,6 +258,37 @@ function parseLogLine(line: string): VoxmireRuntimeLogEvent | null {
   } catch {
     return null;
   }
+}
+
+function clampInteger(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+
+  return Math.max(min, Math.min(max, Math.floor(value)));
+}
+
+function buildSeedSegmentText(index: number, wordsPerSegment: number): string {
+  const vocabulary = [
+    'local',
+    'transcript',
+    'segment',
+    'virtualized',
+    'renderer',
+    'scroll',
+    'stress',
+    'sqlite',
+    'checkpoint',
+    'workspace',
+    'progress',
+    'audio'
+  ];
+  const words = Array.from({ length: wordsPerSegment }, (_, wordIndex) => vocabulary[(index + wordIndex) % vocabulary.length]);
+  return `Seed segment ${index + 1}. ${words.join(' ')}.`;
+}
+
+function sanitizeFileName(value: string): string {
+  return value.replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'dev-stress-transcript';
 }
 
 export function summarizeJob(jobWithSource: JobWithSource): string {

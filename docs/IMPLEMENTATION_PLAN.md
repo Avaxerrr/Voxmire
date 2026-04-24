@@ -134,6 +134,7 @@ Current focus: align agent/debug data paths, then add the MCP surface on top of 
    - `npm run cli -- transcript get <jobId>`
    - `npm run cli -- export <jobId> --format txt`
    - `npm run cli -- logs tail`
+   - `npm run cli -- dev seed-transcript --segments 20000`
 
 12. **Hardware profiles** - Planned
    Add CUDA/Vulkan detection after the CPU path works.
@@ -164,6 +165,7 @@ Current focus: align agent/debug data paths, then add the MCP surface on top of 
   - CLI can read structured runtime logs
   - CLI can create a transcription job without Electron
   - CLI can export transcript output
+  - CLI can seed a large completed transcript for renderer stress testing
   - MCP tools return job IDs for long-running work and allow status polling
 
 ## Assumptions

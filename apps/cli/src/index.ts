@@ -53,6 +53,9 @@ async function main(rawArgs: string[]): Promise<void> {
       case 'logs':
         handleLogs(api, options, json);
         break;
+      case 'dev':
+        handleDev(api, options, json);
+        break;
       default:
         throw new Error(`Unknown command: ${command}`);
     }
@@ -175,6 +178,28 @@ function handleLogs(api: ReturnType<typeof createVoxmireAgentApi>, options: CliO
   );
 }
 
+function handleDev(api: ReturnType<typeof createVoxmireAgentApi>, options: CliOptions, json: boolean): void {
+  const subcommand = options.positional[0];
+  if (subcommand !== 'seed-transcript') {
+    throw new Error(`Unknown dev command: ${subcommand ?? ''}`);
+  }
+
+  const segments = parsePositiveInteger(flagValue(options, 'segments') ?? '5000', 'segments');
+  const wordsPerSegment = parsePositiveInteger(flagValue(options, 'words') ?? '18', 'words');
+  const name = flagValue(options, 'name');
+  const result = api.seedTranscript({
+    ...(name ? { name } : {}),
+    segments,
+    wordsPerSegment
+  });
+
+  print(
+    json,
+    result,
+    `Seeded ${result.segmentCount} transcript segments in ${summarizeJob(result.job)}`
+  );
+}
+
 function parseOptions(rawArgs: string[]): CliOptions {
   const flags = new Map<string, string | true>();
   const positional: string[] = [];
@@ -237,6 +262,15 @@ function parseExportFormat(value: string | undefined): ExportFormat {
   return exportFormatSchema.parse(value);
 }
 
+function parsePositiveInteger(value: string, label: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(`Invalid ${label}: ${value}`);
+  }
+
+  return parsed;
+}
+
 function assertFileExists(filePath: string): void {
   const resolved = resolve(filePath);
   if (!existsSync(resolved)) {
@@ -286,5 +320,6 @@ Usage:
   corepack pnpm --filter @voxmire/cli cli -- transcript get <jobId> [--json]
   corepack pnpm --filter @voxmire/cli cli -- export <jobId> --format txt [--json]
   corepack pnpm --filter @voxmire/cli cli -- logs tail [--limit 50] [--job <jobId>] [--json]
+  corepack pnpm --filter @voxmire/cli cli -- dev seed-transcript [--segments 20000] [--words 18] [--name "Stress"]
 `);
 }
