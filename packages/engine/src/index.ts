@@ -254,22 +254,41 @@ export class WhisperCppCpuEngine implements TranscriptionEngine {
     yield {
       jobId: input.jobId,
       status: 'transcribing',
-      progress: 0.05,
+      progress: 0,
       message: 'Starting whisper.cpp CPU transcription.',
       segment: null
     };
 
     const outputBase = join(input.outputDirectory, input.outputBaseName ?? input.jobId);
     const args = ['-m', input.modelPath, '-f', input.sourcePath, '-of', outputBase, '-oj', '-osrt', '-ovtt'];
-
-    const result = await runProcess(
+    const progressQueue = new AsyncValueQueue<number>();
+    let lastWhisperProgress = 0;
+    const resultPromise = runProcess(
       availability.executablePath,
       args,
       (line) => {
-        void line;
+        const progress = parseWhisperProgressLine(line);
+        if (progress === null || progress <= lastWhisperProgress + 0.005) {
+          return;
+        }
+
+        lastWhisperProgress = progress;
+        progressQueue.push(progress);
       },
       input.signal
-    );
+    ).finally(() => progressQueue.close());
+
+    for await (const progress of progressQueue) {
+      yield {
+        jobId: input.jobId,
+        status: 'transcribing',
+        progress: Math.min(0.95, progress),
+        message: `Whisper progress ${Math.round(progress * 100)}%.`,
+        segment: null
+      };
+    }
+
+    const result = await resultPromise;
 
     const parsedSegments = readWhisperJsonSegments(`${outputBase}.json`, input.jobId);
     const fallbackSegment: TranscriptSegment = {
@@ -285,10 +304,11 @@ export class WhisperCppCpuEngine implements TranscriptionEngine {
 
     const segments = parsedSegments.length > 0 ? parsedSegments : [fallbackSegment];
     for (const segment of segments) {
+      const segmentProgress = Math.max(0.1, Math.min(0.95, (segment.index + 1) / segments.length));
       yield {
         jobId: input.jobId,
         status: 'transcribing',
-        progress: Math.max(0.1, Math.min(0.95, (segment.index + 1) / segments.length)),
+        progress: Math.max(lastWhisperProgress, segmentProgress),
         message: 'Transcript segment saved.',
         segment
       };
@@ -329,6 +349,50 @@ type ProcessResult = {
   stdout: string;
   stderr: string;
 };
+
+class AsyncValueQueue<T> implements AsyncIterable<T> {
+  private readonly values: T[] = [];
+  private readonly waiters: Array<(result: IteratorResult<T>) => void> = [];
+  private closed = false;
+
+  push(value: T): void {
+    if (this.closed) {
+      return;
+    }
+
+    const waiter = this.waiters.shift();
+    if (waiter) {
+      waiter({ value, done: false });
+      return;
+    }
+
+    this.values.push(value);
+  }
+
+  close(): void {
+    this.closed = true;
+    for (const waiter of this.waiters.splice(0)) {
+      waiter({ value: undefined, done: true });
+    }
+  }
+
+  [Symbol.asyncIterator](): AsyncIterator<T> {
+    return {
+      next: () => {
+        const value = this.values.shift();
+        if (value !== undefined) {
+          return Promise.resolve({ value, done: false });
+        }
+
+        if (this.closed) {
+          return Promise.resolve({ value: undefined, done: true });
+        }
+
+        return new Promise<IteratorResult<T>>((resolve) => this.waiters.push(resolve));
+      }
+    };
+  }
+}
 
 function runProcess(
   executablePath: string,
@@ -472,9 +536,23 @@ function emitLines(chunk: string, onLine?: (line: string) => void): void {
     return;
   }
 
-  for (const line of chunk.split(/\r?\n/)) {
+  for (const line of chunk.split(/\r\n|\n|\r/)) {
     if (line.trim()) {
       onLine(line);
     }
   }
+}
+
+export function parseWhisperProgressLine(line: string): number | null {
+  const match = /progress\s*=\s*(?<percent>\d{1,3}(?:\.\d+)?)\s*%/i.exec(line);
+  if (!match?.groups?.percent) {
+    return null;
+  }
+
+  const value = Number(match.groups.percent);
+  if (!Number.isFinite(value)) {
+    return null;
+  }
+
+  return Math.max(0, Math.min(1, value / 100));
 }
