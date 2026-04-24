@@ -93,6 +93,19 @@ async function handleJobs(api: ReturnType<typeof createVoxmireAgentApi>, options
     return;
   }
 
+  if (subcommand === 'recover') {
+    const start = !options.flags.has('no-start');
+    const results = await api.recoverInterruptedJobs({ start });
+    print(
+      json,
+      results,
+      results.length === 0
+        ? 'No recoverable jobs found.'
+        : results.map((result) => `${result.jobId}  ${result.status}  reset chunks: ${result.resetChunkCount}`).join('\n')
+    );
+    return;
+  }
+
   throw new Error(`Unknown jobs command: ${subcommand}`);
 }
 
@@ -252,6 +265,7 @@ Usage:
   corepack pnpm --filter @voxmire/cli cli -- jobs status <jobId> [--json]
   corepack pnpm --filter @voxmire/cli cli -- jobs create <sourcePath> [--model large-v3-turbo] [--json]
   corepack pnpm --filter @voxmire/cli cli -- jobs run <jobId> [--json]
+  corepack pnpm --filter @voxmire/cli cli -- jobs recover [--no-start] [--json]
   corepack pnpm --filter @voxmire/cli cli -- transcribe <sourcePath> [--model large-v3-turbo] [--format txt] [--json]
   corepack pnpm --filter @voxmire/cli cli -- transcript get <jobId> [--json]
   corepack pnpm --filter @voxmire/cli cli -- export <jobId> --format txt [--json]

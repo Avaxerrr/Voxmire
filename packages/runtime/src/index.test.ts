@@ -2,7 +2,13 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { openVoxmireDatabase, saveTranscriptSegment } from '@voxmire/storage';
+import {
+  getTranscriptionChunks,
+  openVoxmireDatabase,
+  saveTranscriptionChunk,
+  saveTranscriptSegment,
+  updateJobStatus
+} from '@voxmire/storage';
 import { createVoxmireRuntime } from './index';
 
 describe('VoxmireRuntime', () => {
@@ -43,6 +49,63 @@ describe('VoxmireRuntime', () => {
     expect(runtime.listJobs()).toHaveLength(1);
     expect(created.sourceFile.name).toBe('recording.wav');
     expect(exported.path).toContain('recording');
+    db.close();
+  });
+
+  it('queues interrupted jobs for recovery without rerunning completed chunks', async () => {
+    const tempDirectory = mkdtempSync(join(tmpdir(), 'voxmire-runtime-'));
+    const sourcePath = join(tempDirectory, 'recording.wav');
+    writeFileSync(sourcePath, 'placeholder audio');
+
+    const db = openVoxmireDatabase(':memory:');
+    const runtime = createVoxmireRuntime({
+      db,
+      resources: { projectRoot: tempDirectory },
+      directories: {
+        engineOutputDirectory: join(tempDirectory, 'engine-output'),
+        exportDirectory: join(tempDirectory, 'exports')
+      }
+    });
+
+    const created = await runtime.createTranscriptionJob({
+      sourcePath,
+      modelId: 'large-v3-turbo',
+      startImmediately: false
+    });
+
+    updateJobStatus(db, created.job.id, 'transcribing', { progress: 0.5 });
+    saveTranscriptionChunk(db, {
+      id: 'chunk_1',
+      jobId: created.job.id,
+      index: 0,
+      startSeconds: 0,
+      endSeconds: 600,
+      filePath: join(tempDirectory, 'chunk-0000.wav'),
+      status: 'completed',
+      errorMessage: null,
+      createdAt: '2026-04-23T00:00:00.000Z',
+      updatedAt: '2026-04-23T00:00:00.000Z',
+      completedAt: '2026-04-23T00:01:00.000Z'
+    });
+    saveTranscriptionChunk(db, {
+      id: 'chunk_2',
+      jobId: created.job.id,
+      index: 1,
+      startSeconds: 595,
+      endSeconds: 1200,
+      filePath: join(tempDirectory, 'chunk-0001.wav'),
+      status: 'transcribing',
+      errorMessage: null,
+      createdAt: '2026-04-23T00:00:00.000Z',
+      updatedAt: '2026-04-23T00:00:00.000Z',
+      completedAt: null
+    });
+
+    const recovered = await runtime.recoverInterruptedJobs({ start: false });
+
+    expect(recovered).toMatchObject([{ status: 'queued', resetChunkCount: 1 }]);
+    expect(runtime.getJob(created.job.id)?.job.status).toBe('queued');
+    expect(getTranscriptionChunks(db, created.job.id)).toMatchObject([{ status: 'completed' }, { status: 'queued' }]);
     db.close();
   });
 });

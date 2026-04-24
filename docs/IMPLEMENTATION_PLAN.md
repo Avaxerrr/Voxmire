@@ -14,7 +14,7 @@ Current focus: finish the desktop local transcription pipeline and long-audio re
 - Done: local runtime is pseudo-headless. Electron wraps `packages/runtime`, and the runtime can be exercised without the renderer.
 - Done: bundled ffmpeg/ffprobe and whisper.cpp CPU resources are present locally and intentionally ignored by git.
 - Done: ffmpeg preparation and chunk metadata foundation. Imported media is prepared into app-managed WAV chunks, chunks are stored durably, and whisper.cpp runs chunk-by-chunk.
-- In progress: long-audio reliability. The next slice is checkpoint/resume after app restart, followed by pause/resume and transcript virtualization.
+- In progress: long-audio reliability. Checkpoint/resume has a first pass; the next slices are pause/resume controls and transcript virtualization.
 - Done: first agent-friendly development surface. A CLI and structured runtime JSONL logs exist for debugging and automation; MCP remains later.
 
 ## Key Changes
@@ -57,8 +57,8 @@ Current focus: finish the desktop local transcription pipeline and long-audio re
   - transcript segment rendering
   - export actions once data exists
 - [ ] Finish long-audio reliability:
-  - resume after interruption
-  - checkpoint recovery from completed chunks
+  - [x] resume after interruption
+  - [x] checkpoint recovery from completed chunks
   - pause/resume state handling
   - virtualized transcript viewer
 - [ ] Add agent-friendly surfaces after runtime reliability:
@@ -96,6 +96,12 @@ Current focus: finish the desktop local transcription pipeline and long-audio re
 9. **Long-audio reliability** - In progress
    Add checkpointing, resume after interruption, cancel, and paused state handling.
 
+   Current recovery scope:
+   - Desktop startup recovers jobs left in `queued`, `preparing`, or `transcribing`.
+   - Completed chunks stay completed.
+   - Interrupted chunks are reset to `queued`.
+   - CLI can trigger the same path with `npm run cli -- jobs recover`.
+
 10. **Exports** - Done
    Implement TXT and JSON, then SRT and VTT.
 
@@ -107,8 +113,9 @@ Current focus: finish the desktop local transcription pipeline and long-audio re
    - `npm run cli -- resources`
    - `npm run cli -- jobs list`
    - `npm run cli -- jobs status <jobId>`
-   - `npm run cli -- jobs create <sourcePath>`
-   - `npm run cli -- jobs run <jobId>`
+  - `npm run cli -- jobs create <sourcePath>`
+  - `npm run cli -- jobs run <jobId>`
+   - `npm run cli -- jobs recover`
    - `npm run cli -- transcribe <sourcePath>`
    - `npm run cli -- transcript get <jobId>`
    - `npm run cli -- export <jobId> --format txt`

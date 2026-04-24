@@ -8,6 +8,7 @@ import type {
   ModelId,
   SourceFile,
   TranscriptionChunk,
+  TranscriptionChunkStatus,
   TranscriptSegment,
   TranscriptionJob,
   TranscriptionProgressEvent
@@ -29,6 +30,7 @@ import {
   getTranscriptSegments,
   getTranscriptionChunks,
   listJobs,
+  resetInterruptedTranscriptionChunks,
   saveTranscriptionChunk,
   saveTranscriptSegment,
   updateJobProgress,
@@ -75,6 +77,20 @@ export type CreateTranscriptionJobInput = {
   startImmediately?: boolean;
 };
 
+export type RecoverInterruptedJobsOptions = {
+  start?: boolean;
+};
+
+export type JobRecoveryResult = {
+  jobId: string;
+  status: 'skipped-active' | 'queued' | 'started' | 'completed' | 'failed';
+  resetChunkCount: number;
+  message: string;
+};
+
+const recoverableJobStatuses: readonly JobStatus[] = ['queued', 'preparing', 'transcribing'];
+const resumableChunkStatuses: readonly TranscriptionChunkStatus[] = ['queued', 'preparing', 'transcribing', 'failed'];
+
 export class VoxmireRuntime {
   private readonly activeJobs = new Map<string, AbortController>();
 
@@ -117,6 +133,57 @@ export class VoxmireRuntime {
     }
 
     return created;
+  }
+
+  async recoverInterruptedJobs(options: RecoverInterruptedJobsOptions = {}): Promise<JobRecoveryResult[]> {
+    const start = options.start ?? true;
+    const candidates = this.listJobs().filter((entry) => recoverableJobStatuses.includes(entry.job.status));
+    const results: JobRecoveryResult[] = [];
+
+    for (const candidate of candidates) {
+      if (this.activeJobs.has(candidate.job.id)) {
+        results.push({
+          jobId: candidate.job.id,
+          status: 'skipped-active',
+          resetChunkCount: 0,
+          message: 'Job is already active.'
+        });
+        continue;
+      }
+
+      const resetChunkCount = resetInterruptedTranscriptionChunks(this.options.db, candidate.job.id);
+      updateJobStatus(this.options.db, candidate.job.id, 'queued');
+      this.log({
+        level: 'warn',
+        event: 'job.recovery.detected',
+        jobId: candidate.job.id,
+        chunkId: null,
+        message: 'Recovering interrupted transcription job.',
+        details: { previousStatus: candidate.job.status, resetChunkCount }
+      });
+
+      if (!start) {
+        results.push({
+          jobId: candidate.job.id,
+          status: 'queued',
+          resetChunkCount,
+          message: 'Job queued for manual resume.'
+        });
+        continue;
+      }
+
+      await this.runTranscriptionJob(candidate.job.id, candidate.job.modelId);
+      const recovered = this.getJob(candidate.job.id);
+      const status = recovered?.job.status === 'completed' ? 'completed' : recovered?.job.status === 'failed' ? 'failed' : 'started';
+      results.push({
+        jobId: candidate.job.id,
+        status,
+        resetChunkCount,
+        message: recovered ? `Recovery finished with status ${recovered.job.status}.` : 'Recovery started.'
+      });
+    }
+
+    return results;
   }
 
   cancelJob(jobId: string): TranscriptionJob | null {
@@ -172,6 +239,10 @@ export class VoxmireRuntime {
   }
 
   async runTranscriptionJob(jobId: string, modelId: ModelId): Promise<void> {
+    if (this.activeJobs.has(jobId)) {
+      throw new Error(`Job is already running: ${jobId}`);
+    }
+
     const abortController = new AbortController();
     this.activeJobs.set(jobId, abortController);
     let currentChunk: TranscriptionChunk | null = null;
@@ -228,6 +299,10 @@ export class VoxmireRuntime {
 
       for (const chunk of chunks) {
         if (chunk.status === 'completed') {
+          continue;
+        }
+
+        if (!resumableChunkStatuses.includes(chunk.status)) {
           continue;
         }
 

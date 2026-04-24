@@ -165,6 +165,7 @@ void app.whenReady().then(() => {
 
   registerIpcHandlers();
   createMainWindow();
+  void runtime.recoverInterruptedJobs();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

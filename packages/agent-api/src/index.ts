@@ -3,7 +3,13 @@ import { homedir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import type { ExportFormat, JobWithSource, ModelId, ResourceStatus, TranscriptSegment } from '@voxmire/contracts';
 import { getResourceStatus, type ResourcePaths } from '@voxmire/engine';
-import { createJsonlRuntimeLogger, createVoxmireRuntime, type VoxmireRuntime, type VoxmireRuntimeLogEvent } from '@voxmire/runtime';
+import {
+  createJsonlRuntimeLogger,
+  createVoxmireRuntime,
+  type JobRecoveryResult,
+  type VoxmireRuntime,
+  type VoxmireRuntimeLogEvent
+} from '@voxmire/runtime';
 import { openVoxmireDatabase, type VoxmireDatabase } from '@voxmire/storage';
 
 export type VoxmireAgentPaths = {
@@ -92,6 +98,10 @@ export class VoxmireAgentApi {
 
     await this.runtime.runTranscriptionJob(jobId, existing.job.modelId);
     return this.runtime.getJob(jobId);
+  }
+
+  async recoverInterruptedJobs(input: { start?: boolean } = {}): Promise<JobRecoveryResult[]> {
+    return this.runtime.recoverInterruptedJobs({ start: input.start ?? true });
   }
 
   exportTranscript(jobId: string, format: ExportFormat): { path: string; format: ExportFormat } {

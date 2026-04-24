@@ -268,6 +268,20 @@ export function updateTranscriptionChunkStatus(
   return getTranscriptionChunk(db, chunkId);
 }
 
+export function resetInterruptedTranscriptionChunks(db: VoxmireDatabase, jobId: string): number {
+  const result = db.prepare(
+    `UPDATE transcription_chunks
+     SET status = 'queued',
+         error_message = NULL,
+         updated_at = @updatedAt,
+         completed_at = NULL
+     WHERE job_id = @jobId
+       AND status IN ('preparing', 'transcribing')`
+  ).run({ jobId, updatedAt: new Date().toISOString() });
+
+  return Number(result.changes);
+}
+
 export function getTranscriptionChunk(db: VoxmireDatabase, chunkId: string): TranscriptionChunk | null {
   const row = db.prepare('SELECT * FROM transcription_chunks WHERE id = ?').get(chunkId);
   return row ? parseChunkRow(row) : null;
