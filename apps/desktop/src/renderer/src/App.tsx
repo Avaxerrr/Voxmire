@@ -1352,6 +1352,7 @@ function AudioDeck({
   const [muted, setMuted] = useState(false);
   const [volumeOpen, setVolumeOpen] = useState(false);
   const [speedOpen, setSpeedOpen] = useState(false);
+  const [scaleOpen, setScaleOpen] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [waveformScaleMode, setWaveformScaleMode] = useState<WaveformScaleMode>('actual');
   const resolvedDuration = duration && Number.isFinite(duration) && duration > 0 ? duration : null;
@@ -1454,86 +1455,42 @@ function AudioDeck({
         ref={audioRef}
         src={mediaUrl ?? undefined}
       />
-      <div className="deck-controls">
-        <button className="icon-button" disabled={!canPlay} onClick={() => skipBy(-10)} title="Skip back 10 seconds" type="button"><SkipBack size={18} /></button>
-        <button className="play-button" disabled={!canPlay} onClick={() => setPlaying(!playing)} title={playing ? 'Pause' : 'Play'} type="button">
-          {playing ? <Pause size={22} /> : <Play size={22} />}
-        </button>
-        <button className="icon-button" disabled={!canPlay} onClick={() => skipBy(10)} title="Skip forward 10 seconds" type="button"><SkipForward size={18} /></button>
-      </div>
-      <div className="waveform-wrap">
-        <div className="waveform-control">
-          <WaveformGraph loading={waveformLoading} peaks={waveformPeaks} progress={currentProgress} scaleMode={waveformScaleMode} />
-          <input
-            aria-label="Seek audio"
-            className="audio-seek"
-            disabled={!canPlay || !resolvedDuration}
-            max={resolvedDuration ?? 0}
-            min={0}
-            onChange={(event) => seekTo(Number(event.target.value))}
-            step={0.01}
-            type="range"
-            value={resolvedDuration ? Math.min(currentTime, resolvedDuration) : 0}
-          />
+      {mediaError ? (
+        <div className="deck-error">
+          <Zap size={15} />
+          <span>{mediaError}</span>
         </div>
-        <div className="waveform-footer">
-          <span>{formatTime(currentTime)}</span>
-          <div className="waveform-scale-toggle" aria-label="Waveform scale">
-            {waveformScaleModes.map((mode) => (
-              <button
-                className={mode === waveformScaleMode ? 'active' : ''}
-                key={mode}
-                onClick={() => setWaveformScaleMode(mode)}
-                title={waveformScaleDescription(mode)}
-                type="button"
-              >
-                {waveformScaleLabel(mode)}
-              </button>
-            ))}
+      ) : (
+        <>
+          <div className="deck-controls">
+            <button className="icon-button" disabled={!canPlay} onClick={() => skipBy(-10)} title="Skip back 10 seconds" type="button"><SkipBack size={18} /></button>
+            <button className="play-button" disabled={!canPlay} onClick={() => setPlaying(!playing)} title={playing ? 'Pause' : 'Play'} type="button">
+              {playing ? <Pause size={22} /> : <Play size={22} />}
+            </button>
+            <button className="icon-button" disabled={!canPlay} onClick={() => skipBy(10)} title="Skip forward 10 seconds" type="button"><SkipForward size={18} /></button>
           </div>
-          <span>{formatDuration(resolvedDuration)}</span>
-        </div>
-      </div>
-      <div className={`deck-tools ${mediaError ? 'error' : ''}`}>
-        {mediaError ? (
-          <>
-            <Zap size={15} />
-            <span>{mediaError}</span>
-          </>
-        ) : (
-          <>
-            <div className="speed-control">
-              <button
-                aria-expanded={speedOpen}
-                className={`speed-button ${speedOpen ? 'active' : ''}`}
-                disabled={!mediaUrl}
-                onClick={() => {
-                  setSpeedOpen((open) => !open);
-                  setVolumeOpen(false);
-                }}
-                title="Playback speed"
-                type="button"
-              >
-                {formatPlaybackSpeed(playbackSpeed)}
-              </button>
-              {speedOpen ? (
-                <div className="speed-popover">
-                  {playbackSpeeds.map((speed) => (
-                    <button
-                      className={speed === playbackSpeed ? 'active' : ''}
-                      key={speed}
-                      onClick={() => {
-                        setPlaybackSpeed(speed);
-                        setSpeedOpen(false);
-                      }}
-                      type="button"
-                    >
-                      {formatPlaybackSpeed(speed)}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
+          <div className="deck-time-group" aria-label="Playback time">
+            <span className="deck-time current">{formatTime(currentTime)}</span>
+            <span className="deck-time-divider">/</span>
+            <span className="deck-time">{formatDuration(resolvedDuration)}</span>
+          </div>
+          <div className="waveform-wrap">
+            <div className="waveform-control">
+              <WaveformGraph loading={waveformLoading} peaks={waveformPeaks} progress={currentProgress} scaleMode={waveformScaleMode} />
+              <input
+                aria-label="Seek audio"
+                className="audio-seek"
+                disabled={!canPlay || !resolvedDuration}
+                max={resolvedDuration ?? 0}
+                min={0}
+                onChange={(event) => seekTo(Number(event.target.value))}
+                step={0.01}
+                type="range"
+                value={resolvedDuration ? Math.min(currentTime, resolvedDuration) : 0}
+              />
             </div>
+          </div>
+          <div className="deck-option-group">
             <div className="volume-control">
               <button
                 aria-expanded={volumeOpen}
@@ -1541,6 +1498,7 @@ function AudioDeck({
                 disabled={!mediaUrl}
                 onClick={() => {
                   setVolumeOpen((open) => !open);
+                  setScaleOpen(false);
                   setSpeedOpen(false);
                 }}
                 title="Volume"
@@ -1572,9 +1530,76 @@ function AudioDeck({
                 </div>
               ) : null}
             </div>
-          </>
-        )}
-      </div>
+            <div className="speed-control">
+              <button
+                aria-expanded={speedOpen}
+                className={`speed-button ${speedOpen ? 'active' : ''}`}
+                disabled={!mediaUrl}
+                onClick={() => {
+                  setSpeedOpen((open) => !open);
+                  setScaleOpen(false);
+                  setVolumeOpen(false);
+                }}
+                title="Playback speed"
+                type="button"
+              >
+                {formatPlaybackSpeed(playbackSpeed)}
+              </button>
+              {speedOpen ? (
+                <div className="speed-popover">
+                  {playbackSpeeds.map((speed) => (
+                    <button
+                      className={speed === playbackSpeed ? 'active' : ''}
+                      key={speed}
+                      onClick={() => {
+                        setPlaybackSpeed(speed);
+                        setSpeedOpen(false);
+                      }}
+                      type="button"
+                    >
+                      {formatPlaybackSpeed(speed)}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <div className="waveform-scale-control">
+              <button
+                aria-expanded={scaleOpen}
+                className={`option-button ${scaleOpen ? 'active' : ''}`}
+                disabled={!mediaUrl}
+                onClick={() => {
+                  setScaleOpen((open) => !open);
+                  setSpeedOpen(false);
+                  setVolumeOpen(false);
+                }}
+                title={`Waveform scale: ${waveformScaleLabel(waveformScaleMode)}`}
+                type="button"
+              >
+                <SlidersHorizontal size={15} />
+              </button>
+              {scaleOpen ? (
+                <div className="waveform-scale-popover" aria-label="Waveform scale">
+                  {waveformScaleModes.map((mode) => (
+                    <button
+                      className={mode === waveformScaleMode ? 'active' : ''}
+                      key={mode}
+                      onClick={() => {
+                        setWaveformScaleMode(mode);
+                        setScaleOpen(false);
+                      }}
+                      title={waveformScaleDescription(mode)}
+                      type="button"
+                    >
+                      {waveformScaleLabel(mode)}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </>
+      )}
     </section>
   );
 }
