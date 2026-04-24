@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
-import type { ExportFormat, JobWithSource, ModelId, ResourceStatus, TranscriptSegment } from '@voxmire/contracts';
+import type { ExportFormat, JobWithSource, ModelId, ResourceStatus, TranscriptSegment, TranscriptionJob } from '@voxmire/contracts';
 import { getResourceStatus, type ResourcePaths } from '@voxmire/engine';
 import {
   createJsonlRuntimeLogger,
@@ -102,6 +102,14 @@ export class VoxmireAgentApi {
 
   async recoverInterruptedJobs(input: { start?: boolean } = {}): Promise<JobRecoveryResult[]> {
     return this.runtime.recoverInterruptedJobs({ start: input.start ?? true });
+  }
+
+  pauseJob(jobId: string): TranscriptionJob | null {
+    return this.runtime.pauseJob(jobId);
+  }
+
+  async resumeJob(jobId: string): Promise<JobWithSource | null> {
+    return this.runtime.resumeJob(jobId);
   }
 
   exportTranscript(jobId: string, format: ExportFormat): { path: string; format: ExportFormat } {

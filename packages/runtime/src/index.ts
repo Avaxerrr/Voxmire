@@ -88,11 +88,16 @@ export type JobRecoveryResult = {
   message: string;
 };
 
+type ActiveJob = {
+  abortController: AbortController;
+  currentChunkId: string | null;
+};
+
 const recoverableJobStatuses: readonly JobStatus[] = ['queued', 'preparing', 'transcribing'];
 const resumableChunkStatuses: readonly TranscriptionChunkStatus[] = ['queued', 'preparing', 'transcribing', 'failed'];
 
 export class VoxmireRuntime {
-  private readonly activeJobs = new Map<string, AbortController>();
+  private readonly activeJobs = new Map<string, ActiveJob>();
 
   constructor(private readonly options: VoxmireRuntimeOptions) {}
 
@@ -188,7 +193,10 @@ export class VoxmireRuntime {
 
   cancelJob(jobId: string): TranscriptionJob | null {
     const active = this.activeJobs.get(jobId);
-    active?.abort();
+    active?.abortController.abort();
+    if (active?.currentChunkId) {
+      updateTranscriptionChunkStatus(this.options.db, active.currentChunkId, 'canceled');
+    }
     this.activeJobs.delete(jobId);
 
     const job = updateJobStatus(this.options.db, jobId, 'canceled', { progress: 0 });
@@ -209,6 +217,68 @@ export class VoxmireRuntime {
     });
 
     return job;
+  }
+
+  pauseJob(jobId: string): TranscriptionJob | null {
+    const active = this.activeJobs.get(jobId);
+    active?.abortController.abort();
+    if (active?.currentChunkId) {
+      updateTranscriptionChunkStatus(this.options.db, active.currentChunkId, 'queued');
+    }
+    this.activeJobs.delete(jobId);
+
+    const current = getJobWithSource(this.options.db, jobId);
+    if (!current) {
+      return null;
+    }
+
+    if (current.job.status === 'completed' || current.job.status === 'failed' || current.job.status === 'canceled') {
+      return current.job;
+    }
+
+    const job = updateJobStatus(this.options.db, jobId, 'paused');
+    this.log({
+      level: 'warn',
+      event: 'job.paused',
+      jobId,
+      chunkId: active?.currentChunkId ?? null,
+      message: 'Job paused.',
+      details: null
+    });
+    this.emitProgress({
+      jobId,
+      status: 'paused',
+      progress: job?.progress ?? current.job.progress,
+      message: 'Job paused.',
+      segment: null
+    });
+
+    return job;
+  }
+
+  async resumeJob(jobId: string): Promise<JobWithSource | null> {
+    const current = getJobWithSource(this.options.db, jobId);
+    if (!current) {
+      return null;
+    }
+
+    if (current.job.status !== 'paused' && current.job.status !== 'queued') {
+      return current;
+    }
+
+    resetInterruptedTranscriptionChunks(this.options.db, jobId);
+    updateJobStatus(this.options.db, jobId, 'queued');
+    this.log({
+      level: 'info',
+      event: 'job.resumed',
+      jobId,
+      chunkId: null,
+      message: 'Job resumed.',
+      details: { previousStatus: current.job.status }
+    });
+
+    await this.runTranscriptionJob(jobId, current.job.modelId);
+    return getJobWithSource(this.options.db, jobId);
   }
 
   exportTranscript(jobId: string, format: ExportFormat): { path: string; format: ExportFormat } {
@@ -244,7 +314,8 @@ export class VoxmireRuntime {
     }
 
     const abortController = new AbortController();
-    this.activeJobs.set(jobId, abortController);
+    const activeJob: ActiveJob = { abortController, currentChunkId: null };
+    this.activeJobs.set(jobId, activeJob);
     let currentChunk: TranscriptionChunk | null = null;
 
     try {
@@ -307,6 +378,7 @@ export class VoxmireRuntime {
         }
 
         currentChunk = chunk;
+        activeJob.currentChunkId = chunk.id;
         updateTranscriptionChunkStatus(this.options.db, chunk.id, 'transcribing');
         this.log({
           level: 'info',
@@ -364,6 +436,7 @@ export class VoxmireRuntime {
         }
 
         updateTranscriptionChunkStatus(this.options.db, chunk.id, 'completed');
+        activeJob.currentChunkId = null;
         this.log({
           level: 'info',
           event: 'chunk.transcribe.completed',

@@ -108,4 +108,30 @@ describe('VoxmireRuntime', () => {
     expect(getTranscriptionChunks(db, created.job.id)).toMatchObject([{ status: 'completed' }, { status: 'queued' }]);
     db.close();
   });
+
+  it('pauses queued jobs for later resume', async () => {
+    const tempDirectory = mkdtempSync(join(tmpdir(), 'voxmire-runtime-'));
+    const sourcePath = join(tempDirectory, 'recording.wav');
+    writeFileSync(sourcePath, 'placeholder audio');
+
+    const db = openVoxmireDatabase(':memory:');
+    const runtime = createVoxmireRuntime({
+      db,
+      resources: { projectRoot: tempDirectory },
+      directories: {
+        engineOutputDirectory: join(tempDirectory, 'engine-output'),
+        exportDirectory: join(tempDirectory, 'exports')
+      }
+    });
+
+    const created = await runtime.createTranscriptionJob({
+      sourcePath,
+      modelId: 'large-v3-turbo',
+      startImmediately: false
+    });
+
+    expect(runtime.pauseJob(created.job.id)?.status).toBe('paused');
+    expect(runtime.getJob(created.job.id)?.job.status).toBe('paused');
+    db.close();
+  });
 });

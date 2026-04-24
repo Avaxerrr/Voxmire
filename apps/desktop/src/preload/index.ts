@@ -36,6 +36,8 @@ const api = {
     list: (): Promise<JobWithSource[]> => ipcRenderer.invoke('jobs:list'),
     get: (jobId: string): Promise<JobWithSource | null> => ipcRenderer.invoke('jobs:get', jobId),
     cancel: (jobId: string): Promise<TranscriptionJob | null> => ipcRenderer.invoke('jobs:cancel', jobId),
+    pause: (jobId: string): Promise<TranscriptionJob | null> => ipcRenderer.invoke('jobs:pause', jobId),
+    resume: (jobId: string): Promise<JobWithSource | null> => ipcRenderer.invoke('jobs:resume', jobId),
     onProgress: (callback: (event: TranscriptionProgressEvent) => void): Unsubscribe => {
       const listener = (_event: Electron.IpcRendererEvent, progress: TranscriptionProgressEvent) => callback(progress);
       ipcRenderer.on('jobs:progress', listener);

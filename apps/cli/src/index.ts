@@ -93,6 +93,20 @@ async function handleJobs(api: ReturnType<typeof createVoxmireAgentApi>, options
     return;
   }
 
+  if (subcommand === 'pause') {
+    const jobId = requiredArg(options.positional[1], 'jobId');
+    const job = api.pauseJob(jobId);
+    print(json, job, job ? `${job.id}  ${job.status}  ${Math.round(job.progress * 100)}%` : `Job not found: ${jobId}`);
+    return;
+  }
+
+  if (subcommand === 'resume') {
+    const jobId = requiredArg(options.positional[1], 'jobId');
+    const job = await api.resumeJob(jobId);
+    print(json, job, job ? summarizeJob(job) : `Job not found: ${jobId}`);
+    return;
+  }
+
   if (subcommand === 'recover') {
     const start = !options.flags.has('no-start');
     const results = await api.recoverInterruptedJobs({ start });
@@ -265,6 +279,8 @@ Usage:
   corepack pnpm --filter @voxmire/cli cli -- jobs status <jobId> [--json]
   corepack pnpm --filter @voxmire/cli cli -- jobs create <sourcePath> [--model large-v3-turbo] [--json]
   corepack pnpm --filter @voxmire/cli cli -- jobs run <jobId> [--json]
+  corepack pnpm --filter @voxmire/cli cli -- jobs pause <jobId> [--json]
+  corepack pnpm --filter @voxmire/cli cli -- jobs resume <jobId> [--json]
   corepack pnpm --filter @voxmire/cli cli -- jobs recover [--no-start] [--json]
   corepack pnpm --filter @voxmire/cli cli -- transcribe <sourcePath> [--model large-v3-turbo] [--format txt] [--json]
   corepack pnpm --filter @voxmire/cli cli -- transcript get <jobId> [--json]

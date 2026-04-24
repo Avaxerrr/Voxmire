@@ -258,6 +258,26 @@ export function App(): ReactElement {
     setMessage('Job canceled.');
   }
 
+  async function pauseJob(jobId: string): Promise<void> {
+    if (!api) {
+      return;
+    }
+
+    await api.jobs.pause(jobId);
+    setJobs(await api.jobs.list());
+    setMessage('Job paused.');
+  }
+
+  async function resumeJob(jobId: string): Promise<void> {
+    if (!api) {
+      return;
+    }
+
+    await api.jobs.resume(jobId);
+    setJobs(await api.jobs.list());
+    setMessage('Job resumed.');
+  }
+
   async function exportTranscript(format: ExportFormat): Promise<void> {
     if (!selectedJob) {
       return;
@@ -333,6 +353,8 @@ export function App(): ReactElement {
             jobs={jobs}
             onCancel={cancelJob}
             onImport={() => setImportOpen(true)}
+            onPause={pauseJob}
+            onResume={resumeJob}
             onSelectJob={setSelectedJobId}
             playing={playing}
             selectedJob={selectedJob}
@@ -514,6 +536,8 @@ type TranscriptViewProps = {
   jobs: JobWithSource[];
   onCancel: (jobId: string) => Promise<void>;
   onImport: () => void;
+  onPause: (jobId: string) => Promise<void>;
+  onResume: (jobId: string) => Promise<void>;
   onSelectJob: (jobId: string) => void;
   playing: boolean;
   selectedJob: JobWithSource | null;
@@ -527,6 +551,8 @@ function TranscriptView({
   jobs,
   onCancel,
   onImport,
+  onPause,
+  onResume,
   onSelectJob,
   playing,
   selectedJob,
@@ -534,7 +560,9 @@ function TranscriptView({
   setPlaying
 }: TranscriptViewProps): ReactElement {
   const progress = selectedJob ? Math.round(selectedJob.job.progress * 100) : 0;
-  const isCancelable = selectedJob ? activeStatuses.includes(selectedJob.job.status) : false;
+  const isCancelable = selectedJob ? activeStatuses.includes(selectedJob.job.status) || selectedJob.job.status === 'paused' : false;
+  const isPausable = selectedJob ? activeStatuses.includes(selectedJob.job.status) : false;
+  const isResumable = selectedJob?.job.status === 'paused';
 
   return (
     <div className="view transcript-view">
@@ -555,6 +583,18 @@ function TranscriptView({
 
         <div className="transcript-actions">
           <button className="icon-button" title="Search transcript" type="button"><Search size={17} /></button>
+          {isPausable ? (
+            <button className="secondary-action" onClick={() => selectedJob ? void onPause(selectedJob.job.id) : undefined} type="button">
+              <Pause size={14} />
+              Pause
+            </button>
+          ) : null}
+          {isResumable ? (
+            <button className="secondary-action" onClick={() => selectedJob ? void onResume(selectedJob.job.id) : undefined} type="button">
+              <Play size={14} />
+              Resume
+            </button>
+          ) : null}
           {isCancelable ? (
             <button className="secondary-action danger" onClick={() => selectedJob ? void onCancel(selectedJob.job.id) : undefined} type="button">
               <Square size={14} />

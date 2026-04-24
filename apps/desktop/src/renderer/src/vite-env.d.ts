@@ -46,6 +46,8 @@ declare global {
         list: () => Promise<JobWithSource[]>;
         get: (jobId: string) => Promise<JobWithSource | null>;
         cancel: (jobId: string) => Promise<TranscriptionJob | null>;
+        pause: (jobId: string) => Promise<TranscriptionJob | null>;
+        resume: (jobId: string) => Promise<JobWithSource | null>;
         onProgress: (callback: (event: TranscriptionProgressEvent) => void) => Unsubscribe;
       };
       transcripts: {

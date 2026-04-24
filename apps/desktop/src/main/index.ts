@@ -79,6 +79,8 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('jobs:cancel', (_event, jobId: string) => runtime.cancelJob(jobId));
+  ipcMain.handle('jobs:pause', (_event, jobId: string) => runtime.pauseJob(jobId));
+  ipcMain.handle('jobs:resume', (_event, jobId: string) => runtime.resumeJob(jobId));
 
   ipcMain.handle('exports:create', (_event, rawInput: unknown) => {
     const input = exportTranscriptInputSchema.parse(rawInput);
