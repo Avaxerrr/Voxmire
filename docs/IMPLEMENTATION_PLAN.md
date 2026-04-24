@@ -6,7 +6,7 @@ Build Voxmire in a pipeline-first order, with the first milestone proving the re
 
 `docs/IMPLEMENTATION_PLAN.md` is the repo source of truth for implementation status.
 
-Current focus: align agent/debug data paths, then add the MCP surface on top of the runtime and CLI foundations.
+Current focus: add the MCP surface on top of the runtime and CLI foundations.
 
 ## Current Status
 
@@ -56,7 +56,7 @@ Current focus: align agent/debug data paths, then add the MCP surface on top of 
   - progress states
   - transcript segment rendering
   - export actions once data exists
-- [ ] Finish long-audio reliability:
+- [x] Finish long-audio reliability:
   - [x] resume after interruption
   - [x] checkpoint recovery from completed chunks
   - [x] pause/resume state handling
@@ -65,6 +65,7 @@ Current focus: align agent/debug data paths, then add the MCP surface on top of 
 - [ ] Add agent-friendly surfaces after runtime reliability:
   - [x] first CLI pass for automation and testability
   - [x] structured JSONL runtime logs for desktop and CLI runs
+  - [x] CLI defaults to the Electron dev data directory when running from the workspace
   - MCP server second for agent workflows
   - optional local HTTP API later, opt-in and localhost-only
 

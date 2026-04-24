@@ -208,8 +208,8 @@ export function createVoxmireAgentApi(options: VoxmireAgentOptions = {}): Voxmir
 }
 
 export function resolveAgentPaths(options: VoxmireAgentOptions = {}): VoxmireAgentPaths {
-  const dataDirectory = options.dataDirectory ?? process.env.VOXMIRE_DATA_DIR ?? defaultDataDirectory();
   const projectRoot = options.projectRoot ?? resolve(process.env.VOXMIRE_PROJECT_ROOT ?? findProjectRoot(process.cwd()));
+  const dataDirectory = options.dataDirectory ?? process.env.VOXMIRE_DATA_DIR ?? defaultDataDirectory(projectRoot);
   const logDirectory = join(dataDirectory, 'logs');
 
   return {
@@ -223,16 +223,29 @@ export function resolveAgentPaths(options: VoxmireAgentOptions = {}): VoxmireAge
   };
 }
 
-function defaultDataDirectory(): string {
+function defaultDataDirectory(projectRoot: string): string {
   if (process.platform === 'win32') {
-    return join(process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'), 'Voxmire');
+    const appData = process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming');
+    return existingDevElectronDataDirectory(projectRoot, appData) ?? join(appData, 'Voxmire');
   }
 
   if (process.platform === 'darwin') {
-    return join(homedir(), 'Library', 'Application Support', 'Voxmire');
+    const appData = join(homedir(), 'Library', 'Application Support');
+    return existingDevElectronDataDirectory(projectRoot, appData) ?? join(appData, 'Voxmire');
   }
 
-  return join(process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'), 'Voxmire');
+  const appData = process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config');
+  return existingDevElectronDataDirectory(projectRoot, appData) ?? join(appData, 'Voxmire');
+}
+
+function existingDevElectronDataDirectory(projectRoot: string, appData: string): string | null {
+  const desktopPackage = join(projectRoot, 'apps', 'desktop', 'package.json');
+  const devDataDirectory = join(appData, '@voxmire', 'desktop');
+  if (existsSync(desktopPackage) && existsSync(devDataDirectory)) {
+    return devDataDirectory;
+  }
+
+  return null;
 }
 
 function findProjectRoot(startDirectory: string): string {
