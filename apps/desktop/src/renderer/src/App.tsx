@@ -1,4 +1,4 @@
-import { type ReactElement, useEffect, useMemo, useState } from 'react';
+import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   AudioWaveform,
@@ -121,6 +121,8 @@ export function App(): ReactElement {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [playing, setPlaying] = useState(false);
+  const progressRefreshSequence = useRef(0);
+  const selectedJobIdRef = useRef<string | null>(null);
   const api = window.voxmire;
 
   const selectedJob = useMemo(
@@ -143,15 +145,21 @@ export function App(): ReactElement {
       return { tone: 'warning' as StatusTone, text: 'Preview mode: desktop features are unavailable in browser.' };
     }
 
-    if (message) {
-      return { tone: message.toLowerCase().includes('failed') ? 'error' as StatusTone : 'active' as StatusTone, text: message };
-    }
-
     if (activeJob) {
       return {
         tone: 'active' as StatusTone,
         text: `${activeJob.sourceFile.name} / ${Math.round(activeJob.job.progress * 100)}%`
       };
+    }
+
+    if (message) {
+      const normalizedMessage = message.toLowerCase();
+      const tone: StatusTone = normalizedMessage.includes('failed')
+        ? 'error'
+        : normalizedMessage.includes('completed')
+          ? 'ready'
+          : 'active';
+      return { tone, text: message };
     }
 
     const missingRequired = resources.some((resource) => resource.required && !resource.available);
@@ -175,6 +183,10 @@ export function App(): ReactElement {
 
     return unsubscribe;
   }, [api]);
+
+  useEffect(() => {
+    selectedJobIdRef.current = selectedJobId;
+  }, [selectedJobId]);
 
   useEffect(() => {
     if (!selectedJob || !api) {
@@ -207,17 +219,26 @@ export function App(): ReactElement {
   }
 
   async function handleProgress(event: TranscriptionProgressEvent): Promise<void> {
+    const sequence = ++progressRefreshSequence.current;
     setMessage(event.message);
     if (!api) {
       return;
     }
 
     const updated = await api.jobs.list();
+    if (sequence !== progressRefreshSequence.current) {
+      return;
+    }
+
     setJobs(updated);
     setSelectedJobId((current) => current ?? event.jobId);
 
-    if (event.segment || selectedJobId === event.jobId) {
+    if (event.segment || selectedJobIdRef.current === event.jobId) {
       const updatedSegments = await api.transcripts.get(event.jobId);
+      if (sequence !== progressRefreshSequence.current) {
+        return;
+      }
+
       setSegments(updatedSegments);
     }
   }
@@ -874,7 +895,7 @@ function AudioDeck({ disabled, duration, playing, progress, setPlaying }: AudioD
 }
 
 function StatusBar({ activeJob, appInfo, status }: { activeJob: JobWithSource | null; appInfo: AppInfo | null; status: { tone: StatusTone; text: string } }): ReactElement {
-  const isLive = activeJob ? activeStatuses.includes(activeJob.job.status) : status.tone === 'active';
+  const isLive = activeJob !== null;
 
   return (
     <footer className={`status-bar ${isLive ? 'live' : ''}`}>
