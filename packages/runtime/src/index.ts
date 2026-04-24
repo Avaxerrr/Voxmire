@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
-import { basename, extname, join } from 'node:path';
+import { appendFileSync, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
+import { basename, dirname, extname, join } from 'node:path';
 import type {
   EngineBackend,
   ExportFormat,
@@ -46,7 +46,26 @@ export type VoxmireRuntimeOptions = {
   db: VoxmireDatabase;
   resources: ResourcePaths;
   directories: RuntimeDirectories;
+  logger?: VoxmireRuntimeLogger;
   onProgress?: (event: TranscriptionProgressEvent) => void;
+};
+
+export type VoxmireRuntimeLogLevel = 'info' | 'warn' | 'error';
+
+export type VoxmireRuntimeLogEvent = {
+  timestamp: string;
+  level: VoxmireRuntimeLogLevel;
+  event: string;
+  jobId: string | null;
+  chunkId: string | null;
+  message: string;
+  details: Record<string, unknown> | null;
+};
+
+export type VoxmireRuntimeLogInput = Omit<VoxmireRuntimeLogEvent, 'timestamp'>;
+
+export type VoxmireRuntimeLogger = {
+  log: (event: VoxmireRuntimeLogInput) => void;
 };
 
 export type CreateTranscriptionJobInput = {
@@ -80,6 +99,18 @@ export class VoxmireRuntime {
       modelId: input.modelId,
       engineBackend: input.engineBackend ?? 'cpu'
     });
+    this.log({
+      level: 'info',
+      event: 'job.created',
+      jobId: created.job.id,
+      chunkId: null,
+      message: `Created transcription job for ${sourceFile.name}.`,
+      details: {
+        sourcePath: sourceFile.path,
+        modelId: input.modelId,
+        engineBackend: input.engineBackend ?? 'cpu'
+      }
+    });
 
     if (input.startImmediately ?? true) {
       void this.runTranscriptionJob(created.job.id, input.modelId);
@@ -94,6 +125,14 @@ export class VoxmireRuntime {
     this.activeJobs.delete(jobId);
 
     const job = updateJobStatus(this.options.db, jobId, 'canceled', { progress: 0 });
+    this.log({
+      level: 'warn',
+      event: 'job.canceled',
+      jobId,
+      chunkId: null,
+      message: 'Job canceled.',
+      details: null
+    });
     this.emitProgress({
       jobId,
       status: 'canceled',
@@ -121,6 +160,14 @@ export class VoxmireRuntime {
     );
 
     writeFileSync(outputPath, rendered, 'utf8');
+    this.log({
+      level: 'info',
+      event: 'export.created',
+      jobId,
+      chunkId: null,
+      message: `Created ${format.toUpperCase()} export.`,
+      details: { path: outputPath, format }
+    });
     return { path: outputPath, format };
   }
 
@@ -136,6 +183,14 @@ export class VoxmireRuntime {
       }
 
       this.updateAndEmit(jobId, 'preparing', 0.05, 'Preparing local transcription job.');
+      this.log({
+        level: 'info',
+        event: 'job.prepare.started',
+        jobId,
+        chunkId: null,
+        message: 'Preparing local transcription job.',
+        details: { sourcePath: jobWithSource.sourceFile.path }
+      });
 
       const modelPath = defaultModelPath(this.options.resources, modelId);
       const outputDirectory = ensureDirectory(this.options.directories.engineOutputDirectory);
@@ -149,8 +204,24 @@ export class VoxmireRuntime {
       if (abortController.signal.aborted) {
         return;
       }
+      this.log({
+        level: 'info',
+        event: 'job.prepare.completed',
+        jobId,
+        chunkId: null,
+        message: `Prepared ${chunks.length} audio chunk(s).`,
+        details: { chunkCount: chunks.length }
+      });
 
       this.updateAndEmit(jobId, 'transcribing', 0.1, 'Starting local transcription engine.');
+      this.log({
+        level: 'info',
+        event: 'job.transcribe.started',
+        jobId,
+        chunkId: null,
+        message: 'Starting local transcription engine.',
+        details: { modelPath }
+      });
 
       const engine = new WhisperCppCpuEngine(this.options.resources);
       let nextSegmentIndex = getTranscriptSegments(this.options.db, jobId).length;
@@ -162,6 +233,19 @@ export class VoxmireRuntime {
 
         currentChunk = chunk;
         updateTranscriptionChunkStatus(this.options.db, chunk.id, 'transcribing');
+        this.log({
+          level: 'info',
+          event: 'chunk.transcribe.started',
+          jobId,
+          chunkId: chunk.id,
+          message: `Transcribing chunk ${chunk.index}.`,
+          details: {
+            index: chunk.index,
+            startSeconds: chunk.startSeconds,
+            endSeconds: chunk.endSeconds,
+            filePath: chunk.filePath
+          }
+        });
 
         for await (const event of engine.transcribe({
           jobId,
@@ -179,6 +263,20 @@ export class VoxmireRuntime {
           const segment = event.segment
             ? saveTranscriptSegment(this.options.db, offsetSegment(event.segment, chunk, nextSegmentIndex++))
             : null;
+          if (segment) {
+            this.log({
+              level: 'info',
+              event: 'segment.saved',
+              jobId,
+              chunkId: chunk.id,
+              message: `Saved transcript segment ${segment.index}.`,
+              details: {
+                segmentId: segment.id,
+                startSeconds: segment.startSeconds,
+                endSeconds: segment.endSeconds
+              }
+            });
+          }
 
           updateJobProgress(this.options.db, jobId, progress);
           this.emitProgress({
@@ -191,9 +289,25 @@ export class VoxmireRuntime {
         }
 
         updateTranscriptionChunkStatus(this.options.db, chunk.id, 'completed');
+        this.log({
+          level: 'info',
+          event: 'chunk.transcribe.completed',
+          jobId,
+          chunkId: chunk.id,
+          message: `Completed chunk ${chunk.index}.`,
+          details: { index: chunk.index }
+        });
       }
 
       this.updateAndEmit(jobId, 'completed', 1, 'Transcription completed.');
+      this.log({
+        level: 'info',
+        event: 'job.completed',
+        jobId,
+        chunkId: null,
+        message: 'Transcription completed.',
+        details: null
+      });
     } catch (error) {
       if (abortController.signal.aborted) {
         return;
@@ -204,6 +318,14 @@ export class VoxmireRuntime {
         updateTranscriptionChunkStatus(this.options.db, currentChunk.id, 'failed', message);
       }
       updateJobStatus(this.options.db, jobId, 'failed', { errorMessage: message });
+      this.log({
+        level: 'error',
+        event: 'job.failed',
+        jobId,
+        chunkId: currentChunk?.id ?? null,
+        message,
+        details: null
+      });
       this.emitProgress({ jobId, status: 'failed', progress: 0, message, segment: null });
     } finally {
       this.activeJobs.delete(jobId);
@@ -279,10 +401,27 @@ export class VoxmireRuntime {
   private emitProgress(event: TranscriptionProgressEvent): void {
     this.options.onProgress?.(event);
   }
+
+  private log(event: VoxmireRuntimeLogInput): void {
+    this.options.logger?.log(event);
+  }
 }
 
 export function createVoxmireRuntime(options: VoxmireRuntimeOptions): VoxmireRuntime {
   return new VoxmireRuntime(options);
+}
+
+export function createJsonlRuntimeLogger(filePath: string): VoxmireRuntimeLogger {
+  mkdirSync(dirname(filePath), { recursive: true });
+  return {
+    log: (event) => {
+      const entry: VoxmireRuntimeLogEvent = {
+        timestamp: new Date().toISOString(),
+        ...event
+      };
+      appendFileSync(filePath, `${JSON.stringify(entry)}\n`, 'utf8');
+    }
+  };
 }
 
 function ensureDirectory(directory: string): string {

@@ -15,7 +15,7 @@ Current focus: finish the desktop local transcription pipeline and long-audio re
 - Done: bundled ffmpeg/ffprobe and whisper.cpp CPU resources are present locally and intentionally ignored by git.
 - Done: ffmpeg preparation and chunk metadata foundation. Imported media is prepared into app-managed WAV chunks, chunks are stored durably, and whisper.cpp runs chunk-by-chunk.
 - In progress: long-audio reliability. The next slice is checkpoint/resume after app restart, followed by pause/resume and transcript virtualization.
-- Later: agent-friendly CLI/MCP/API wrappers over the runtime.
+- Done: first agent-friendly development surface. A CLI and structured runtime JSONL logs exist for debugging and automation; MCP remains later.
 
 ## Key Changes
 
@@ -62,7 +62,8 @@ Current focus: finish the desktop local transcription pipeline and long-audio re
   - pause/resume state handling
   - virtualized transcript viewer
 - [ ] Add agent-friendly surfaces after runtime reliability:
-  - CLI first for automation and testability
+  - [x] first CLI pass for automation and testability
+  - [x] structured JSONL runtime logs for desktop and CLI runs
   - MCP server second for agent workflows
   - optional local HTTP API later, opt-in and localhost-only
 
@@ -98,8 +99,20 @@ Current focus: finish the desktop local transcription pipeline and long-audio re
 10. **Exports** - Done
    Implement TXT and JSON, then SRT and VTT.
 
-11. **Agent interface** - Planned
+11. **Agent interface** - Started
    Add CLI first, then MCP server, both wrapping the runtime instead of renderer UI. Keep any local HTTP API optional and disabled by default.
+
+   First CLI scope:
+   - `npm run cli -- paths`
+   - `npm run cli -- resources`
+   - `npm run cli -- jobs list`
+   - `npm run cli -- jobs status <jobId>`
+   - `npm run cli -- jobs create <sourcePath>`
+   - `npm run cli -- jobs run <jobId>`
+   - `npm run cli -- transcribe <sourcePath>`
+   - `npm run cli -- transcript get <jobId>`
+   - `npm run cli -- export <jobId> --format txt`
+   - `npm run cli -- logs tail`
 
 12. **Hardware profiles** - Planned
    Add CUDA/Vulkan detection after the CPU path works.
@@ -124,9 +137,12 @@ Current focus: finish the desktop local transcription pipeline and long-audio re
   - transcript segments appear incrementally
   - cancel works
   - completed transcript exports to TXT/JSON
-- Future agent checks:
+- Agent checks:
+  - CLI can resolve paths and resource status without Electron
+  - CLI can list jobs
+  - CLI can read structured runtime logs
   - CLI can create a transcription job without Electron
-  - CLI can list jobs and export transcript output
+  - CLI can export transcript output
   - MCP tools return job IDs for long-running work and allow status polling
 
 ## Assumptions

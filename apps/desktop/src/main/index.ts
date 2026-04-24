@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { modelProfiles } from '@voxmire/core';
 import { type TranscriptionProgressEvent, createJobInputSchema, exportTranscriptInputSchema } from '@voxmire/contracts';
 import { detectWhisperEngines, getResourceStatus, type ResourcePaths } from '@voxmire/engine';
-import { createVoxmireRuntime, type VoxmireRuntime } from '@voxmire/runtime';
+import { createJsonlRuntimeLogger, createVoxmireRuntime, type VoxmireRuntime } from '@voxmire/runtime';
 import { openVoxmireDatabase, type VoxmireDatabase } from '@voxmire/storage';
 
 const isDev = !app.isPackaged;
@@ -159,6 +159,7 @@ void app.whenReady().then(() => {
       engineOutputDirectory: ensureAppDirectory('engine-output'),
       exportDirectory: ensureAppDirectory('exports')
     },
+    logger: createJsonlRuntimeLogger(join(ensureAppDirectory('logs'), 'voxmire.jsonl')),
     onProgress: broadcastProgress
   });
 

@@ -1,0 +1,20 @@
+{
+  "name": "@voxmire/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "cli": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit",
+    "lint": "echo \"lint not configured yet\""
+  },
+  "dependencies": {
+    "@voxmire/agent-api": "workspace:*",
+    "@voxmire/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "tsx": "^4.21.0"
+  }
+}
