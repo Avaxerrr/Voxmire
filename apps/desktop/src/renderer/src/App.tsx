@@ -456,6 +456,8 @@ type DashboardViewProps = {
 };
 
 function DashboardView({ activeJob, jobs, onImport, onOpenJob, onOpenVoice, selectedModel }: DashboardViewProps): ReactElement {
+  const activeJobProgress = activeJob ? Math.round(activeJob.job.progress * 100) : 0;
+
   return (
     <div className="view dashboard-view">
       <header className="dashboard-header">
@@ -470,10 +472,13 @@ function DashboardView({ activeJob, jobs, onImport, onOpenJob, onOpenVoice, sele
       </header>
 
       {activeJob ? (
-        <button className="active-job-strip" onClick={() => onOpenJob(activeJob.job.id)} type="button">
-          <span><Zap size={16} /> Transcribing now</span>
+        <button className="active-job-strip live" onClick={() => onOpenJob(activeJob.job.id)} type="button">
+          <span className="active-job-label"><Zap size={16} /> Transcribing now</span>
           <strong>{activeJob.sourceFile.name}</strong>
-          <em>{Math.round(activeJob.job.progress * 100)}%</em>
+          <em>{activeJobProgress}%</em>
+          <span className="active-job-meter" aria-hidden="true">
+            <span style={{ width: `${activeJobProgress}%` }} />
+          </span>
         </button>
       ) : null}
 
@@ -880,8 +885,10 @@ function AudioDeck({ disabled, duration, playing, progress, setPlaying }: AudioD
 }
 
 function StatusBar({ activeJob, appInfo, status }: { activeJob: JobWithSource | null; appInfo: AppInfo | null; status: { tone: StatusTone; text: string } }): ReactElement {
+  const isLive = activeJob ? activeStatuses.includes(activeJob.job.status) : status.tone === 'active';
+
   return (
-    <footer className="status-bar">
+    <footer className={`status-bar ${isLive ? 'live' : ''}`}>
       <span className={`status-light ${status.tone}`} />
       <strong>{status.text}</strong>
       {activeJob ? <span>{statusLabel(activeJob.job.status)}</span> : null}
@@ -896,7 +903,7 @@ function ProgressPill({ job }: { job: JobWithSource }): ReactElement {
   const progress = Math.round(job.job.progress * 100);
   const icon = job.job.status === 'completed' ? <CheckCircle2 size={13} /> : activeStatuses.includes(job.job.status) ? <Clock3 size={13} /> : <FileText size={13} />;
 
-  return <span className={`progress-pill ${statusClass(job.job.status)}`}>{icon}{statusLabel(job.job.status)} / {progress}%</span>;
+  return <span className={`progress-pill ${statusClass(job.job.status)}`}>{icon}<span>{statusLabel(job.job.status)} / {progress}%</span></span>;
 }
 
 function EmptyState({ body, title }: { body: string; title: string }): ReactElement {
