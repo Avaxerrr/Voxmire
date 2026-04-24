@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
-import type { EngineBackend, ExportFormat, JobWithSource, MachineProfile, ModelId, ResourceStatus, TranscriptSegment, TranscriptionJob } from '@voxmire/contracts';
+import { resolveTranscriptionPreset } from '@voxmire/core';
+import type { EngineBackend, ExportFormat, JobWithSource, MachineProfile, ModelId, ResourceStatus, TranscriptSegment, TranscriptionJob, TranscriptionPresetId } from '@voxmire/contracts';
 import { getMachineProfile, getResourceStatus, type ResourcePaths } from '@voxmire/engine';
 import {
   createJsonlRuntimeLogger,
@@ -50,6 +51,12 @@ export type SeedTranscriptResult = {
   segmentCount: number;
 };
 
+export type TranscriptionSelectionInput = {
+  engineBackend?: EngineBackend;
+  modelId?: ModelId;
+  presetId?: TranscriptionPresetId;
+};
+
 export class VoxmireAgentApi {
   readonly runtime: VoxmireRuntime;
   readonly resources: ResourcePaths;
@@ -94,24 +101,45 @@ export class VoxmireAgentApi {
     return this.runtime.getTranscriptSegments(jobId);
   }
 
-  async transcribeFile(input: { sourcePath: string; modelId: ModelId; engineBackend?: EngineBackend }): Promise<JobWithSource> {
+  async transcribeFile(input: { sourcePath: string } & TranscriptionSelectionInput): Promise<JobWithSource> {
+    const selection = await this.resolveTranscriptionSelection(input);
     const created = await this.runtime.createTranscriptionJob({
       sourcePath: resolve(input.sourcePath),
-      modelId: input.modelId,
-      engineBackend: input.engineBackend ?? 'cpu',
+      modelId: selection.modelId,
+      engineBackend: selection.engineBackend,
       startImmediately: false
     });
-    await this.runtime.runTranscriptionJob(created.job.id, input.modelId);
+    await this.runtime.runTranscriptionJob(created.job.id, selection.modelId);
     return this.runtime.getJob(created.job.id) ?? created;
   }
 
-  async createJob(input: { sourcePath: string; modelId: ModelId; engineBackend?: EngineBackend }): Promise<JobWithSource> {
+  async createJob(input: { sourcePath: string } & TranscriptionSelectionInput): Promise<JobWithSource> {
+    const selection = await this.resolveTranscriptionSelection(input);
     return this.runtime.createTranscriptionJob({
       sourcePath: resolve(input.sourcePath),
-      modelId: input.modelId,
-      engineBackend: input.engineBackend ?? 'cpu',
+      modelId: selection.modelId,
+      engineBackend: selection.engineBackend,
       startImmediately: false
     });
+  }
+
+  private async resolveTranscriptionSelection(input: TranscriptionSelectionInput): Promise<{ modelId: ModelId; engineBackend: EngineBackend }> {
+    const presetId = input.presetId ?? (input.modelId ? null : 'balanced');
+    if (presetId) {
+      const resolved = resolveTranscriptionPreset(presetId, {
+        machineProfile: await this.getMachineProfile(),
+        fallbackBackend: 'cpu'
+      });
+      return {
+        modelId: input.modelId ?? resolved.modelId,
+        engineBackend: input.engineBackend ?? resolved.engineBackend
+      };
+    }
+
+    return {
+      modelId: input.modelId ?? 'large-v3-turbo',
+      engineBackend: input.engineBackend ?? 'cpu'
+    };
   }
 
   async runJob(jobId: string): Promise<JobWithSource | null> {

@@ -18,6 +18,10 @@ export const engineBackendSchema = z.enum(['cpu', 'cuda', 'vulkan']);
 
 export const modelIdSchema = z.enum(['large-v3-turbo', 'large-v3', 'distil-large-v3.5', 'medium']);
 
+export const transcriptionPresetIdSchema = z.enum(['balanced', 'fast', 'quality', 'low-memory']);
+
+export const transcriptionPresetBackendPreferenceSchema = z.enum(['auto', 'cpu']);
+
 export const sourceFileSchema = z.object({
   id: z.string().min(1),
   path: z.string().min(1),
@@ -79,6 +83,16 @@ export const modelProfileSchema = z.object({
   relativeQuality: z.enum(['good', 'better', 'best'])
 });
 
+export const transcriptionPresetProfileSchema = z.object({
+  id: transcriptionPresetIdSchema,
+  label: z.string().min(1),
+  purpose: z.string().min(1),
+  description: z.string().min(1),
+  recommended: z.boolean(),
+  modelId: modelIdSchema,
+  backendPreference: transcriptionPresetBackendPreferenceSchema
+});
+
 export const engineAvailabilitySchema = z.object({
   id: z.string().min(1),
   kind: engineKindSchema,
@@ -118,6 +132,7 @@ export const transcriptionProgressEventSchema = z.object({
 });
 
 export const createJobInputSchema = z.object({
+  presetId: transcriptionPresetIdSchema.optional(),
   modelId: modelIdSchema.default('large-v3-turbo'),
   engineBackend: engineBackendSchema.default('cpu')
 });
@@ -162,12 +177,15 @@ export type ExportFormat = z.infer<typeof exportFormatSchema>;
 export type EngineKind = z.infer<typeof engineKindSchema>;
 export type EngineBackend = z.infer<typeof engineBackendSchema>;
 export type ModelId = z.infer<typeof modelIdSchema>;
+export type TranscriptionPresetId = z.infer<typeof transcriptionPresetIdSchema>;
+export type TranscriptionPresetBackendPreference = z.infer<typeof transcriptionPresetBackendPreferenceSchema>;
 export type SourceFile = z.infer<typeof sourceFileSchema>;
 export type TranscriptionJob = z.infer<typeof transcriptionJobSchema>;
 export type TranscriptSegment = z.infer<typeof transcriptSegmentSchema>;
 export type TranscriptionChunkStatus = z.infer<typeof transcriptionChunkStatusSchema>;
 export type TranscriptionChunk = z.infer<typeof transcriptionChunkSchema>;
 export type ModelProfile = z.infer<typeof modelProfileSchema>;
+export type TranscriptionPresetProfile = z.infer<typeof transcriptionPresetProfileSchema>;
 export type EngineAvailability = z.infer<typeof engineAvailabilitySchema>;
 export type MachineBackendProfile = z.infer<typeof machineBackendProfileSchema>;
 export type MachineProfile = z.infer<typeof machineProfileSchema>;

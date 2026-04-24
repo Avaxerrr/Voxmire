@@ -672,6 +672,14 @@ textarea,
 .backend-row strong { min-width: 0; overflow: hidden; color: var(--text); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .backend-row span { color: var(--cyan); font-size: 11px; font-weight: 800; text-transform: uppercase; }
 .backend-row p { grid-column: 1 / -1; margin: 0; color: var(--faint); font-size: 11px; line-height: 1.4; }
+.model-manager-list { display: grid; gap: 8px; }
+.model-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, 0.025); }
+.model-row.installed { border-color: rgba(34, 197, 94, 0.24); background: rgba(34, 197, 94, 0.055); }
+.model-row strong { display: block; color: var(--text); font-size: 13px; }
+.model-row small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; text-transform: capitalize; }
+.model-row em { color: var(--cyan); font-size: 11px; font-style: normal; font-weight: 800; text-transform: uppercase; }
+.model-row.missing em { color: var(--amber); }
+.model-row p { grid-column: 1 / -1; min-width: 0; margin: 0; overflow: hidden; color: var(--faint); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .advanced-panel { color: inherit; }
 .advanced-panel summary { cursor: pointer; list-style: none; }
 .advanced-panel summary::-webkit-details-marker { display: none; }

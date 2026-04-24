@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createJobInputSchema, machineProfileSchema, transcriptionChunkSchema, transcriptSegmentSchema, transcriptionJobSchema } from './index';
+import { createJobInputSchema, machineProfileSchema, transcriptionChunkSchema, transcriptionPresetProfileSchema, transcriptSegmentSchema, transcriptionJobSchema } from './index';
 
 describe('contracts', () => {
   it('validates transcription job payloads', () => {
@@ -21,6 +21,7 @@ describe('contracts', () => {
 
   it('defaults create job input to CPU backend', () => {
     expect(createJobInputSchema.parse({})).toEqual({ modelId: 'large-v3-turbo', engineBackend: 'cpu' });
+    expect(createJobInputSchema.parse({ presetId: 'balanced' }).presetId).toBe('balanced');
     expect(createJobInputSchema.parse({ engineBackend: 'cuda' }).engineBackend).toBe('cuda');
   });
 
@@ -37,6 +38,20 @@ describe('contracts', () => {
         createdAt: '2026-04-23T00:00:00.000Z'
       })
     ).toThrow();
+  });
+
+  it('validates transcription preset profiles', () => {
+    expect(() =>
+      transcriptionPresetProfileSchema.parse({
+        id: 'balanced',
+        label: 'Balanced',
+        purpose: 'Default',
+        description: 'Balanced speed and quality for most recordings and machines.',
+        recommended: true,
+        modelId: 'large-v3-turbo',
+        backendPreference: 'auto'
+      })
+    ).not.toThrow();
   });
 
   it('validates machine profile payloads', () => {

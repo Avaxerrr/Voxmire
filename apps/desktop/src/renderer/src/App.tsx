@@ -32,6 +32,11 @@ import {
   X,
   Zap
 } from 'lucide-react';
+import {
+  resolveTranscriptionPreset,
+  transcriptionPresets,
+  type ResolvedTranscriptionPreset
+} from '@voxmire/core';
 import type {
   EngineAvailability,
   EngineBackend,
@@ -43,6 +48,8 @@ import type {
   ModelProfile,
   ResourceStatus,
   TranscriptSegment,
+  TranscriptionPresetId,
+  TranscriptionPresetProfile,
   TranscriptionProgressEvent
 } from '@voxmire/contracts';
 
@@ -116,8 +123,7 @@ export function App(): ReactElement {
   const [models, setModels] = useState<ModelProfile[]>(fallbackModels);
   const [resources, setResources] = useState<ResourceStatus[]>([]);
   const [machineProfile, setMachineProfile] = useState<MachineProfile | null>(null);
-  const [selectedModelId, setSelectedModelId] = useState<ModelId>('large-v3-turbo');
-  const [selectedEngineBackend, setSelectedEngineBackend] = useState<EngineBackend>('cpu');
+  const [selectedPresetId, setSelectedPresetId] = useState<TranscriptionPresetId>('balanced');
   const [jobs, setJobs] = useState<JobWithSource[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [segments, setSegments] = useState<TranscriptSegment[]>([]);
@@ -136,9 +142,14 @@ export function App(): ReactElement {
     [jobs, selectedJobId]
   );
 
+  const selectedPresetResolution = useMemo(
+    () => resolvePresetSelection(selectedPresetId, machineProfile, resources),
+    [machineProfile, resources, selectedPresetId]
+  );
+
   const selectedModel = useMemo(
-    () => models.find((model) => model.id === selectedModelId) ?? models[0] ?? null,
-    [models, selectedModelId]
+    () => models.find((model) => model.id === selectedPresetResolution.modelId) ?? models[0] ?? null,
+    [models, selectedPresetResolution.modelId]
   );
 
   const activeJob = useMemo(
@@ -222,8 +233,7 @@ export function App(): ReactElement {
     setModels(modelProfiles);
     setResources(resourceStatus);
     setMachineProfile(detectedMachineProfile);
-    setSelectedEngineBackend(selectUsableBackend(detectedMachineProfile));
-    setSelectedModelId(selectUsableModel(detectedMachineProfile.recommendedModelId, resourceStatus));
+    setSelectedPresetId(selectUsablePreset(detectedMachineProfile.recommendedModelId, resourceStatus));
     setJobs(jobList);
     setSelectedJobId(jobList[0]?.job.id ?? null);
   }
@@ -263,7 +273,11 @@ export function App(): ReactElement {
         return;
       }
 
-      const created = await api.jobs.create({ modelId: selectedModelId, engineBackend: selectedEngineBackend });
+      const created = await api.jobs.create({
+        presetId: selectedPresetId,
+        modelId: selectedPresetResolution.modelId,
+        engineBackend: selectedPresetResolution.engineBackend
+      });
       if (created) {
         const updated = await api.jobs.list();
         setJobs(updated);
@@ -372,7 +386,7 @@ export function App(): ReactElement {
             onImport={() => setImportOpen(true)}
             onOpenJob={openJob}
             onOpenVoice={() => setView('voice')}
-            selectedBackend={selectedEngineBackend}
+            selectedBackend={selectedPresetResolution.engineBackend}
             selectedModel={selectedModel}
           />
         ) : null}
@@ -403,10 +417,9 @@ export function App(): ReactElement {
             machineProfile={machineProfile}
             models={models}
             resources={resources}
-            selectedEngineBackend={selectedEngineBackend}
-            selectedModelId={selectedModelId}
-            setSelectedEngineBackend={setSelectedEngineBackend}
-            setSelectedModelId={setSelectedModelId}
+            selectedPresetId={selectedPresetId}
+            selectedPresetResolution={selectedPresetResolution}
+            setSelectedPresetId={setSelectedPresetId}
           />
         ) : null}
 
@@ -417,13 +430,11 @@ export function App(): ReactElement {
         <ImportModal
           busy={busy}
           createJob={createJob}
-          machineProfile={machineProfile}
-          models={models}
+          resources={resources}
           onClose={() => setImportOpen(false)}
-          selectedEngineBackend={selectedEngineBackend}
-          selectedModelId={selectedModelId}
-          setSelectedEngineBackend={setSelectedEngineBackend}
-          setSelectedModelId={setSelectedModelId}
+          selectedPresetId={selectedPresetId}
+          selectedPresetResolution={selectedPresetResolution}
+          setSelectedPresetId={setSelectedPresetId}
         />
       ) : null}
     </main>
@@ -748,13 +759,12 @@ type SettingsViewProps = {
   machineProfile: MachineProfile | null;
   models: ModelProfile[];
   resources: ResourceStatus[];
-  selectedEngineBackend: EngineBackend;
-  selectedModelId: ModelId;
-  setSelectedEngineBackend: (backend: EngineBackend) => void;
-  setSelectedModelId: (modelId: ModelId) => void;
+  selectedPresetId: TranscriptionPresetId;
+  selectedPresetResolution: ResolvedTranscriptionPreset;
+  setSelectedPresetId: (presetId: TranscriptionPresetId) => void;
 };
 
-function SettingsView({ appInfo, engines, machineProfile, models, resources, selectedEngineBackend, selectedModelId, setSelectedEngineBackend, setSelectedModelId }: SettingsViewProps): ReactElement {
+function SettingsView({ appInfo, engines, machineProfile, models, resources, selectedPresetId, selectedPresetResolution, setSelectedPresetId }: SettingsViewProps): ReactElement {
   const readyResources = resources.filter((resource) => resource.available).length;
 
   return (
@@ -775,19 +785,44 @@ function SettingsView({ appInfo, engines, machineProfile, models, resources, sel
           </div>
           <div className="settings-field-grid">
             <label>
-              <span className="field-label">Default preset</span>
-              <select value={selectedModelId} onChange={(event) => setSelectedModelId(event.target.value as ModelId)}>
-                {models.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
+              <span className="field-label">Performance preset</span>
+              <select value={selectedPresetId} onChange={(event) => setSelectedPresetId(event.target.value as TranscriptionPresetId)}>
+                {transcriptionPresets.map((preset) => <option disabled={!presetUsable(resources, preset)} key={preset.id} value={preset.id}>{preset.label}</option>)}
               </select>
             </label>
             <label>
-              <span className="field-label">Backend</span>
-              <select value={selectedEngineBackend} onChange={(event) => setSelectedEngineBackend(event.target.value as EngineBackend)}>
-                {backendOptions(machineProfile).map((backend) => (
-                  <option disabled={!backend.available} key={backend.backend} value={backend.backend}>{backend.label}</option>
-                ))}
+              <span className="field-label">Resolved backend</span>
+              <select value={selectedPresetResolution.engineBackend} disabled>
+                <option value={selectedPresetResolution.engineBackend}>{selectedPresetResolution.engineBackend.toUpperCase()}</option>
               </select>
             </label>
+          </div>
+        </section>
+
+        <section className="settings-panel panel-glow">
+          <div className="settings-panel-heading">
+            <FileText size={18} />
+            <div>
+              <h3>Model manager</h3>
+              <p>Installed models can be used for new transcription jobs. Missing models stay visible for planning.</p>
+            </div>
+          </div>
+          <div className="model-manager-list">
+            {models.map((model) => {
+              const resource = modelResource(resources, model.id);
+              const installed = resource?.available ?? false;
+
+              return (
+                <div className={`model-row ${installed ? 'installed' : 'missing'}`} key={model.id}>
+                  <span>
+                    <strong>{model.label}</strong>
+                    <small>{model.purpose} / {model.relativeSpeed} / {model.relativeQuality}</small>
+                  </span>
+                  <em>{installed ? 'Installed' : 'Missing'}</em>
+                  <p>{resource?.path ?? 'Model path unavailable.'}</p>
+                </div>
+              );
+            })}
           </div>
         </section>
 
@@ -877,16 +912,14 @@ function DiagnosticRow({ detail, label, status }: { detail: string | null; label
 type ImportModalProps = {
   busy: boolean;
   createJob: () => Promise<void>;
-  machineProfile: MachineProfile | null;
-  models: ModelProfile[];
+  resources: ResourceStatus[];
   onClose: () => void;
-  selectedEngineBackend: EngineBackend;
-  selectedModelId: ModelId;
-  setSelectedEngineBackend: (backend: EngineBackend) => void;
-  setSelectedModelId: (modelId: ModelId) => void;
+  selectedPresetId: TranscriptionPresetId;
+  selectedPresetResolution: ResolvedTranscriptionPreset;
+  setSelectedPresetId: (presetId: TranscriptionPresetId) => void;
 };
 
-function ImportModal({ busy, createJob, machineProfile, models, onClose, selectedEngineBackend, selectedModelId, setSelectedEngineBackend, setSelectedModelId }: ImportModalProps): ReactElement {
+function ImportModal({ busy, createJob, resources, onClose, selectedPresetId, selectedPresetResolution, setSelectedPresetId }: ImportModalProps): ReactElement {
   return (
     <div className="modal-backdrop" role="presentation">
       <section className="import-modal" aria-labelledby="import-title" role="dialog">
@@ -902,16 +935,14 @@ function ImportModal({ busy, createJob, machineProfile, models, onClose, selecte
         <div className="settings-field-grid modal-field-grid">
           <label>
             <span className="field-label">Transcription preset</span>
-            <select value={selectedModelId} onChange={(event) => setSelectedModelId(event.target.value as ModelId)}>
-              {models.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
+            <select value={selectedPresetId} onChange={(event) => setSelectedPresetId(event.target.value as TranscriptionPresetId)}>
+              {transcriptionPresets.map((preset) => <option disabled={!presetUsable(resources, preset)} key={preset.id} value={preset.id}>{preset.label}</option>)}
             </select>
           </label>
           <label>
-            <span className="field-label">Backend</span>
-            <select value={selectedEngineBackend} onChange={(event) => setSelectedEngineBackend(event.target.value as EngineBackend)}>
-              {backendOptions(machineProfile).map((backend) => (
-                <option disabled={!backend.available} key={backend.backend} value={backend.backend}>{backend.label}</option>
-              ))}
+            <span className="field-label">Resolved backend</span>
+            <select value={selectedPresetResolution.engineBackend} disabled>
+              <option value={selectedPresetResolution.engineBackend}>{selectedPresetResolution.engineBackend.toUpperCase()}</option>
             </select>
           </label>
         </div>
@@ -1051,14 +1082,51 @@ function backendOptions(machineProfile: MachineProfile | null): BackendOption[] 
   }));
 }
 
-function selectUsableModel(recommendedModelId: ModelId, resources: ResourceStatus[]): ModelId {
-  const recommended = resources.find((resource) => resource.id === `model-${recommendedModelId}`);
-  if (recommended?.available) {
-    return recommendedModelId;
+function modelResource(resources: ResourceStatus[], modelId: ModelId): ResourceStatus | null {
+  return resources.find((resource) => resource.id === `model-${modelId}`) ?? null;
+}
+
+function modelInstalled(resources: ResourceStatus[], modelId: ModelId): boolean {
+  return modelResource(resources, modelId)?.available ?? false;
+}
+
+function presetUsable(resources: ResourceStatus[], preset: TranscriptionPresetProfile): boolean {
+  return modelInstalled(resources, preset.modelId);
+}
+
+function selectUsablePreset(recommendedModelId: ModelId, resources: ResourceStatus[]): TranscriptionPresetId {
+  const matchingRecommended = transcriptionPresets.find((preset) => preset.modelId === recommendedModelId && presetUsable(resources, preset));
+  if (matchingRecommended) {
+    return matchingRecommended.id;
   }
 
-  const fallback = resources.find((resource) => resource.kind === 'model' && resource.available);
-  return fallback ? (fallback.id.replace(/^model-/, '') as ModelId) : 'large-v3-turbo';
+  const recommended = transcriptionPresets.find((preset) => preset.recommended && presetUsable(resources, preset));
+  if (recommended) {
+    return recommended.id;
+  }
+
+  return transcriptionPresets.find((preset) => presetUsable(resources, preset))?.id ?? 'balanced';
+}
+
+function resolvePresetSelection(
+  presetId: TranscriptionPresetId,
+  machineProfile: MachineProfile | null,
+  resources: ResourceStatus[]
+): ResolvedTranscriptionPreset {
+  const fallbackPresetId = presetUsable(resources, resolveTranscriptionPreset(presetId).preset)
+    ? presetId
+    : selectUsablePreset('large-v3-turbo', resources);
+  const fallbackBackend = machineProfile ? selectUsableBackend(machineProfile) : 'cpu';
+  const resolved = resolveTranscriptionPreset(fallbackPresetId, {
+    ...(machineProfile ? { machineProfile } : {}),
+    fallbackBackend
+  });
+  const backend = backendOptions(machineProfile).find((option) => option.backend === resolved.engineBackend);
+
+  return {
+    ...resolved,
+    engineBackend: backend?.available ? resolved.engineBackend : fallbackBackend
+  };
 }
 
 function selectUsableBackend(machineProfile: MachineProfile): EngineBackend {

@@ -12,6 +12,7 @@ import type {
   ResourceStatus,
   TranscriptSegment,
   TranscriptionJob,
+  TranscriptionPresetId,
   TranscriptionProgressEvent
 } from '@voxmire/contracts';
 
@@ -45,7 +46,7 @@ declare global {
         list: () => Promise<ModelProfile[]>;
       };
       jobs: {
-        create: (input?: { modelId?: string; engineBackend?: EngineBackend }) => Promise<CreateJobResult | null>;
+        create: (input?: { presetId?: TranscriptionPresetId; modelId?: string; engineBackend?: EngineBackend }) => Promise<CreateJobResult | null>;
         list: () => Promise<JobWithSource[]>;
         get: (jobId: string) => Promise<JobWithSource | null>;
         cancel: (jobId: string) => Promise<TranscriptionJob | null>;

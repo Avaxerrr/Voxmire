@@ -6,7 +6,7 @@ import {
   type SeedTranscriptOptions,
   type VoxmireAgentApi
 } from '@voxmire/agent-api';
-import { engineBackendSchema, exportFormatSchema, modelIdSchema } from '@voxmire/contracts';
+import { engineBackendSchema, exportFormatSchema, modelIdSchema, transcriptionPresetIdSchema } from '@voxmire/contracts';
 import { z } from 'zod';
 
 const api = createVoxmireAgentApi();
@@ -96,11 +96,20 @@ server.registerTool(
     description: 'Create a transcription job for a local source path without starting transcription.',
     inputSchema: {
       sourcePath: z.string().min(1),
-      modelId: modelIdSchema.default('large-v3-turbo'),
-      engineBackend: engineBackendSchema.default('cpu')
+      presetId: transcriptionPresetIdSchema.default('balanced'),
+      modelId: modelIdSchema.optional(),
+      engineBackend: engineBackendSchema.optional()
     }
   },
-  async ({ sourcePath, modelId, engineBackend }) => jsonResult(await api.createJob({ sourcePath, modelId, engineBackend }))
+  async ({ sourcePath, presetId, modelId, engineBackend }) =>
+    jsonResult(
+      await api.createJob({
+        sourcePath,
+        presetId,
+        ...(modelId ? { modelId } : {}),
+        ...(engineBackend ? { engineBackend } : {})
+      })
+    )
 );
 
 server.registerTool(

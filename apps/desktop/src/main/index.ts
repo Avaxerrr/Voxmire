@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron';
 import { mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { modelProfiles } from '@voxmire/core';
+import { modelProfiles, resolveTranscriptionPreset } from '@voxmire/core';
 import { type TranscriptionProgressEvent, createJobInputSchema, exportTranscriptInputSchema } from '@voxmire/contracts';
 import { detectWhisperEngines, getMachineProfile, getResourceStatus, type ResourcePaths } from '@voxmire/engine';
 import { createJsonlRuntimeLogger, createVoxmireRuntime, type VoxmireRuntime } from '@voxmire/runtime';
@@ -72,10 +72,17 @@ function registerIpcHandlers(): void {
       return null;
     }
 
+    const selection = input.presetId
+      ? resolveTranscriptionPreset(input.presetId, {
+          machineProfile: await getMachineProfile(resources),
+          fallbackBackend: 'cpu'
+        })
+      : input;
+
     return runtime.createTranscriptionJob({
       sourcePath: selectedPath,
-      modelId: input.modelId,
-      engineBackend: input.engineBackend
+      modelId: selection.modelId,
+      engineBackend: selection.engineBackend
     });
   });
 

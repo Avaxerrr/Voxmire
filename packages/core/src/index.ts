@@ -1,4 +1,12 @@
-import type { JobStatus, ModelProfile } from '@voxmire/contracts';
+import type {
+  EngineBackend,
+  JobStatus,
+  MachineProfile,
+  ModelId,
+  ModelProfile,
+  TranscriptionPresetId,
+  TranscriptionPresetProfile
+} from '@voxmire/contracts';
 
 export const defaultChunkPolicy = {
   targetSeconds: 600,
@@ -48,6 +56,88 @@ export const modelProfiles: readonly ModelProfile[] = [
     relativeQuality: 'good'
   }
 ];
+
+export const transcriptionPresets: readonly TranscriptionPresetProfile[] = [
+  {
+    id: 'balanced',
+    label: 'Balanced',
+    purpose: 'Default',
+    description: 'Balanced speed and quality for most recordings and machines.',
+    recommended: true,
+    modelId: 'large-v3-turbo',
+    backendPreference: 'auto'
+  },
+  {
+    id: 'fast',
+    label: 'Fast',
+    purpose: 'Speed',
+    description: 'Faster turnaround for English-heavy recordings with practical quality.',
+    recommended: false,
+    modelId: 'distil-large-v3.5',
+    backendPreference: 'auto'
+  },
+  {
+    id: 'quality',
+    label: 'Quality',
+    purpose: 'Accuracy',
+    description: 'Highest quality local preset when time and memory allow.',
+    recommended: false,
+    modelId: 'large-v3',
+    backendPreference: 'auto'
+  },
+  {
+    id: 'low-memory',
+    label: 'Low memory',
+    purpose: 'Compatibility',
+    description: 'Lower memory CPU preset for older or resource-constrained machines.',
+    recommended: false,
+    modelId: 'medium',
+    backendPreference: 'cpu'
+  }
+];
+
+export type ResolveTranscriptionPresetOptions = {
+  machineProfile?: Pick<MachineProfile, 'recommendedBackend'>;
+  fallbackBackend?: EngineBackend;
+};
+
+export type ResolvedTranscriptionPreset = {
+  preset: TranscriptionPresetProfile;
+  modelId: ModelId;
+  engineBackend: EngineBackend;
+};
+
+export function getTranscriptionPreset(presetId: TranscriptionPresetId): TranscriptionPresetProfile {
+  const preset = transcriptionPresets.find((candidate) => candidate.id === presetId);
+  if (!preset) {
+    throw new Error(`Unknown transcription preset: ${presetId}`);
+  }
+
+  return preset;
+}
+
+export function resolveTranscriptionPreset(
+  presetId: TranscriptionPresetId,
+  options: ResolveTranscriptionPresetOptions = {}
+): ResolvedTranscriptionPreset {
+  const preset = getTranscriptionPreset(presetId);
+  return {
+    preset,
+    modelId: preset.modelId,
+    engineBackend: resolvePresetBackend(preset, options)
+  };
+}
+
+function resolvePresetBackend(
+  preset: TranscriptionPresetProfile,
+  options: ResolveTranscriptionPresetOptions
+): EngineBackend {
+  if (preset.backendPreference === 'cpu') {
+    return 'cpu';
+  }
+
+  return options.machineProfile?.recommendedBackend ?? options.fallbackBackend ?? 'cpu';
+}
 
 const allowedTransitions: Record<JobStatus, readonly JobStatus[]> = {
   queued: ['preparing', 'canceled'],

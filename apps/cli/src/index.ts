@@ -1,11 +1,17 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createVoxmireAgentApi, resolveAgentPaths, summarizeJob } from '@voxmire/agent-api';
-import { engineBackendSchema, exportFormatSchema, modelIdSchema, type EngineBackend, type ExportFormat, type ModelId, type ResourceStatus } from '@voxmire/contracts';
+import { engineBackendSchema, exportFormatSchema, modelIdSchema, transcriptionPresetIdSchema, type EngineBackend, type ExportFormat, type ModelId, type ResourceStatus, type TranscriptionPresetId } from '@voxmire/contracts';
 
 type CliOptions = {
   flags: Map<string, string | true>;
   positional: string[];
+};
+
+type TranscriptionSelectionFlags = {
+  engineBackend?: EngineBackend;
+  modelId?: ModelId;
+  presetId?: TranscriptionPresetId;
 };
 
 const args = process.argv.slice(2).filter((arg, index) => !(index === 0 && arg === '--'));
@@ -87,10 +93,9 @@ async function handleJobs(api: ReturnType<typeof createVoxmireAgentApi>, options
 
   if (subcommand === 'create') {
     const sourcePath = requiredArg(options.positional[1], 'sourcePath');
-    const modelId = parseModelId(flagValue(options, 'model') ?? 'large-v3-turbo');
-    const engineBackend = parseEngineBackend(flagValue(options, 'backend') ?? 'cpu');
+    const selection = parseTranscriptionSelection(options);
     assertFileExists(sourcePath);
-    const job = await api.createJob({ sourcePath, modelId, engineBackend });
+    const job = await api.createJob({ sourcePath, ...selection });
     print(json, job, summarizeJob(job));
     return;
   }
@@ -134,12 +139,11 @@ async function handleJobs(api: ReturnType<typeof createVoxmireAgentApi>, options
 
 async function handleTranscribe(api: ReturnType<typeof createVoxmireAgentApi>, options: CliOptions, json: boolean): Promise<void> {
   const sourcePath = requiredArg(options.positional[0], 'sourcePath');
-  const modelId = parseModelId(flagValue(options, 'model') ?? 'large-v3-turbo');
-  const engineBackend = parseEngineBackend(flagValue(options, 'backend') ?? 'cpu');
+  const selection = parseTranscriptionSelection(options);
   const exportFormat = options.flags.has('format') ? parseExportFormat(flagValue(options, 'format')) : null;
   assertFileExists(sourcePath);
 
-  const job = await api.transcribeFile({ sourcePath, modelId, engineBackend });
+  const job = await api.transcribeFile({ sourcePath, ...selection });
   const exported = exportFormat ? api.exportTranscript(job.job.id, exportFormat) : null;
   const payload = { job, export: exported };
   const text = exported ? `${summarizeJob(job)}\nExported ${exported.format.toUpperCase()} to ${exported.path}` : summarizeJob(job);
@@ -257,6 +261,21 @@ function requiredArg(value: string | undefined, label: string): string {
   return value;
 }
 
+function parseTranscriptionSelection(options: CliOptions): TranscriptionSelectionFlags {
+  const preset = flagValue(options, 'preset');
+  const model = flagValue(options, 'model');
+  const backend = flagValue(options, 'backend');
+  return {
+    ...(preset ? { presetId: parsePresetId(preset) } : {}),
+    ...(model ? { modelId: parseModelId(model) } : {}),
+    ...(backend ? { engineBackend: parseEngineBackend(backend) } : {})
+  };
+}
+
+function parsePresetId(value: string): TranscriptionPresetId {
+  return transcriptionPresetIdSchema.parse(value);
+}
+
 function parseModelId(value: string): ModelId {
   return modelIdSchema.parse(value);
 }
@@ -339,12 +358,12 @@ Usage:
   corepack pnpm --filter @voxmire/cli cli -- profile [--json]
   corepack pnpm --filter @voxmire/cli cli -- jobs list [--json]
   corepack pnpm --filter @voxmire/cli cli -- jobs status <jobId> [--json]
-  corepack pnpm --filter @voxmire/cli cli -- jobs create <sourcePath> [--model large-v3-turbo] [--backend cpu] [--json]
+  corepack pnpm --filter @voxmire/cli cli -- jobs create <sourcePath> [--preset balanced] [--model large-v3-turbo] [--backend cpu] [--json]
   corepack pnpm --filter @voxmire/cli cli -- jobs run <jobId> [--json]
   corepack pnpm --filter @voxmire/cli cli -- jobs pause <jobId> [--json]
   corepack pnpm --filter @voxmire/cli cli -- jobs resume <jobId> [--json]
   corepack pnpm --filter @voxmire/cli cli -- jobs recover [--no-start] [--json]
-  corepack pnpm --filter @voxmire/cli cli -- transcribe <sourcePath> [--model large-v3-turbo] [--backend cpu] [--format txt] [--json]
+  corepack pnpm --filter @voxmire/cli cli -- transcribe <sourcePath> [--preset balanced] [--model large-v3-turbo] [--backend cpu] [--format txt] [--json]
   corepack pnpm --filter @voxmire/cli cli -- transcript get <jobId> [--json]
   corepack pnpm --filter @voxmire/cli cli -- export <jobId> --format txt [--json]
   corepack pnpm --filter @voxmire/cli cli -- logs tail [--limit 50] [--job <jobId>] [--json]

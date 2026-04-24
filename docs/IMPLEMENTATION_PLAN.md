@@ -6,7 +6,7 @@ Build Voxmire in a pipeline-first order, with the first milestone proving the re
 
 `docs/IMPLEMENTATION_PLAN.md` is the repo source of truth for implementation status.
 
-Current focus: continue hardware support with sidecar packaging and model management.
+Current focus: finish the remaining hardware and packaging work after the first machine profile, model inventory, and performance preset pass.
 
 ## Current Status
 
@@ -16,7 +16,9 @@ Current focus: continue hardware support with sidecar packaging and model manage
 - Done: ffmpeg preparation and chunk metadata foundation. Imported media is prepared into app-managed WAV chunks, chunks are stored durably, and whisper.cpp runs chunk-by-chunk.
 - Done: long-audio reliability first pass. Checkpoint/resume, pause/resume, progress streaming, and transcript virtualization are implemented.
 - Done: agent-friendly development surfaces. CLI, structured runtime JSONL logs, and a local stdio MCP server exist for debugging and automation.
-- Started: machine profiles. Voxmire now detects CPU/memory, backend binary/runtime availability, recommends a backend/model, and can store selected CPU/CUDA/Vulkan backends through desktop, CLI, and MCP.
+- Done: machine profile first pass. Voxmire detects CPU/memory, backend binary/runtime availability, recommends a backend/model, and can resolve practical performance presets through desktop, CLI, and MCP.
+- Done: model inventory first pass. Settings shows installed/missing local models and disables missing models for new imports.
+- Started: packaging and real GPU sidecar support. CUDA/Vulkan remain blocked until the sidecar binaries and runtime DLL packaging are intentionally added.
 
 ## Key Changes
 
@@ -72,9 +74,10 @@ Current focus: continue hardware support with sidecar packaging and model manage
 - [ ] Add machine profiles and hardware support:
   - [x] first machine profile detection for CPU cores, RAM, CUDA runtime, Vulkan runtime, and backend binaries
   - [x] recommended backend/model exposed through desktop Settings, CLI, and MCP
+  - [x] user-facing performance presets exposed through desktop, CLI, and MCP
+  - [x] model manager inventory/status UI for installed and missing local models
+  - [ ] model download/install flow
   - [ ] real CUDA/Vulkan transcription engine selection after sidecar binaries are available
-  - [ ] model manager and download/install flow
-  - [ ] user-facing performance presets
 
 ## Build Order
 
@@ -161,11 +164,11 @@ Current focus: continue hardware support with sidecar packaging and model manage
    - `voxmire_logs_tail`
    - `voxmire_dev_seed_transcript`
 
-12. **Hardware profiles** - Planned
-   Add CUDA/Vulkan detection after the CPU path works.
+12. **Hardware profiles** - Started
+   Machine detection, model inventory, backend selection, and performance presets are in place. Remaining hardware work is real CUDA/Vulkan sidecar execution after binaries and runtime DLLs are available.
 
 13. **Packaging** - Planned
-   Add electron-builder and resource packaging once the transcription path is functional.
+   Add electron-builder and resource packaging. Sidecar executables and runtime DLLs must be packaged outside ASAR under `process.resourcesPath/resources/...`.
 
 ## Test Plan
 
@@ -194,7 +197,7 @@ Current focus: continue hardware support with sidecar packaging and model manage
   - MCP tools return job IDs for long-running work and allow status polling
   - MCP smoke test starts the stdio server, lists tools, reads the machine profile, seeds a transcript, lists jobs, reads a transcript slice, and exports TXT
   - CLI can print the local machine profile with `npm run cli -- profile`
-  - CLI can create jobs with `--backend cpu|cuda|vulkan`
+  - CLI can create jobs with `--preset balanced|fast|quality|low-memory` and optional `--backend cpu|cuda|vulkan`
 
 ## Assumptions
 
