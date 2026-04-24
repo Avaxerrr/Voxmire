@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type {
   CreateJobResult,
   EngineAvailability,
+  EngineBackend,
   ExportFormat,
   ExportTranscriptResult,
   JobWithSource,
@@ -34,7 +35,7 @@ const api = {
     list: (): Promise<ModelProfile[]> => ipcRenderer.invoke('models:list')
   },
   jobs: {
-    create: (input?: { modelId?: string }): Promise<CreateJobResult | null> => ipcRenderer.invoke('jobs:create', input ?? {}),
+    create: (input?: { modelId?: string; engineBackend?: EngineBackend }): Promise<CreateJobResult | null> => ipcRenderer.invoke('jobs:create', input ?? {}),
     list: (): Promise<JobWithSource[]> => ipcRenderer.invoke('jobs:list'),
     get: (jobId: string): Promise<JobWithSource | null> => ipcRenderer.invoke('jobs:get', jobId),
     cancel: (jobId: string): Promise<TranscriptionJob | null> => ipcRenderer.invoke('jobs:cancel', jobId),

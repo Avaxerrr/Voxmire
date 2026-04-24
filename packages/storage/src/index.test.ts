@@ -7,6 +7,7 @@ import {
   resetInterruptedTranscriptionChunks,
   saveTranscriptionChunk,
   saveTranscriptSegment,
+  updateJobEngineBackend,
   updateTranscriptionChunkStatus
 } from './index';
 
@@ -39,6 +40,26 @@ describe('storage repositories', () => {
 
     expect(created.job.status).toBe('queued');
     expect(getTranscriptSegments(db, created.job.id)).toHaveLength(1);
+    db.close();
+  });
+
+  it('updates a job backend selection', () => {
+    const db = openVoxmireDatabase(':memory:');
+    const created = createJobRecord(db, {
+      modelId: 'large-v3-turbo',
+      engineBackend: 'cuda',
+      sourceFile: {
+        id: 'src_1',
+        path: 'C:/audio/example.wav',
+        name: 'example.wav',
+        extension: 'wav',
+        sizeBytes: 100,
+        durationSeconds: 5,
+        createdAt: '2026-04-23T00:00:00.000Z'
+      }
+    });
+
+    expect(updateJobEngineBackend(db, created.job.id, 'cpu')?.engineBackend).toBe('cpu');
     db.close();
   });
 

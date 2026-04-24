@@ -118,7 +118,8 @@ export const transcriptionProgressEventSchema = z.object({
 });
 
 export const createJobInputSchema = z.object({
-  modelId: modelIdSchema.default('large-v3-turbo')
+  modelId: modelIdSchema.default('large-v3-turbo'),
+  engineBackend: engineBackendSchema.default('cpu')
 });
 
 export const createJobResultSchema = z.object({

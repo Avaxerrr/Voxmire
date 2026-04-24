@@ -3,6 +3,7 @@
 import type {
   CreateJobResult,
   EngineAvailability,
+  EngineBackend,
   ExportFormat,
   ExportTranscriptResult,
   JobWithSource,
@@ -44,7 +45,7 @@ declare global {
         list: () => Promise<ModelProfile[]>;
       };
       jobs: {
-        create: (input?: { modelId?: string }) => Promise<CreateJobResult | null>;
+        create: (input?: { modelId?: string; engineBackend?: EngineBackend }) => Promise<CreateJobResult | null>;
         list: () => Promise<JobWithSource[]>;
         get: (jobId: string) => Promise<JobWithSource | null>;
         cancel: (jobId: string) => Promise<TranscriptionJob | null>;

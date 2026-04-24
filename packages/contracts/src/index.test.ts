@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { machineProfileSchema, transcriptionChunkSchema, transcriptSegmentSchema, transcriptionJobSchema } from './index';
+import { createJobInputSchema, machineProfileSchema, transcriptionChunkSchema, transcriptSegmentSchema, transcriptionJobSchema } from './index';
 
 describe('contracts', () => {
   it('validates transcription job payloads', () => {
@@ -17,6 +17,11 @@ describe('contracts', () => {
         completedAt: null
       })
     ).not.toThrow();
+  });
+
+  it('defaults create job input to CPU backend', () => {
+    expect(createJobInputSchema.parse({})).toEqual({ modelId: 'large-v3-turbo', engineBackend: 'cpu' });
+    expect(createJobInputSchema.parse({ engineBackend: 'cuda' }).engineBackend).toBe('cuda');
   });
 
   it('rejects invalid segment timing confidence', () => {

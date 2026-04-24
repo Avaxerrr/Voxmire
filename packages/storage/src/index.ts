@@ -187,6 +187,16 @@ export function updateJobStatus(
   return getJob(db, jobId);
 }
 
+export function updateJobEngineBackend(db: VoxmireDatabase, jobId: string, engineBackend: EngineBackend): TranscriptionJob | null {
+  db.prepare('UPDATE jobs SET engine_backend = ?, updated_at = ? WHERE id = ?').run(
+    engineBackend,
+    new Date().toISOString(),
+    jobId
+  );
+
+  return getJob(db, jobId);
+}
+
 export function updateJobProgress(db: VoxmireDatabase, jobId: string, progress: number): TranscriptionJob | null {
   db.prepare('UPDATE jobs SET progress = ?, updated_at = ? WHERE id = ?').run(
     clampProgress(progress),

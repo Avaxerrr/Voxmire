@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import type {
   EngineAvailability,
+  EngineBackend,
   ExportFormat,
   JobStatus,
   JobWithSource,
@@ -116,6 +117,7 @@ export function App(): ReactElement {
   const [resources, setResources] = useState<ResourceStatus[]>([]);
   const [machineProfile, setMachineProfile] = useState<MachineProfile | null>(null);
   const [selectedModelId, setSelectedModelId] = useState<ModelId>('large-v3-turbo');
+  const [selectedEngineBackend, setSelectedEngineBackend] = useState<EngineBackend>('cpu');
   const [jobs, setJobs] = useState<JobWithSource[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [segments, setSegments] = useState<TranscriptSegment[]>([]);
@@ -220,6 +222,8 @@ export function App(): ReactElement {
     setModels(modelProfiles);
     setResources(resourceStatus);
     setMachineProfile(detectedMachineProfile);
+    setSelectedEngineBackend(selectUsableBackend(detectedMachineProfile));
+    setSelectedModelId(selectUsableModel(detectedMachineProfile.recommendedModelId, resourceStatus));
     setJobs(jobList);
     setSelectedJobId(jobList[0]?.job.id ?? null);
   }
@@ -259,7 +263,7 @@ export function App(): ReactElement {
         return;
       }
 
-      const created = await api.jobs.create({ modelId: selectedModelId });
+      const created = await api.jobs.create({ modelId: selectedModelId, engineBackend: selectedEngineBackend });
       if (created) {
         const updated = await api.jobs.list();
         setJobs(updated);
@@ -368,6 +372,7 @@ export function App(): ReactElement {
             onImport={() => setImportOpen(true)}
             onOpenJob={openJob}
             onOpenVoice={() => setView('voice')}
+            selectedBackend={selectedEngineBackend}
             selectedModel={selectedModel}
           />
         ) : null}
@@ -398,7 +403,9 @@ export function App(): ReactElement {
             machineProfile={machineProfile}
             models={models}
             resources={resources}
+            selectedEngineBackend={selectedEngineBackend}
             selectedModelId={selectedModelId}
+            setSelectedEngineBackend={setSelectedEngineBackend}
             setSelectedModelId={setSelectedModelId}
           />
         ) : null}
@@ -410,9 +417,12 @@ export function App(): ReactElement {
         <ImportModal
           busy={busy}
           createJob={createJob}
+          machineProfile={machineProfile}
           models={models}
           onClose={() => setImportOpen(false)}
+          selectedEngineBackend={selectedEngineBackend}
           selectedModelId={selectedModelId}
+          setSelectedEngineBackend={setSelectedEngineBackend}
           setSelectedModelId={setSelectedModelId}
         />
       ) : null}
@@ -478,10 +488,11 @@ type DashboardViewProps = {
   onImport: () => void;
   onOpenJob: (jobId: string) => void;
   onOpenVoice: () => void;
+  selectedBackend: EngineBackend;
   selectedModel: ModelProfile | null;
 };
 
-function DashboardView({ jobs, onImport, onOpenJob, onOpenVoice, selectedModel }: DashboardViewProps): ReactElement {
+function DashboardView({ jobs, onImport, onOpenJob, onOpenVoice, selectedBackend, selectedModel }: DashboardViewProps): ReactElement {
   return (
     <div className="view dashboard-view">
       <header className="dashboard-header">
@@ -500,7 +511,7 @@ function DashboardView({ jobs, onImport, onOpenJob, onOpenVoice, selectedModel }
           <span className="tile-icon"><UploadCloud size={24} /></span>
           <strong>Transcribe Audio</strong>
           <p>Create a private transcript from an audio or video file.</p>
-          <small>{selectedModel?.label ?? 'Recommended preset'}</small>
+          <small>{selectedModel?.label ?? 'Recommended preset'} / {selectedBackend.toUpperCase()}</small>
         </button>
 
         <button className="action-tile voice-tile" onClick={onOpenVoice} type="button">
@@ -737,11 +748,13 @@ type SettingsViewProps = {
   machineProfile: MachineProfile | null;
   models: ModelProfile[];
   resources: ResourceStatus[];
+  selectedEngineBackend: EngineBackend;
   selectedModelId: ModelId;
+  setSelectedEngineBackend: (backend: EngineBackend) => void;
   setSelectedModelId: (modelId: ModelId) => void;
 };
 
-function SettingsView({ appInfo, engines, machineProfile, models, resources, selectedModelId, setSelectedModelId }: SettingsViewProps): ReactElement {
+function SettingsView({ appInfo, engines, machineProfile, models, resources, selectedEngineBackend, selectedModelId, setSelectedEngineBackend, setSelectedModelId }: SettingsViewProps): ReactElement {
   const readyResources = resources.filter((resource) => resource.available).length;
 
   return (
@@ -760,10 +773,22 @@ function SettingsView({ appInfo, engines, machineProfile, models, resources, sel
               <p>Choose the default quality preset used for new imports.</p>
             </div>
           </div>
-          <label className="field-label" htmlFor="settings-model">Default preset</label>
-          <select id="settings-model" value={selectedModelId} onChange={(event) => setSelectedModelId(event.target.value as ModelId)}>
-            {models.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
-          </select>
+          <div className="settings-field-grid">
+            <label>
+              <span className="field-label">Default preset</span>
+              <select value={selectedModelId} onChange={(event) => setSelectedModelId(event.target.value as ModelId)}>
+                {models.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
+              </select>
+            </label>
+            <label>
+              <span className="field-label">Backend</span>
+              <select value={selectedEngineBackend} onChange={(event) => setSelectedEngineBackend(event.target.value as EngineBackend)}>
+                {backendOptions(machineProfile).map((backend) => (
+                  <option disabled={!backend.available} key={backend.backend} value={backend.backend}>{backend.label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
         </section>
 
         <section className="settings-panel panel-glow">
@@ -852,13 +877,16 @@ function DiagnosticRow({ detail, label, status }: { detail: string | null; label
 type ImportModalProps = {
   busy: boolean;
   createJob: () => Promise<void>;
+  machineProfile: MachineProfile | null;
   models: ModelProfile[];
   onClose: () => void;
+  selectedEngineBackend: EngineBackend;
   selectedModelId: ModelId;
+  setSelectedEngineBackend: (backend: EngineBackend) => void;
   setSelectedModelId: (modelId: ModelId) => void;
 };
 
-function ImportModal({ busy, createJob, models, onClose, selectedModelId, setSelectedModelId }: ImportModalProps): ReactElement {
+function ImportModal({ busy, createJob, machineProfile, models, onClose, selectedEngineBackend, selectedModelId, setSelectedEngineBackend, setSelectedModelId }: ImportModalProps): ReactElement {
   return (
     <div className="modal-backdrop" role="presentation">
       <section className="import-modal" aria-labelledby="import-title" role="dialog">
@@ -871,10 +899,22 @@ function ImportModal({ busy, createJob, models, onClose, selectedModelId, setSel
           <button className="icon-button" onClick={onClose} title="Close" type="button"><X size={18} /></button>
         </header>
 
-        <label className="field-label" htmlFor="model-select">Transcription preset</label>
-        <select id="model-select" value={selectedModelId} onChange={(event) => setSelectedModelId(event.target.value as ModelId)}>
-          {models.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
-        </select>
+        <div className="settings-field-grid modal-field-grid">
+          <label>
+            <span className="field-label">Transcription preset</span>
+            <select value={selectedModelId} onChange={(event) => setSelectedModelId(event.target.value as ModelId)}>
+              {models.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
+            </select>
+          </label>
+          <label>
+            <span className="field-label">Backend</span>
+            <select value={selectedEngineBackend} onChange={(event) => setSelectedEngineBackend(event.target.value as EngineBackend)}>
+              {backendOptions(machineProfile).map((backend) => (
+                <option disabled={!backend.available} key={backend.backend} value={backend.backend}>{backend.label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
 
         <button className="drop-zone" disabled={busy} onClick={() => void createJob()} type="button">
           <span className="drop-icon"><UploadCloud size={30} /></span>
@@ -991,6 +1031,43 @@ function EmptyState({ body, title }: { body: string; title: string }): ReactElem
       <p>{body}</p>
     </div>
   );
+}
+
+type BackendOption = {
+  available: boolean;
+  backend: EngineBackend;
+  label: string;
+};
+
+function backendOptions(machineProfile: MachineProfile | null): BackendOption[] {
+  if (!machineProfile) {
+    return [{ available: true, backend: 'cpu', label: 'CPU' }];
+  }
+
+  return machineProfile.backends.map((backend) => ({
+    available: backend.executableAvailable && backend.runtimeAvailable,
+    backend: backend.backend,
+    label: `${backend.backend.toUpperCase()}${backend.recommended ? ' recommended' : ''}`
+  }));
+}
+
+function selectUsableModel(recommendedModelId: ModelId, resources: ResourceStatus[]): ModelId {
+  const recommended = resources.find((resource) => resource.id === `model-${recommendedModelId}`);
+  if (recommended?.available) {
+    return recommendedModelId;
+  }
+
+  const fallback = resources.find((resource) => resource.kind === 'model' && resource.available);
+  return fallback ? (fallback.id.replace(/^model-/, '') as ModelId) : 'large-v3-turbo';
+}
+
+function selectUsableBackend(machineProfile: MachineProfile): EngineBackend {
+  const recommended = machineProfile.backends.find((backend) => backend.backend === machineProfile.recommendedBackend);
+  if (recommended?.executableAvailable && recommended.runtimeAvailable) {
+    return recommended.backend;
+  }
+
+  return 'cpu';
 }
 
 function modelLabel(models: ModelProfile[], modelId: ModelId): string {

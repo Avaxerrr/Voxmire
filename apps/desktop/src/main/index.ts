@@ -75,7 +75,7 @@ function registerIpcHandlers(): void {
     return runtime.createTranscriptionJob({
       sourcePath: selectedPath,
       modelId: input.modelId,
-      engineBackend: 'cpu'
+      engineBackend: input.engineBackend
     });
   });
 

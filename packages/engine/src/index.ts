@@ -374,20 +374,24 @@ export async function prepareAudioChunks(
   return preparedChunks;
 }
 
-export class WhisperCppCpuEngine implements TranscriptionEngine {
-  readonly id = 'whisper.cpp-cpu';
-  readonly backend = 'cpu';
+export class WhisperCppEngine implements TranscriptionEngine {
+  readonly id: string;
 
-  constructor(private readonly paths: ResourcePaths) {}
+  constructor(
+    private readonly paths: ResourcePaths,
+    readonly backend: EngineBackend
+  ) {
+    this.id = `whisper.cpp-${backend}`;
+  }
 
   async detect(): Promise<EngineAvailability> {
-    return detectWhisperEngine(this.paths, 'cpu');
+    return detectWhisperEngine(this.paths, this.backend);
   }
 
   async *transcribe(input: TranscriptionInput): AsyncIterable<TranscriptionProgressEvent> {
     const availability = await this.detect();
     if (!availability.available || !availability.executablePath) {
-      throw new Error(availability.reason ?? 'whisper.cpp CPU engine is unavailable');
+      throw new Error(availability.reason ?? `${availability.label} engine is unavailable`);
     }
 
     if (!existsSync(input.modelPath)) {
@@ -398,7 +402,7 @@ export class WhisperCppCpuEngine implements TranscriptionEngine {
       jobId: input.jobId,
       status: 'transcribing',
       progress: 0,
-      message: 'Starting whisper.cpp CPU transcription.',
+      message: `Starting ${availability.label} transcription.`,
       segment: null
     };
 
@@ -467,6 +471,11 @@ export class WhisperCppCpuEngine implements TranscriptionEngine {
   }
 }
 
+export class WhisperCppCpuEngine extends WhisperCppEngine {
+  constructor(paths: ResourcePaths) {
+    super(paths, 'cpu');
+  }
+}
 export function defaultModelPath(paths: ResourcePaths, modelId: ModelId): string {
   const fileName = `ggml-${modelId}.bin`;
   return join(paths.projectRoot, 'resources', 'models', fileName);

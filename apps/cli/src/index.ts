@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createVoxmireAgentApi, resolveAgentPaths, summarizeJob } from '@voxmire/agent-api';
-import { exportFormatSchema, modelIdSchema, type ExportFormat, type ModelId, type ResourceStatus } from '@voxmire/contracts';
+import { engineBackendSchema, exportFormatSchema, modelIdSchema, type EngineBackend, type ExportFormat, type ModelId, type ResourceStatus } from '@voxmire/contracts';
 
 type CliOptions = {
   flags: Map<string, string | true>;
@@ -88,8 +88,9 @@ async function handleJobs(api: ReturnType<typeof createVoxmireAgentApi>, options
   if (subcommand === 'create') {
     const sourcePath = requiredArg(options.positional[1], 'sourcePath');
     const modelId = parseModelId(flagValue(options, 'model') ?? 'large-v3-turbo');
+    const engineBackend = parseEngineBackend(flagValue(options, 'backend') ?? 'cpu');
     assertFileExists(sourcePath);
-    const job = await api.createJob({ sourcePath, modelId });
+    const job = await api.createJob({ sourcePath, modelId, engineBackend });
     print(json, job, summarizeJob(job));
     return;
   }
@@ -134,10 +135,11 @@ async function handleJobs(api: ReturnType<typeof createVoxmireAgentApi>, options
 async function handleTranscribe(api: ReturnType<typeof createVoxmireAgentApi>, options: CliOptions, json: boolean): Promise<void> {
   const sourcePath = requiredArg(options.positional[0], 'sourcePath');
   const modelId = parseModelId(flagValue(options, 'model') ?? 'large-v3-turbo');
+  const engineBackend = parseEngineBackend(flagValue(options, 'backend') ?? 'cpu');
   const exportFormat = options.flags.has('format') ? parseExportFormat(flagValue(options, 'format')) : null;
   assertFileExists(sourcePath);
 
-  const job = await api.transcribeFile({ sourcePath, modelId });
+  const job = await api.transcribeFile({ sourcePath, modelId, engineBackend });
   const exported = exportFormat ? api.exportTranscript(job.job.id, exportFormat) : null;
   const payload = { job, export: exported };
   const text = exported ? `${summarizeJob(job)}\nExported ${exported.format.toUpperCase()} to ${exported.path}` : summarizeJob(job);
@@ -259,6 +261,10 @@ function parseModelId(value: string): ModelId {
   return modelIdSchema.parse(value);
 }
 
+function parseEngineBackend(value: string): EngineBackend {
+  return engineBackendSchema.parse(value);
+}
+
 function parseExportFormat(value: string | undefined): ExportFormat {
   if (!value) {
     throw new Error('Missing export format. Use --format txt|json|srt|vtt.');
@@ -333,12 +339,12 @@ Usage:
   corepack pnpm --filter @voxmire/cli cli -- profile [--json]
   corepack pnpm --filter @voxmire/cli cli -- jobs list [--json]
   corepack pnpm --filter @voxmire/cli cli -- jobs status <jobId> [--json]
-  corepack pnpm --filter @voxmire/cli cli -- jobs create <sourcePath> [--model large-v3-turbo] [--json]
+  corepack pnpm --filter @voxmire/cli cli -- jobs create <sourcePath> [--model large-v3-turbo] [--backend cpu] [--json]
   corepack pnpm --filter @voxmire/cli cli -- jobs run <jobId> [--json]
   corepack pnpm --filter @voxmire/cli cli -- jobs pause <jobId> [--json]
   corepack pnpm --filter @voxmire/cli cli -- jobs resume <jobId> [--json]
   corepack pnpm --filter @voxmire/cli cli -- jobs recover [--no-start] [--json]
-  corepack pnpm --filter @voxmire/cli cli -- transcribe <sourcePath> [--model large-v3-turbo] [--format txt] [--json]
+  corepack pnpm --filter @voxmire/cli cli -- transcribe <sourcePath> [--model large-v3-turbo] [--backend cpu] [--format txt] [--json]
   corepack pnpm --filter @voxmire/cli cli -- transcript get <jobId> [--json]
   corepack pnpm --filter @voxmire/cli cli -- export <jobId> --format txt [--json]
   corepack pnpm --filter @voxmire/cli cli -- logs tail [--limit 50] [--job <jobId>] [--json]

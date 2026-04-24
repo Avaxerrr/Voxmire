@@ -6,7 +6,7 @@ Build Voxmire in a pipeline-first order, with the first milestone proving the re
 
 `docs/IMPLEMENTATION_PLAN.md` is the repo source of truth for implementation status.
 
-Current focus: continue machine profiles, then packaging.
+Current focus: continue hardware support with sidecar packaging and model management.
 
 ## Current Status
 
@@ -16,7 +16,7 @@ Current focus: continue machine profiles, then packaging.
 - Done: ffmpeg preparation and chunk metadata foundation. Imported media is prepared into app-managed WAV chunks, chunks are stored durably, and whisper.cpp runs chunk-by-chunk.
 - Done: long-audio reliability first pass. Checkpoint/resume, pause/resume, progress streaming, and transcript virtualization are implemented.
 - Done: agent-friendly development surfaces. CLI, structured runtime JSONL logs, and a local stdio MCP server exist for debugging and automation.
-- Started: machine profiles. Voxmire now detects CPU/memory, backend binary/runtime availability, and recommends a backend/model through desktop, CLI, and MCP.
+- Started: machine profiles. Voxmire now detects CPU/memory, backend binary/runtime availability, recommends a backend/model, and can store selected CPU/CUDA/Vulkan backends through desktop, CLI, and MCP.
 
 ## Key Changes
 
@@ -194,6 +194,7 @@ Current focus: continue machine profiles, then packaging.
   - MCP tools return job IDs for long-running work and allow status polling
   - MCP smoke test starts the stdio server, lists tools, reads the machine profile, seeds a transcript, lists jobs, reads a transcript slice, and exports TXT
   - CLI can print the local machine profile with `npm run cli -- profile`
+  - CLI can create jobs with `--backend cpu|cuda|vulkan`
 
 ## Assumptions
 

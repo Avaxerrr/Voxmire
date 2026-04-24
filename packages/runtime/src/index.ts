@@ -15,7 +15,8 @@ import type {
 } from '@voxmire/contracts';
 import { defaultChunkPolicy } from '@voxmire/core';
 import {
-  WhisperCppCpuEngine,
+  WhisperCppEngine,
+  detectWhisperEngine,
   defaultModelPath,
   prepareAudioChunks,
   probeMediaFile,
@@ -33,6 +34,7 @@ import {
   resetInterruptedTranscriptionChunks,
   saveTranscriptionChunk,
   saveTranscriptSegment,
+  updateJobEngineBackend,
   updateJobProgress,
   updateJobStatus,
   updateTranscriptionChunkStatus,
@@ -365,7 +367,7 @@ export class VoxmireRuntime {
         details: { modelPath }
       });
 
-      const engine = new WhisperCppCpuEngine(this.options.resources);
+      const engine = this.createEngine(jobWithSource.job.engineBackend, jobId);
       let nextSegmentIndex = getTranscriptSegments(this.options.db, jobId).length;
 
       for (const chunk of chunks) {
@@ -478,6 +480,31 @@ export class VoxmireRuntime {
     } finally {
       this.activeJobs.delete(jobId);
     }
+  }
+
+  private createEngine(requestedBackend: EngineBackend, jobId: string): WhisperCppEngine {
+    const requested = detectWhisperEngine(this.options.resources, requestedBackend);
+    if (requested.available) {
+      return new WhisperCppEngine(this.options.resources, requestedBackend);
+    }
+
+    if (requestedBackend !== 'cpu') {
+      const fallback = detectWhisperEngine(this.options.resources, 'cpu');
+      if (fallback.available) {
+        updateJobEngineBackend(this.options.db, jobId, 'cpu');
+        this.log({
+          level: 'warn',
+          event: 'engine.fallback',
+          jobId,
+          chunkId: null,
+          message: `Requested ${requestedBackend.toUpperCase()} backend is unavailable. Falling back to CPU.`,
+          details: { requestedBackend, reason: requested.reason }
+        });
+        return new WhisperCppEngine(this.options.resources, 'cpu');
+      }
+    }
+
+    return new WhisperCppEngine(this.options.resources, requestedBackend);
   }
 
   private async prepareChunks(

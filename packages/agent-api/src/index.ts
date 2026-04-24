@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
-import type { ExportFormat, JobWithSource, MachineProfile, ModelId, ResourceStatus, TranscriptSegment, TranscriptionJob } from '@voxmire/contracts';
+import type { EngineBackend, ExportFormat, JobWithSource, MachineProfile, ModelId, ResourceStatus, TranscriptSegment, TranscriptionJob } from '@voxmire/contracts';
 import { getMachineProfile, getResourceStatus, type ResourcePaths } from '@voxmire/engine';
 import {
   createJsonlRuntimeLogger,
@@ -94,20 +94,22 @@ export class VoxmireAgentApi {
     return this.runtime.getTranscriptSegments(jobId);
   }
 
-  async transcribeFile(input: { sourcePath: string; modelId: ModelId }): Promise<JobWithSource> {
+  async transcribeFile(input: { sourcePath: string; modelId: ModelId; engineBackend?: EngineBackend }): Promise<JobWithSource> {
     const created = await this.runtime.createTranscriptionJob({
       sourcePath: resolve(input.sourcePath),
       modelId: input.modelId,
+      engineBackend: input.engineBackend ?? 'cpu',
       startImmediately: false
     });
     await this.runtime.runTranscriptionJob(created.job.id, input.modelId);
     return this.runtime.getJob(created.job.id) ?? created;
   }
 
-  async createJob(input: { sourcePath: string; modelId: ModelId }): Promise<JobWithSource> {
+  async createJob(input: { sourcePath: string; modelId: ModelId; engineBackend?: EngineBackend }): Promise<JobWithSource> {
     return this.runtime.createTranscriptionJob({
       sourcePath: resolve(input.sourcePath),
       modelId: input.modelId,
+      engineBackend: input.engineBackend ?? 'cpu',
       startImmediately: false
     });
   }

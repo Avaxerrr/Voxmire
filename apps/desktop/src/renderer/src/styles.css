@@ -658,6 +658,10 @@ textarea,
 .settings-panel-heading p { margin-top: 4px; color: var(--muted); font-size: 13px; line-height: 1.45; }
 .field-label { display: block; margin-bottom: 8px; color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; }
 .settings-panel select { max-width: 360px; height: 38px; }
+.settings-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.settings-field-grid label { min-width: 0; }
+.settings-field-grid select { width: 100%; max-width: none; }
+.modal-field-grid { margin-bottom: 16px; }
 .machine-profile-grid { display: grid; gap: 12px; }
 .machine-recommendation { display: grid; gap: 4px; padding: 13px; border: 1px solid rgba(34, 211, 238, 0.22); border-radius: 8px; background: rgba(34, 211, 238, 0.07); }
 .machine-recommendation span { color: var(--cyan); font-size: 11px; font-weight: 800; text-transform: uppercase; }
