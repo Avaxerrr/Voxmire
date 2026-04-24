@@ -311,7 +311,6 @@ textarea,
 .settings-panel-heading,
 .modal-header,
 .status-bar,
-.active-job-strip,
 .project-row,
 .progress-pill,
 .script-footer,
@@ -399,66 +398,6 @@ textarea,
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 18px 45px rgba(0, 0, 0, 0.28);
 }
 
-.active-job-strip {
-  position: relative;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 8px 14px;
-  align-items: center;
-  width: min(1180px, 100%);
-  min-height: 48px;
-  margin: 0 auto 18px;
-  overflow: hidden;
-  padding: 10px 16px 9px;
-  border: 1px solid rgba(34, 211, 238, 0.22);
-  border-radius: 8px;
-  color: #dff9ff;
-  background: rgba(34, 211, 238, 0.07);
-  cursor: pointer;
-}
-
-.active-job-strip.live::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, transparent 0%, rgba(34, 211, 238, 0.16) 45%, transparent 75%);
-  transform: translateX(-100%);
-  animation: live-card-sweep 2.2s ease-in-out infinite;
-  pointer-events: none;
-}
-
-.active-job-strip > * { position: relative; z-index: 1; }
-.active-job-label,
-.active-job-strip strong,
-.active-job-strip em { min-width: 0; }
-.active-job-label { display: inline-flex; align-items: center; gap: 8px; color: var(--cyan); font-size: 12px; font-weight: 800; text-transform: uppercase; }
-.active-job-strip.live .active-job-label svg { animation: live-icon-pulse 1.35s ease-in-out infinite; }
-.active-job-strip strong { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
-.active-job-strip em { color: var(--text); font-style: normal; font-weight: 800; }
-.active-job-meter {
-  position: relative;
-  grid-column: 1 / -1;
-  height: 3px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.1);
-}
-.active-job-meter span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--violet), var(--cyan));
-  transition: width 180ms ease;
-}
-.active-job-strip.live .active-job-meter::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.3) 48%, transparent 72%);
-  transform: translateX(-100%);
-  animation: live-meter-sweep 1.2s linear infinite;
-}
-
 .quick-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -510,8 +449,10 @@ textarea,
 
 .project-list { display: grid; gap: 8px; max-height: 420px; overflow: auto; padding-right: 4px; }
 .project-row {
+  position: relative;
   width: 100%;
   min-height: 66px;
+  overflow: hidden;
   padding: 11px 13px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -521,12 +462,35 @@ textarea,
   text-align: left;
 }
 .project-row:hover { border-color: rgba(34, 211, 238, 0.34); background: rgba(34, 211, 238, 0.06); }
+.project-row.live {
+  border-color: rgba(34, 211, 238, 0.28);
+  background:
+    linear-gradient(90deg, rgba(34, 211, 238, 0.08), rgba(168, 85, 247, 0.05)),
+    rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.04);
+}
+.project-row.live::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(34, 211, 238, 0.16) 46%, transparent 78%);
+  transform: translateX(-100%);
+  animation: live-card-sweep 2.2s ease-in-out infinite;
+  pointer-events: none;
+}
+.project-row.live > * { position: relative; z-index: 1; }
+.project-row.live .project-icon {
+  color: #dff9ff;
+  background: rgba(34, 211, 238, 0.14);
+  animation: live-icon-pulse 1.35s ease-in-out infinite;
+}
 .project-icon { width: 36px; height: 36px; border-radius: 8px; box-shadow: none; }
 .project-main { min-width: 0; flex: 1; }
 .project-main strong { display: block; overflow: hidden; color: var(--text); font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
 .project-main small { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
 
 .progress-pill {
+  position: relative;
   flex: 0 0 auto;
   min-height: 26px;
   padding: 0 9px;
@@ -536,26 +500,7 @@ textarea,
   text-transform: uppercase;
 }
 .progress-pill.ready { color: var(--green); background: rgba(34, 197, 94, 0.12); }
-.progress-pill.active {
-  position: relative;
-  overflow: hidden;
-  color: var(--cyan);
-  background: rgba(34, 211, 238, 0.12);
-}
-.progress-pill.active::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, transparent 0%, rgba(34, 211, 238, 0.18) 45%, transparent 78%);
-  transform: translateX(-100%);
-  animation: live-meter-sweep 1.8s ease-in-out infinite;
-}
-.progress-pill.active svg {
-  position: relative;
-  z-index: 1;
-  animation: live-icon-pulse 1.35s ease-in-out infinite;
-}
-.progress-pill.active > * { position: relative; z-index: 1; }
+.progress-pill.active { color: var(--cyan); background: rgba(34, 211, 238, 0.12); }
 .progress-pill.missing { color: #f87171; background: rgba(239, 68, 68, 0.13); }
 .progress-pill.optional { color: var(--amber); background: rgba(245, 158, 11, 0.13); }
 
@@ -623,11 +568,6 @@ textarea,
 @keyframes live-icon-pulse {
   0%, 100% { opacity: 0.72; transform: scale(1); }
   50% { opacity: 1; transform: scale(1.08); }
-}
-
-@keyframes live-meter-sweep {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(100%); }
 }
 
 @keyframes progress-working-sweep {

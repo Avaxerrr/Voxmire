@@ -337,7 +337,6 @@ export function App(): ReactElement {
 
         {view === 'dashboard' ? (
           <DashboardView
-            activeJob={activeJob}
             jobs={jobs}
             onImport={() => setImportOpen(true)}
             onOpenJob={openJob}
@@ -447,7 +446,6 @@ function NavButton({ active, badge, collapsed, icon, label, onClick }: NavButton
 }
 
 type DashboardViewProps = {
-  activeJob: JobWithSource | null;
   jobs: JobWithSource[];
   onImport: () => void;
   onOpenJob: (jobId: string) => void;
@@ -455,9 +453,7 @@ type DashboardViewProps = {
   selectedModel: ModelProfile | null;
 };
 
-function DashboardView({ activeJob, jobs, onImport, onOpenJob, onOpenVoice, selectedModel }: DashboardViewProps): ReactElement {
-  const activeJobProgress = activeJob ? Math.round(activeJob.job.progress * 100) : 0;
-
+function DashboardView({ jobs, onImport, onOpenJob, onOpenVoice, selectedModel }: DashboardViewProps): ReactElement {
   return (
     <div className="view dashboard-view">
       <header className="dashboard-header">
@@ -470,17 +466,6 @@ function DashboardView({ activeJob, jobs, onImport, onOpenJob, onOpenVoice, sele
           New transcript
         </button>
       </header>
-
-      {activeJob ? (
-        <button className="active-job-strip live" onClick={() => onOpenJob(activeJob.job.id)} type="button">
-          <span className="active-job-label"><Zap size={16} /> Transcribing now</span>
-          <strong>{activeJob.sourceFile.name}</strong>
-          <em>{activeJobProgress}%</em>
-          <span className="active-job-meter" aria-hidden="true">
-            <span style={{ width: `${activeJobProgress}%` }} />
-          </span>
-        </button>
-      ) : null}
 
       <section className="quick-actions" aria-label="Quick actions">
         <button className="action-tile transcribe-tile" onClick={onImport} type="button">
@@ -518,16 +503,20 @@ function DashboardView({ activeJob, jobs, onImport, onOpenJob, onOpenVoice, sele
           <EmptyState title="No transcript projects yet" body="Import a recording to start building your local library." />
         ) : (
           <div className="project-list">
-            {jobs.map((entry) => (
-              <button className="project-row" key={entry.job.id} onClick={() => onOpenJob(entry.job.id)} type="button">
-                <span className="project-icon"><FileAudio size={17} /></span>
-                <span className="project-main">
-                  <strong>{entry.sourceFile.name}</strong>
-                  <small>{formatDuration(entry.sourceFile.durationSeconds)} / {formatDate(entry.job.createdAt)}</small>
-                </span>
-                <ProgressPill job={entry} />
-              </button>
-            ))}
+            {jobs.map((entry) => {
+              const isLive = activeStatuses.includes(entry.job.status);
+
+              return (
+                <button className={`project-row ${isLive ? 'live' : ''}`} key={entry.job.id} onClick={() => onOpenJob(entry.job.id)} type="button">
+                  <span className="project-icon"><FileAudio size={17} /></span>
+                  <span className="project-main">
+                    <strong>{entry.sourceFile.name}</strong>
+                    <small>{formatDuration(entry.sourceFile.durationSeconds)} / {formatDate(entry.job.createdAt)}</small>
+                  </span>
+                  <ProgressPill job={entry} />
+                </button>
+              );
+            })}
           </div>
         )}
       </section>
