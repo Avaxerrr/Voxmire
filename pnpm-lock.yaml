@@ -41,6 +41,9 @@ importers:
       '@voxmire/exporters':
         specifier: workspace:*
         version: link:../../packages/exporters
+      '@voxmire/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
       '@voxmire/storage':
         specifier: workspace:*
         version: link:../../packages/storage
@@ -99,6 +102,21 @@ importers:
       '@voxmire/contracts':
         specifier: workspace:*
         version: link:../contracts
+
+  packages/runtime:
+    dependencies:
+      '@voxmire/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@voxmire/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@voxmire/exporters':
+        specifier: workspace:*
+        version: link:../exporters
+      '@voxmire/storage':
+        specifier: workspace:*
+        version: link:../storage
 
   packages/storage:
     dependencies:

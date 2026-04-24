@@ -12,14 +12,15 @@
     "lint": "echo \"lint not configured yet\""
   },
   "dependencies": {
-    "@fontsource/fira-code": "^5.2.7",
-    "@fontsource/inter": "^5.2.8",
-    "@fontsource/space-grotesk": "^5.2.10",
     "@voxmire/contracts": "workspace:*",
     "@voxmire/core": "workspace:*",
     "@voxmire/engine": "workspace:*",
     "@voxmire/exporters": "workspace:*",
+    "@voxmire/runtime": "workspace:*",
     "@voxmire/storage": "workspace:*",
+    "@fontsource/fira-code": "^5.2.7",
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/space-grotesk": "^5.2.10",
     "lucide-react": "^1.9.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1"

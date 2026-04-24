@@ -7,6 +7,7 @@ const workspacePackages = [
   '@voxmire/core',
   '@voxmire/engine',
   '@voxmire/exporters',
+  '@voxmire/runtime',
   '@voxmire/storage'
 ];
 

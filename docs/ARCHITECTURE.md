@@ -14,9 +14,10 @@ Electron Main
   |
   +--> packages/core
   +--> packages/contracts
-  +--> packages/engine
-  +--> packages/storage
-  +--> packages/exporters
+  +--> packages/runtime
+  |     +--> packages/engine
+  |     +--> packages/storage
+  |     +--> packages/exporters
   |
   +--> resources/engines
   +--> resources/ffmpeg
@@ -56,16 +57,30 @@ window.voxmire.exports.create(jobId, format)
 
 ### Electron Main
 
-The main process is the desktop local backend.
+The main process is the desktop adapter around the local runtime.
 
 Responsibilities:
 
 - Validate IPC inputs.
-- Coordinate jobs.
-- Spawn engine sidecars.
-- Persist state.
-- Send progress events.
+- Open native file dialogs.
+- Create and configure the runtime.
+- Forward IPC requests to runtime methods.
+- Broadcast runtime progress events to renderer windows.
 - Handle app lifecycle.
+
+### Runtime Package
+
+`packages/runtime` coordinates local transcription work without depending on Electron or React.
+
+Responsibilities:
+
+- Create source-file and job records.
+- Run transcription jobs through `packages/engine`.
+- Persist progress and transcript segments through `packages/storage`.
+- Export transcripts through `packages/exporters`.
+- Emit progress events through an injected callback.
+
+This is the shared boundary for future headless or CLI execution.
 
 ### Core Package
 

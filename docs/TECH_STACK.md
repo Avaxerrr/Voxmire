@@ -9,18 +9,15 @@
 
 ## Local Backend
 
-Electron main process acts as the local backend for desktop.
+Electron main process acts as the desktop adapter for the local runtime.
 
 Responsibilities:
 
-- File access
-- Job queue
-- Engine detection
-- Spawning transcription sidecars
-- ffmpeg orchestration
-- SQLite access
+- Native file dialogs
+- App path resolution
+- Runtime initialization
 - IPC with renderer
-- Export file writes
+- Progress broadcasting
 
 ## Transcription Engine
 
@@ -79,6 +76,7 @@ Expected data:
 
 - `@voxmire/core`: pure app logic and state machines.
 - `@voxmire/contracts`: Zod schemas and shared TypeScript types.
+- `@voxmire/runtime`: UI-independent job orchestration for desktop and future headless execution.
 - `@voxmire/engine`: whisper.cpp and ffmpeg orchestration.
 - `@voxmire/storage`: SQLite repositories.
 - `@voxmire/exporters`: transcript export formatting.
