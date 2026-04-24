@@ -6,7 +6,7 @@ Build Voxmire in a pipeline-first order, with the first milestone proving the re
 
 `docs/IMPLEMENTATION_PLAN.md` is the repo source of truth for implementation status.
 
-Current focus: finish the desktop local transcription pipeline and long-audio reliability before adding optional agent-facing surfaces such as a CLI or MCP server.
+Current focus: align agent/debug data paths, then add the MCP surface on top of the runtime and CLI foundations.
 
 ## Current Status
 
@@ -14,7 +14,7 @@ Current focus: finish the desktop local transcription pipeline and long-audio re
 - Done: local runtime is pseudo-headless. Electron wraps `packages/runtime`, and the runtime can be exercised without the renderer.
 - Done: bundled ffmpeg/ffprobe and whisper.cpp CPU resources are present locally and intentionally ignored by git.
 - Done: ffmpeg preparation and chunk metadata foundation. Imported media is prepared into app-managed WAV chunks, chunks are stored durably, and whisper.cpp runs chunk-by-chunk.
-- In progress: long-audio reliability. Checkpoint/resume and pause/resume have first passes; the next slice is transcript virtualization.
+- Done: long-audio reliability first pass. Checkpoint/resume, pause/resume, progress streaming, and transcript virtualization are implemented.
 - Done: first agent-friendly development surface. A CLI and structured runtime JSONL logs exist for debugging and automation; MCP remains later.
 
 ## Key Changes
@@ -60,7 +60,8 @@ Current focus: finish the desktop local transcription pipeline and long-audio re
   - [x] resume after interruption
   - [x] checkpoint recovery from completed chunks
   - [x] pause/resume state handling
-  - virtualized transcript viewer
+  - [x] stream whisper.cpp progress while a chunk is running
+  - [x] virtualized transcript viewer
 - [ ] Add agent-friendly surfaces after runtime reliability:
   - [x] first CLI pass for automation and testability
   - [x] structured JSONL runtime logs for desktop and CLI runs
@@ -90,10 +91,10 @@ Current focus: finish the desktop local transcription pipeline and long-audio re
 7. **ffmpeg** - Done for probe and first preparation/chunking pass
    Add file probing first, then audio preparation/chunking.
 
-8. **whisper.cpp CPU** - Partly done
-   Add real CPU sidecar execution. Current implementation runs CPU transcription chunk-by-chunk and saves segments after each chunk. Remaining work: parse/stream progress while a chunk is running.
+8. **whisper.cpp CPU** - Done for first CPU path
+   Add real CPU sidecar execution. Current implementation runs CPU transcription chunk-by-chunk, streams whisper.cpp progress output, and saves segments after each chunk.
 
-9. **Long-audio reliability** - In progress
+9. **Long-audio reliability** - Done for first pass
    Add checkpointing, resume after interruption, cancel, and paused state handling.
 
    Current recovery scope:
@@ -108,6 +109,10 @@ Current focus: finish the desktop local transcription pipeline and long-audio re
    - Runtime can resume paused jobs and continue from unfinished chunks.
    - Desktop UI exposes Pause/Resume actions.
    - CLI exposes `npm run cli -- jobs pause <jobId>` and `npm run cli -- jobs resume <jobId>`.
+
+   Current transcript rendering scope:
+   - Desktop transcript rows are virtualized so long transcripts do not mount every segment in the DOM.
+   - SQLite still stores the full transcript; pagination can be added later if transcript payloads become very large.
 
 10. **Exports** - Done
    Implement TXT and JSON, then SRT and VTT.

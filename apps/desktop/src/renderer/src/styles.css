@@ -522,9 +522,11 @@ textarea,
 .transcript-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 
 .transcript-stage {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   padding: 22px 34px 120px;
 }
 .job-progress-row {
@@ -576,6 +578,25 @@ textarea,
 }
 .error-text { display: flex; align-items: center; gap: 8px; max-width: 980px; margin: 0 auto 16px; color: #fca5a5; font-size: 13px; }
 .segment-list { display: grid; max-width: 980px; margin: 0 auto; gap: 18px; }
+.segment-list.virtualized {
+  display: block;
+  flex: 1;
+  width: 100%;
+  min-height: 260px;
+  overflow: auto;
+  padding-right: 4px;
+}
+.segment-list-inner {
+  position: relative;
+  width: 100%;
+}
+.segment-virtual-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  padding-bottom: 18px;
+}
 .segment-row { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 20px; padding: 15px 16px; border-left: 2px solid transparent; border-radius: 8px; }
 .segment-row.active,
 .segment-row:hover { border-left-color: var(--violet); background: linear-gradient(90deg, rgba(168, 85, 247, 0.09), transparent 72%); }

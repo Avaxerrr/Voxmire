@@ -1,4 +1,5 @@
 import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   AlertTriangle,
   AudioWaveform,
@@ -650,14 +651,7 @@ function TranscriptView({
             {segments.length === 0 ? (
               <EmptyState title="Transcript pending" body="Transcript text will appear here as the job progresses." />
             ) : (
-              <div className="segment-list">
-                {segments.map((segment, index) => (
-                  <article className={`segment-row ${index === 0 ? 'active' : ''}`} key={segment.id}>
-                    <time>{formatTime(segment.startSeconds)} - {formatTime(segment.endSeconds)}</time>
-                    <p>{segment.text}</p>
-                  </article>
-                ))}
-              </div>
+              <VirtualizedSegmentList segments={segments} />
             )}
           </>
         ) : (
@@ -854,6 +848,45 @@ function ImportModal({ busy, createJob, models, onClose, selectedModelId, setSel
           <small>MP3, WAV, M4A, FLAC, OGG, MP4, MOV, and WebM</small>
         </button>
       </section>
+    </div>
+  );
+}
+
+function VirtualizedSegmentList({ segments }: { segments: TranscriptSegment[] }): ReactElement {
+  const scrollParentRef = useRef<HTMLDivElement | null>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: segments.length,
+    estimateSize: () => 108,
+    getItemKey: (index) => segments[index]?.id ?? index,
+    getScrollElement: () => scrollParentRef.current,
+    overscan: 8
+  });
+
+  return (
+    <div className="segment-list virtualized" ref={scrollParentRef}>
+      <div className="segment-list-inner" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
+        {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+          const segment = segments[virtualRow.index];
+          if (!segment) {
+            return null;
+          }
+
+          return (
+            <div
+              className="segment-virtual-row"
+              data-index={virtualRow.index}
+              key={virtualRow.key}
+              ref={rowVirtualizer.measureElement}
+              style={{ transform: `translateY(${virtualRow.start}px)` }}
+            >
+              <article className={`segment-row ${virtualRow.index === 0 ? 'active' : ''}`}>
+                <time>{formatTime(segment.startSeconds)} - {formatTime(segment.endSeconds)}</time>
+                <p>{segment.text}</p>
+              </article>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
