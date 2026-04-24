@@ -583,24 +583,6 @@ function TranscriptView({
 
         <div className="transcript-actions">
           <button className="icon-button" title="Search transcript" type="button"><Search size={17} /></button>
-          {isPausable ? (
-            <button className="secondary-action" onClick={() => selectedJob ? void onPause(selectedJob.job.id) : undefined} type="button">
-              <Pause size={14} />
-              Pause
-            </button>
-          ) : null}
-          {isResumable ? (
-            <button className="secondary-action" onClick={() => selectedJob ? void onResume(selectedJob.job.id) : undefined} type="button">
-              <Play size={14} />
-              Resume
-            </button>
-          ) : null}
-          {isCancelable ? (
-            <button className="secondary-action danger" onClick={() => selectedJob ? void onCancel(selectedJob.job.id) : undefined} type="button">
-              <Square size={14} />
-              Cancel
-            </button>
-          ) : null}
           {exportFormats.map((format) => (
             <button
               className="secondary-action"
@@ -623,7 +605,29 @@ function TranscriptView({
       <section className="transcript-stage">
         {selectedJob ? (
           <>
-            <div className="progress-track" aria-label="Progress"><div style={{ width: `${progress}%` }} /></div>
+            <div className="job-progress-row">
+              <div className="progress-track" aria-label="Progress"><div style={{ width: `${progress}%` }} /></div>
+              <div className="job-inline-actions" aria-label="Transcription controls">
+                {isPausable ? (
+                  <button className="secondary-action" onClick={() => void onPause(selectedJob.job.id)} type="button">
+                    <Pause size={14} />
+                    Pause
+                  </button>
+                ) : null}
+                {isResumable ? (
+                  <button className="secondary-action" onClick={() => void onResume(selectedJob.job.id)} type="button">
+                    <Play size={14} />
+                    Resume
+                  </button>
+                ) : null}
+                {isCancelable ? (
+                  <button className="secondary-action danger" onClick={() => void onCancel(selectedJob.job.id)} type="button">
+                    <Square size={14} />
+                    Stop
+                  </button>
+                ) : null}
+              </div>
+            </div>
             {selectedJob.job.errorMessage ? <div className="error-text"><AlertTriangle size={16} /> {selectedJob.job.errorMessage}</div> : null}
             {segments.length === 0 ? (
               <EmptyState title="Transcript pending" body="Transcript text will appear here as the job progresses." />
