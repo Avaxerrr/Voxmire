@@ -69,6 +69,68 @@ textarea:focus {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { border-radius: 999px; background: #303036; }
 
+.window-drag-strip {
+  position: fixed;
+  top: 0;
+  right: 138px;
+  left: 0;
+  z-index: 40;
+  height: 34px;
+  -webkit-app-region: drag;
+}
+
+.window-frame-controls {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 50;
+  display: grid;
+  grid-template-columns: repeat(3, 46px);
+  height: 34px;
+  -webkit-app-region: no-drag;
+}
+
+.window-frame-controls button {
+  display: grid;
+  place-items: center;
+  border: 0;
+  color: #b9bbc3;
+  background: transparent;
+  cursor: pointer;
+}
+
+.window-frame-controls button:hover:not(:disabled) {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.window-frame-controls .close-control:hover:not(:disabled) {
+  color: #ffffff;
+  background: rgba(239, 68, 68, 0.88);
+}
+
+.window-frame-controls button:disabled {
+  opacity: 0.45;
+}
+
+button,
+input,
+select,
+textarea,
+.nav-item,
+.collapse-button,
+.action-tile,
+.project-row,
+.secondary-action,
+.primary-action,
+.icon-button,
+.play-button,
+.status-toast,
+.drop-zone,
+.voice-card,
+.ghost-button {
+  -webkit-app-region: no-drag;
+}
 .app-shell {
   display: grid;
   grid-template-columns: 264px minmax(0, 1fr);

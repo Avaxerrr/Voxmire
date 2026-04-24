@@ -28,6 +28,12 @@ declare global {
       app: {
         getInfo: () => Promise<VoxmireAppInfo>;
       };
+      window: {
+        minimize: () => Promise<void>;
+        toggleMaximize: () => Promise<boolean>;
+        close: () => Promise<void>;
+        isMaximized: () => Promise<boolean>;
+      };
       system: {
         getEngineAvailability: () => Promise<EngineAvailability[]>;
         getResourceStatus: () => Promise<ResourceStatus[]>;

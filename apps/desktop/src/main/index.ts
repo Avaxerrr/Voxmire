@@ -19,6 +19,8 @@ function createMainWindow(): void {
     minWidth: 1024,
     minHeight: 680,
     title: 'Voxmire',
+    frame: false,
+    titleBarStyle: 'hidden',
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#111318' : '#f6f7f9',
     show: false,
     webPreferences: {
@@ -82,7 +84,33 @@ function registerIpcHandlers(): void {
     const input = exportTranscriptInputSchema.parse(rawInput);
     return runtime.exportTranscript(input.jobId, input.format);
   });
+
+  ipcMain.handle('window:minimize', (event) => {
+    BrowserWindow.fromWebContents(event.sender)?.minimize();
+  });
+
+  ipcMain.handle('window:toggle-maximize', (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window) {
+      return false;
+    }
+
+    if (window.isMaximized()) {
+      window.unmaximize();
+      return false;
+    }
+
+    window.maximize();
+    return true;
+  });
+
+  ipcMain.handle('window:close', (event) => {
+    BrowserWindow.fromWebContents(event.sender)?.close();
+  });
+
+  ipcMain.handle('window:is-maximized', (event) => BrowserWindow.fromWebContents(event.sender)?.isMaximized() ?? false);
 }
+
 
 async function chooseSourceFile(): Promise<string | null> {
   const result = await dialog.showOpenDialog({

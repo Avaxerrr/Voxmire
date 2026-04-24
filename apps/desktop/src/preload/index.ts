@@ -18,6 +18,12 @@ const api = {
   app: {
     getInfo: () => ipcRenderer.invoke('app:get-info')
   },
+  window: {
+    minimize: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
+    toggleMaximize: (): Promise<boolean> => ipcRenderer.invoke('window:toggle-maximize'),
+    close: (): Promise<void> => ipcRenderer.invoke('window:close'),
+    isMaximized: (): Promise<boolean> => ipcRenderer.invoke('window:is-maximized')
+  },
   system: {
     getEngineAvailability: (): Promise<EngineAvailability[]> => ipcRenderer.invoke('system:get-engine-availability'),
     getResourceStatus: (): Promise<ResourceStatus[]> => ipcRenderer.invoke('system:get-resource-status')
