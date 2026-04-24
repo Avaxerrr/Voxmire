@@ -291,7 +291,8 @@ textarea,
 
 .view {
   height: calc(100vh - 32px);
-  overflow: auto;
+  min-height: 0;
+  overflow: hidden;
   padding: 36px;
 }
 
@@ -324,7 +325,16 @@ textarea,
   gap: 14px;
 }
 
+.dashboard-view,
+.settings-view {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .dashboard-header {
+  flex: 0 0 auto;
+  width: 100%;
   max-width: 1180px;
   margin: 0 auto 22px;
 }
@@ -400,8 +410,10 @@ textarea,
 
 .quick-actions {
   display: grid;
+  flex: 0 0 auto;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
+  width: 100%;
   max-width: 1180px;
   margin: 0 auto 30px;
 }
@@ -437,17 +449,22 @@ textarea,
 .action-tile small { display: inline-flex; margin-top: 24px; padding: 5px 9px; border-radius: 7px; color: var(--cyan); background: rgba(34, 211, 238, 0.1); font-size: 11px; font-weight: 800; text-transform: uppercase; }
 
 .library-section {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
   max-width: 1180px;
   margin: 0 auto;
 }
 
-.library-toolbar { margin-bottom: 14px; }
+.library-toolbar { flex: 0 0 auto; margin-bottom: 14px; }
 .library-toolbar h3 { margin-top: 4px; color: var(--text); font-family: "Space Grotesk", Inter, sans-serif; font-size: 22px; }
 .library-controls { display: flex; align-items: center; gap: 8px; }
 .search-field { display: flex; align-items: center; gap: 8px; min-height: 36px; width: 240px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--muted); background: rgba(255, 255, 255, 0.04); }
 .search-field input { width: 100%; min-width: 0; border: 0; padding: 0; background: transparent; box-shadow: none; font-size: 13px; }
 
-.project-list { display: grid; gap: 8px; max-height: 420px; overflow: auto; padding-right: 4px; }
+.project-list { display: grid; align-content: start; flex: 1; gap: 8px; min-height: 0; overflow: auto; padding-right: 4px; }
 .project-row {
   position: relative;
   width: 100%;
@@ -646,10 +663,10 @@ textarea,
 .tuning-slider em { color: var(--cyan); font-family: "Fira Code", Consolas, monospace; font-size: 12px; font-style: normal; }
 .tuning-slider input { width: 100%; margin-top: 10px; accent-color: var(--violet); }
 
-.settings-view { padding-bottom: 64px; }
-.settings-header { max-width: 880px; margin: 0 auto 20px; }
+.settings-view { padding-bottom: 36px; }
+.settings-header { flex: 0 0 auto; width: 100%; max-width: 880px; margin: 0 auto 20px; }
 .settings-header h2 { font-size: 34px; }
-.settings-stack { display: grid; max-width: 880px; margin: 0 auto; gap: 14px; }
+.settings-stack { display: grid; align-content: start; flex: 1; gap: 14px; min-height: 0; width: 100%; max-width: 880px; margin: 0 auto; overflow: auto; padding-right: 4px; }
 .settings-panel,
 .advanced-panel { padding: 18px; }
 .settings-panel-heading { justify-content: flex-start; align-items: flex-start; margin-bottom: 16px; }
