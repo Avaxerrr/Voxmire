@@ -53,6 +53,8 @@ const api = {
   },
   media: {
     getSourceUrl: (jobId: string): Promise<string | null> => ipcRenderer.invoke('media:get-source-url', jobId),
+    getInfo: (jobId: string): Promise<{ contentType: string; hasAudio: boolean; hasVideo: boolean; kind: 'audio' | 'video' } | null> =>
+      ipcRenderer.invoke('media:get-info', jobId),
     getWaveform: (jobId: string): Promise<{ durationSeconds: number | null; peaks: number[] } | null> =>
       ipcRenderer.invoke('media:get-waveform', jobId)
   },

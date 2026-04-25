@@ -25,6 +25,13 @@ type VoxmireAppInfo = {
 
 type Unsubscribe = () => void;
 
+type VoxmireMediaInfo = {
+  contentType: string;
+  hasAudio: boolean;
+  hasVideo: boolean;
+  kind: 'audio' | 'video';
+};
+
 declare global {
   interface Window {
     voxmire: {
@@ -59,6 +66,7 @@ declare global {
       };
       media: {
         getSourceUrl: (jobId: string) => Promise<string | null>;
+        getInfo: (jobId: string) => Promise<VoxmireMediaInfo | null>;
         getWaveform: (jobId: string) => Promise<{ durationSeconds: number | null; peaks: number[] } | null>;
       };
       exports: {

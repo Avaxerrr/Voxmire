@@ -1,4 +1,4 @@
-import { type MutableRefObject, type ReactElement, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { type MutableRefObject, type ReactElement, memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   AlertTriangle,
@@ -11,6 +11,7 @@ import {
   Download,
   FileAudio,
   FileText,
+  FileVideo,
   FolderOpen,
   Home,
   Lock,
@@ -29,6 +30,7 @@ import {
   Sparkles,
   Square,
   UploadCloud,
+  Video,
   Volume2,
   VolumeX,
   X,
@@ -65,12 +67,22 @@ type AppInfo = {
 type ViewId = 'dashboard' | 'transcript' | 'voice' | 'settings';
 
 type StatusTone = 'ready' | 'active' | 'warning' | 'error';
+type MediaKind = 'audio' | 'video';
 type WaveformScaleMode = 'actual' | 'boost' | 'db';
+
+type MediaInfo = {
+  contentType: string;
+  hasAudio: boolean;
+  hasVideo: boolean;
+  kind: MediaKind;
+};
 
 const exportFormats: ExportFormat[] = ['txt', 'srt', 'vtt', 'json'];
 const activeStatuses: JobStatus[] = ['queued', 'preparing', 'transcribing'];
 const waveformScaleModes: WaveformScaleMode[] = ['actual', 'boost', 'db'];
 const playbackSpeeds = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
+const playbackSyncIntervalMs = 250;
+const audioSeekThrottleMs = 50;
 
 const fallbackModels: ModelProfile[] = [
   {
@@ -571,7 +583,7 @@ function DashboardView({ jobs, onImport, onOpenJob, onOpenVoice, selectedBackend
 
                 return (
                   <button className={`project-row ${isLive ? 'live' : ''}`} key={entry.job.id} onClick={() => onOpenJob(entry.job.id)} type="button">
-                    <span className="project-icon"><FileAudio size={17} /></span>
+                    <span className="project-icon">{mediaKindFromExtension(entry.sourceFile.extension) === 'video' ? <FileVideo size={17} /> : <FileAudio size={17} />}</span>
                     <span className="project-main">
                       <strong>{entry.sourceFile.name}</strong>
                       <small>{formatDuration(entry.sourceFile.durationSeconds)} / {formatDate(entry.job.createdAt)}</small>
@@ -623,19 +635,23 @@ function TranscriptView({
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
+  const [mediaInfo, setMediaInfo] = useState<MediaInfo | null>(null);
   const [playbackTime, setPlaybackTime] = useState(0);
   const [playbackDuration, setPlaybackDuration] = useState<number | null>(null);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [videoPreviewCollapsed, setVideoPreviewCollapsed] = useState(false);
   const [waveformPeaks, setWaveformPeaks] = useState<number[]>([]);
   const [waveformLoading, setWaveformLoading] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioRef = useRef<HTMLMediaElement | null>(null);
   const mediaApi = window.voxmire?.media;
   const progress = selectedJob ? Math.round(selectedJob.job.progress * 100) : 0;
   const isCancelable = selectedJob ? activeStatuses.includes(selectedJob.job.status) || selectedJob.job.status === 'paused' : false;
   const isPausable = selectedJob ? activeStatuses.includes(selectedJob.job.status) : false;
   const isResumable = selectedJob?.job.status === 'paused';
   const isWorking = selectedJob ? activeStatuses.includes(selectedJob.job.status) : false;
-  const selectedSubtitle = selectedJob ? transcriptSubtitle(selectedJob, progress) : 'Choose a project from Library or import a recording.';
+  const selectedMediaKind = selectedJob ? mediaInfo?.kind ?? mediaKindFromExtension(selectedJob.sourceFile.extension) : 'audio';
+  const selectedSubtitle = selectedJob ? transcriptSubtitle(selectedJob, progress, selectedMediaKind) : 'Choose a project from Library or import a recording.';
   const activeSegmentIndex = useMemo(() => findActiveSegmentIndex(segments, playbackTime), [playbackTime, segments]);
   const resolvedPlaybackDuration = playbackDuration ?? selectedJob?.sourceFile.durationSeconds ?? null;
   const visibleJobs = useMemo(() => {
@@ -682,6 +698,7 @@ function TranscriptView({
     setPlaybackTime(0);
     setPlaybackDuration(null);
     setMediaError(null);
+    setMediaInfo(null);
     setWaveformPeaks([]);
     setWaveformLoading(false);
 
@@ -694,11 +711,23 @@ function TranscriptView({
 
     if (!mediaApi) {
       setMediaUrl(null);
-      setMediaError('Audio playback is available in the desktop app.');
+      setMediaError('Media playback is available in the desktop app.');
       return () => {
         canceled = true;
       };
     }
+
+    void mediaApi.getInfo(selectedJob.job.id)
+      .then((info) => {
+        if (!canceled) {
+          setMediaInfo(info);
+        }
+      })
+      .catch(() => {
+        if (!canceled) {
+          setMediaInfo(null);
+        }
+      });
 
     void mediaApi.getSourceUrl(selectedJob.job.id)
       .then((url) => {
@@ -714,7 +743,7 @@ function TranscriptView({
       .catch(() => {
         if (!canceled) {
           setMediaUrl(null);
-          setMediaError('Audio source could not be prepared.');
+          setMediaError('Media source could not be prepared.');
         }
       });
 
@@ -750,7 +779,7 @@ function TranscriptView({
 
     setPlaybackTime(nextTime);
     if (audio) {
-      audio.currentTime = nextTime;
+      applyMediaSeek(audio, nextTime, false);
     }
   }
 
@@ -876,7 +905,7 @@ function TranscriptView({
         ) : null}
 
         <div className="transcript-main">
-          <section className="transcript-stage">
+          <section className={`transcript-stage ${selectedMediaKind === 'video' && mediaUrl ? 'has-video-preview' : ''}`}>
             {selectedJob ? (
               <>
                 <div className="job-progress-row">
@@ -905,6 +934,22 @@ function TranscriptView({
                   </div>
                 </div>
                 {selectedJob.job.errorMessage ? <div className="error-text"><AlertTriangle size={16} /> {selectedJob.job.errorMessage}</div> : null}
+                {selectedMediaKind === 'video' && mediaUrl ? (
+                  <VideoPreview
+                    collapsed={videoPreviewCollapsed}
+                    currentTime={playbackTime}
+                    duration={resolvedPlaybackDuration}
+                    mediaRef={audioRef}
+                    mediaUrl={mediaUrl}
+                    onDurationChange={setPlaybackDuration}
+                    onError={setMediaError}
+                    onTimeChange={setPlaybackTime}
+                    playbackSpeed={playbackSpeed}
+                    playing={playing}
+                    setCollapsed={setVideoPreviewCollapsed}
+                    setPlaying={setPlaying}
+                  />
+                ) : null}
                 {segments.length === 0 ? (
                   <EmptyState title="Transcript pending" body="Transcript text will appear here as the job progresses." />
                 ) : (
@@ -936,11 +981,14 @@ function TranscriptView({
             disabled={!selectedJob}
             duration={resolvedPlaybackDuration}
             mediaError={mediaError}
+            mediaKind={selectedMediaKind}
             mediaUrl={mediaUrl}
             onDurationChange={setPlaybackDuration}
             onError={setMediaError}
             onTimeChange={setPlaybackTime}
+            playbackSpeed={playbackSpeed}
             playing={playing}
+            setPlaybackSpeed={setPlaybackSpeed}
             waveformLoading={waveformLoading}
             waveformPeaks={waveformPeaks}
             setPlaying={setPlaying}
@@ -1272,15 +1320,97 @@ function VirtualizedSegmentList({ activeSegmentIndex, onSeek, segments }: Virtua
   );
 }
 
+type VideoPreviewProps = {
+  collapsed: boolean;
+  currentTime: number;
+  duration: number | null;
+  mediaRef: MutableRefObject<HTMLMediaElement | null>;
+  mediaUrl: string;
+  onDurationChange: (duration: number | null) => void;
+  onError: (message: string | null) => void;
+  onTimeChange: (time: number) => void;
+  playbackSpeed: number;
+  playing: boolean;
+  setCollapsed: (collapsed: boolean) => void;
+  setPlaying: (playing: boolean) => void;
+};
+
+function VideoPreview({
+  collapsed,
+  currentTime,
+  duration,
+  mediaRef,
+  mediaUrl,
+  onDurationChange,
+  onError,
+  onTimeChange,
+  playbackSpeed,
+  playing,
+  setCollapsed,
+  setPlaying
+}: VideoPreviewProps): ReactElement {
+  return (
+    <section className={`video-preview-panel ${collapsed ? 'collapsed' : ''}`} aria-label="Video preview">
+      <div className="video-preview-header">
+        <span><Video size={14} /> Video preview</span>
+        <button className="secondary-action compact" onClick={() => setCollapsed(!collapsed)} type="button">
+          {collapsed ? 'Show' : 'Hide'}
+        </button>
+      </div>
+      <button
+        aria-hidden={collapsed}
+        className="video-preview-surface"
+        onClick={() => setPlaying(!playing)}
+        tabIndex={collapsed ? -1 : 0}
+        title={playing ? 'Pause video' : 'Play video'}
+        type="button"
+      >
+        <video
+          onDurationChange={(event) => {
+            const nextDuration = event.currentTarget.duration;
+            onDurationChange(Number.isFinite(nextDuration) ? nextDuration : null);
+          }}
+          onEnded={(event) => {
+            const nextTime = Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : event.currentTarget.currentTime;
+            onTimeChange(nextTime);
+            setPlaying(false);
+          }}
+          onError={() => {
+            setPlaying(false);
+            onError('Video source could not be loaded.');
+          }}
+          onLoadedMetadata={(event) => {
+            const nextDuration = event.currentTarget.duration;
+            event.currentTarget.playbackRate = playbackSpeed;
+            onDurationChange(Number.isFinite(nextDuration) ? nextDuration : null);
+            onTimeChange(event.currentTarget.currentTime);
+          }}
+          onPause={() => setPlaying(false)}
+          onPlay={() => setPlaying(true)}
+          onSeeked={(event) => onTimeChange(event.currentTarget.currentTime)}
+          onSeeking={(event) => logPlaybackDiagnostic('video:seeking', event.currentTarget)}
+          onStalled={(event) => logPlaybackDiagnostic('video:stalled', event.currentTarget)}
+          onWaiting={(event) => logPlaybackDiagnostic('video:waiting', event.currentTarget)}
+          playsInline
+          preload="metadata"
+          ref={(element) => {
+            mediaRef.current = element;
+          }}
+          src={mediaUrl}
+        />
+        <span>{formatTime(currentTime)} / {formatDuration(duration)}</span>
+      </button>
+    </section>
+  );
+}
+
 type WaveformGraphProps = {
   loading: boolean;
   peaks: number[];
-  progress: number;
   scaleMode: WaveformScaleMode;
 };
 
-function WaveformGraph({ loading, peaks, progress, scaleMode }: WaveformGraphProps): ReactElement {
-  const clipId = useId().replace(/:/g, '');
+const WaveformGraph = memo(function WaveformGraph({ loading, peaks, scaleMode }: WaveformGraphProps): ReactElement {
   const width = 1200;
   const height = 96;
   const bars = useMemo(() => {
@@ -1299,40 +1429,32 @@ function WaveformGraph({ loading, peaks, progress, scaleMode }: WaveformGraphPro
       };
     });
   }, [peaks, scaleMode]);
-  const playedWidth = Math.max(0, Math.min(width, progress * width));
 
   return (
     <svg className={`waveform ${loading ? 'loading' : ''}`} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
-      <defs>
-        <clipPath id={clipId}>
-          <rect height={height} width={playedWidth} x={0} y={0} />
-        </clipPath>
-      </defs>
       <g>
         {bars.map((bar) => (
           <rect height={bar.height} key={bar.key} rx={1.5} width={bar.width} x={bar.x} y={bar.y} />
         ))}
       </g>
-      <g clipPath={`url(#${clipId})`}>
-        {bars.map((bar) => (
-          <rect className="played" height={bar.height} key={`played-${bar.key}`} rx={1.5} width={bar.width} x={bar.x} y={bar.y} />
-        ))}
-      </g>
     </svg>
   );
-}
+});
 
 type AudioDeckProps = {
-  audioRef: MutableRefObject<HTMLAudioElement | null>;
+  audioRef: MutableRefObject<HTMLMediaElement | null>;
   currentTime: number;
   disabled: boolean;
   duration: number | null;
   mediaError: string | null;
+  mediaKind: MediaKind;
   mediaUrl: string | null;
   onDurationChange: (duration: number | null) => void;
   onError: (message: string | null) => void;
   onTimeChange: (time: number) => void;
+  playbackSpeed: number;
   playing: boolean;
+  setPlaybackSpeed: (speed: number) => void;
   setPlaying: (playing: boolean) => void;
   waveformLoading: boolean;
   waveformPeaks: number[];
@@ -1344,11 +1466,14 @@ function AudioDeck({
   disabled,
   duration,
   mediaError,
+  mediaKind,
   mediaUrl,
   onDurationChange,
   onError,
   onTimeChange,
+  playbackSpeed,
   playing,
+  setPlaybackSpeed,
   setPlaying,
   waveformLoading,
   waveformPeaks
@@ -1358,11 +1483,14 @@ function AudioDeck({
   const [volumeOpen, setVolumeOpen] = useState(false);
   const [speedOpen, setSpeedOpen] = useState(false);
   const [scaleOpen, setScaleOpen] = useState(false);
-  const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [visualTime, setVisualTime] = useState(currentTime);
+  const [draftSeekTime, setDraftSeekTime] = useState<number | null>(null);
   const [waveformScaleMode, setWaveformScaleMode] = useState<WaveformScaleMode>('actual');
+  const lastPlaybackSyncRef = useRef(0);
+  const lastPreviewSeekRef = useRef(0);
   const resolvedDuration = duration && Number.isFinite(duration) && duration > 0 ? duration : null;
-  const displayTime = resolvedDuration ? Math.min(visualTime, resolvedDuration) : visualTime;
+  const mediaTime = resolvedDuration ? Math.min(visualTime, resolvedDuration) : visualTime;
+  const displayTime = draftSeekTime ?? mediaTime;
   const currentProgress = resolvedDuration ? Math.min(1, Math.max(0, displayTime / resolvedDuration)) : 0;
   const canPlay = !disabled && Boolean(mediaUrl) && !mediaError;
   const volumePercent = Math.round((muted ? 0 : volume) * 100);
@@ -1384,12 +1512,12 @@ function AudioDeck({
     if (playing) {
       void audio.play().catch(() => {
         setPlaying(false);
-        onError('Audio playback could not start.');
+        onError('Media playback could not start.');
       });
     } else {
       audio.pause();
     }
-  }, [audioRef, canPlay, onError, playing, setPlaying]);
+  }, [audioRef, canPlay, mediaUrl, onError, playing, setPlaying]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -1408,7 +1536,7 @@ function AudioDeck({
     }
 
     audio.playbackRate = playbackSpeed;
-  }, [audioRef, playbackSpeed]);
+  }, [audioRef, mediaUrl, playbackSpeed]);
 
   useEffect(() => {
     if (!playing) {
@@ -1422,11 +1550,15 @@ function AudioDeck({
     }
 
     let animationFrame = 0;
+    let lastUpdate = 0;
 
-    const updateVisualTime = (): void => {
+    const updateVisualTime = (timestamp: number): void => {
       const audio = audioRef.current;
-      if (audio) {
-        setVisualTime(audio.currentTime);
+      if (audio && timestamp - lastUpdate >= 33) {
+        const nextTime = audio.currentTime;
+        setVisualTime(nextTime);
+        syncPlaybackSample(nextTime);
+        lastUpdate = timestamp;
       }
       animationFrame = window.requestAnimationFrame(updateVisualTime);
     };
@@ -1434,7 +1566,7 @@ function AudioDeck({
     animationFrame = window.requestAnimationFrame(updateVisualTime);
 
     return () => window.cancelAnimationFrame(animationFrame);
-  }, [audioRef, canPlay, playing]);
+  }, [audioRef, canPlay, onTimeChange, playing]);
 
   function skipBy(seconds: number): void {
     const audio = audioRef.current;
@@ -1444,61 +1576,101 @@ function AudioDeck({
 
     const unclamped = audio.currentTime + seconds;
     const nextTime = resolvedDuration ? Math.min(resolvedDuration, Math.max(0, unclamped)) : Math.max(0, unclamped);
-    audio.currentTime = nextTime;
+    applyMediaSeek(audio, nextTime, false);
     setVisualTime(nextTime);
-    onTimeChange(nextTime);
+    syncPlaybackSample(nextTime, true);
+  }
+
+  function syncPlaybackSample(time: number, force = false): void {
+    const now = performance.now();
+    if (!force && now - lastPlaybackSyncRef.current < playbackSyncIntervalMs) {
+      return;
+    }
+
+    lastPlaybackSyncRef.current = now;
+    onTimeChange(time);
+  }
+
+  function previewSeek(seconds: number): void {
+    if (!resolvedDuration) {
+      return;
+    }
+
+    const audio = audioRef.current;
+    const nextTime = Math.min(resolvedDuration, Math.max(0, seconds));
+    setDraftSeekTime(nextTime);
+    setVisualTime(nextTime);
+
+    if (!audio || !canPlay || mediaKind === 'video') {
+      return;
+    }
+
+    const now = performance.now();
+    if (now - lastPreviewSeekRef.current < audioSeekThrottleMs) {
+      return;
+    }
+
+    applyMediaSeek(audio, nextTime, false);
+    lastPreviewSeekRef.current = now;
   }
 
   function seekTo(seconds: number): void {
     const audio = audioRef.current;
     if (!audio || !canPlay || !resolvedDuration) {
+      setDraftSeekTime(null);
       return;
     }
 
     const nextTime = Math.min(resolvedDuration, Math.max(0, seconds));
-    audio.currentTime = nextTime;
+    applyMediaSeek(audio, nextTime, false);
+    setDraftSeekTime(null);
     setVisualTime(nextTime);
-    onTimeChange(nextTime);
+    syncPlaybackSample(nextTime, true);
   }
 
   return (
-    <section className="audio-deck panel-glow" aria-label="Audio controls">
-      <audio
-        onDurationChange={(event) => {
-          const nextDuration = event.currentTarget.duration;
-          onDurationChange(Number.isFinite(nextDuration) ? nextDuration : null);
-        }}
-        onEnded={(event) => {
-          const nextTime = Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : event.currentTarget.currentTime;
-          setVisualTime(nextTime);
-          onTimeChange(nextTime);
-          setPlaying(false);
-        }}
-        onError={() => {
-          setPlaying(false);
-          onError('Audio source could not be loaded.');
-        }}
-        onLoadedMetadata={(event) => {
-          const nextDuration = event.currentTarget.duration;
-          event.currentTarget.playbackRate = playbackSpeed;
-          setVisualTime(event.currentTarget.currentTime);
-          onDurationChange(Number.isFinite(nextDuration) ? nextDuration : null);
-          onTimeChange(event.currentTarget.currentTime);
-        }}
-        onPause={() => setPlaying(false)}
-        onPlay={() => setPlaying(true)}
-        onSeeked={(event) => {
-          setVisualTime(event.currentTarget.currentTime);
-          onTimeChange(event.currentTarget.currentTime);
-        }}
-        onTimeUpdate={(event) => {
-          setVisualTime(event.currentTarget.currentTime);
-          onTimeChange(event.currentTarget.currentTime);
-        }}
-        preload="metadata"
-        ref={audioRef}
-        src={mediaUrl ?? undefined}
-      />
+    <section className="audio-deck panel-glow" aria-label="Media controls">
+      {mediaKind === 'audio' ? (
+        <audio
+          className="playback-media"
+          onDurationChange={(event) => {
+            const nextDuration = event.currentTarget.duration;
+            onDurationChange(Number.isFinite(nextDuration) ? nextDuration : null);
+          }}
+          onEnded={(event) => {
+            const nextTime = Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : event.currentTarget.currentTime;
+            setVisualTime(nextTime);
+            onTimeChange(nextTime);
+            setPlaying(false);
+          }}
+          onError={() => {
+            setPlaying(false);
+            onError('Media source could not be loaded.');
+          }}
+          onLoadedMetadata={(event) => {
+            const nextDuration = event.currentTarget.duration;
+            event.currentTarget.playbackRate = playbackSpeed;
+            setVisualTime(event.currentTarget.currentTime);
+            onDurationChange(Number.isFinite(nextDuration) ? nextDuration : null);
+            onTimeChange(event.currentTarget.currentTime);
+          }}
+          onPause={() => setPlaying(false)}
+          onPlay={() => setPlaying(true)}
+          onSeeked={(event) => {
+            setVisualTime(event.currentTarget.currentTime);
+            syncPlaybackSample(event.currentTarget.currentTime, true);
+            logPlaybackDiagnostic('audio:seeked', event.currentTarget);
+          }}
+          onSeeking={(event) => logPlaybackDiagnostic('audio:seeking', event.currentTarget)}
+          onStalled={(event) => logPlaybackDiagnostic('audio:stalled', event.currentTarget)}
+          onWaiting={(event) => logPlaybackDiagnostic('audio:waiting', event.currentTarget)}
+          preload="metadata"
+          ref={(element) => {
+            audioRef.current = element;
+          }}
+          src={mediaUrl ?? undefined}
+        />
+      ) : null}
       {mediaError ? (
         <div className="deck-error">
           <Zap size={15} />
@@ -1520,14 +1692,29 @@ function AudioDeck({
           </div>
           <div className="waveform-wrap">
             <div className="waveform-control">
-              <WaveformGraph loading={waveformLoading} peaks={waveformPeaks} progress={currentProgress} scaleMode={waveformScaleMode} />
+              <WaveformGraph loading={waveformLoading} peaks={waveformPeaks} scaleMode={waveformScaleMode} />
+              <div className="waveform-progress-overlay" style={{ transform: `scaleX(${currentProgress})` }} />
+              <div className="waveform-playhead" style={{ left: `${currentProgress * 100}%` }} />
               <input
-                aria-label="Seek audio"
+                aria-label="Seek media"
                 className="audio-seek"
                 disabled={!canPlay || !resolvedDuration}
                 max={resolvedDuration ?? 0}
                 min={0}
-                onChange={(event) => seekTo(Number(event.target.value))}
+                onBlur={(event) => {
+                  if (draftSeekTime !== null) {
+                    seekTo(Number(event.currentTarget.value));
+                  }
+                }}
+                onChange={(event) => previewSeek(Number(event.target.value))}
+                onKeyUp={(event) => {
+                  if (['ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) {
+                    seekTo(Number(event.currentTarget.value));
+                  }
+                }}
+                onPointerCancel={() => setDraftSeekTime(null)}
+                onPointerDown={() => setDraftSeekTime(displayTime)}
+                onPointerUp={(event) => seekTo(Number(event.currentTarget.value))}
                 step={0.01}
                 type="range"
                 value={resolvedDuration ? Math.min(displayTime, resolvedDuration) : 0}
@@ -1862,11 +2049,43 @@ function statusClass(status: JobStatus): string {
   return 'optional';
 }
 
+function applyMediaSeek(media: HTMLMediaElement, seconds: number, approximate: boolean): void {
+  const fastSeek = (media as HTMLMediaElement & { fastSeek?: (time: number) => void }).fastSeek;
+  if (approximate && typeof fastSeek === 'function') {
+    try {
+      fastSeek.call(media, seconds);
+      return;
+    } catch {
+      // Fall back to precise seeking when the runtime exposes fastSeek but cannot use it for this media.
+    }
+  }
+
+  media.currentTime = seconds;
+}
+
+function logPlaybackDiagnostic(eventName: string, media: HTMLMediaElement): void {
+  if (!import.meta.env.DEV || window.localStorage.getItem('voxmire:playbackDiagnostics') !== '1') {
+    return;
+  }
+
+  console.debug('[voxmire:playback]', eventName, {
+    currentTime: media.currentTime,
+    networkState: media.networkState,
+    readyState: media.readyState,
+    seekable: timeRangesToTuples(media.seekable),
+    seeking: media.seeking
+  });
+}
+
+function timeRangesToTuples(ranges: TimeRanges): Array<[number, number]> {
+  return Array.from({ length: ranges.length }, (_, index) => [ranges.start(index), ranges.end(index)]);
+}
+
 function statusLabel(status: JobStatus): string {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-function transcriptSubtitle(job: JobWithSource, progress: number): string {
+function transcriptSubtitle(job: JobWithSource, progress: number, mediaKind: MediaKind): string {
   if (activeStatuses.includes(job.job.status) || job.job.status === 'paused') {
     return `${statusLabel(job.job.status)} / ${progress}%`;
   }
@@ -1879,7 +2098,24 @@ function transcriptSubtitle(job: JobWithSource, progress: number): string {
     return 'Canceled';
   }
 
-  return `${formatDuration(job.sourceFile.durationSeconds)} audio`;
+  return `${formatDuration(job.sourceFile.durationSeconds)} ${mediaKindLabel(mediaKind)}`;
+}
+
+function mediaKindLabel(kind: MediaKind): string {
+  return kind === 'video' ? 'video' : 'audio';
+}
+
+function mediaKindFromExtension(extension: string): MediaKind {
+  switch (extension.toLowerCase().replace(/^\./, '')) {
+    case 'mp4':
+    case 'mov':
+    case 'mkv':
+    case 'webm':
+    case 'avi':
+      return 'video';
+    default:
+      return 'audio';
+  }
 }
 
 function exportFormatLabel(format: ExportFormat): string {

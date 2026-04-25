@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 import { Readable } from 'node:stream';
 import { modelProfiles, resolveTranscriptionPreset } from '@voxmire/core';
 import { type TranscriptionProgressEvent, createJobInputSchema, exportTranscriptInputSchema } from '@voxmire/contracts';
-import { detectWhisperEngines, getMachineProfile, getResourceStatus, resolveFfmpegExecutable, type ResourcePaths } from '@voxmire/engine';
+import { detectWhisperEngines, getMachineProfile, getResourceStatus, resolveFfmpegExecutable, resolveFfprobeExecutable, type ResourcePaths } from '@voxmire/engine';
 import { createJsonlRuntimeLogger, createVoxmireRuntime, type VoxmireRuntime } from '@voxmire/runtime';
 import { openVoxmireDatabase, type VoxmireDatabase } from '@voxmire/storage';
 
@@ -14,10 +14,20 @@ let db: VoxmireDatabase;
 let resources: ResourcePaths;
 let runtime: VoxmireRuntime;
 const waveformCache = new Map<string, Promise<MediaWaveformResult | null>>();
+const mediaInfoCache = new Map<string, Promise<MediaInfoResult>>();
+
+type MediaKind = 'audio' | 'video';
 
 type MediaWaveformResult = {
   durationSeconds: number | null;
   peaks: number[];
+};
+
+type MediaInfoResult = {
+  contentType: string;
+  hasAudio: boolean;
+  hasVideo: boolean;
+  kind: MediaKind;
 };
 
 protocol.registerSchemesAsPrivileged([
@@ -86,6 +96,20 @@ function registerIpcHandlers(): void {
   ipcMain.handle('media:get-source-url', (_event, jobId: string) => {
     const job = runtime.getJob(jobId);
     return job ? `voxmire-media://job/${encodeURIComponent(jobId)}` : null;
+  });
+  ipcMain.handle('media:get-info', (_event, jobId: string) => {
+    const job = runtime.getJob(jobId);
+    if (!job) {
+      return null;
+    }
+
+    let cached = mediaInfoCache.get(jobId);
+    if (!cached) {
+      cached = createMediaInfo(job.sourceFile.path);
+      mediaInfoCache.set(jobId, cached);
+    }
+
+    return cached;
   });
   ipcMain.handle('media:get-waveform', (_event, jobId: string) => {
     const job = runtime.getJob(jobId);
@@ -314,9 +338,61 @@ function mediaContentType(filePath: string): string {
       return 'video/quicktime';
     case 'webm':
       return 'video/webm';
+    case 'mkv':
+      return 'video/x-matroska';
+    case 'avi':
+      return 'video/x-msvideo';
     default:
       return 'application/octet-stream';
   }
+}
+
+async function createMediaInfo(sourcePath: string): Promise<MediaInfoResult> {
+  const fallback = fallbackMediaInfo(sourcePath);
+  if (!existsSync(sourcePath) || !statSync(sourcePath).isFile()) {
+    return fallback;
+  }
+
+  const ffprobePath = resolveFfprobeExecutable(resources);
+  if (!existsSync(ffprobePath)) {
+    return fallback;
+  }
+
+  try {
+    const output = await runBufferedProcess(ffprobePath, [
+      '-v',
+      'error',
+      '-show_entries',
+      'stream=codec_type',
+      '-of',
+      'json',
+      sourcePath
+    ]);
+    const parsed = JSON.parse(output.toString('utf8')) as { streams?: Array<{ codec_type?: string }> };
+    const streams = Array.isArray(parsed.streams) ? parsed.streams : [];
+    const hasVideo = streams.some((stream) => stream.codec_type === 'video');
+    const hasAudio = streams.some((stream) => stream.codec_type === 'audio');
+
+    return {
+      contentType: mediaContentType(sourcePath),
+      hasAudio,
+      hasVideo,
+      kind: hasVideo ? 'video' : 'audio'
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function fallbackMediaInfo(sourcePath: string): MediaInfoResult {
+  const contentType = mediaContentType(sourcePath);
+  const kind: MediaKind = contentType.startsWith('video/') ? 'video' : 'audio';
+  return {
+    contentType,
+    hasAudio: true,
+    hasVideo: kind === 'video',
+    kind
+  };
 }
 
 async function createWaveformPeaks(sourcePath: string, durationSeconds: number | null): Promise<MediaWaveformResult | null> {
