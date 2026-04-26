@@ -253,14 +253,22 @@ export function getJob(db: VoxmireDatabase, jobId: string): TranscriptionJob | n
 export function saveTranscriptSegment(db: VoxmireDatabase, segment: TranscriptSegment): TranscriptSegment {
   const parsedSegment = transcriptSegmentSchema.parse(segment);
   db.prepare(
-    `INSERT INTO transcript_segments (id, job_id, segment_index, start_seconds, end_seconds, text, confidence, created_at)
-     VALUES (@id, @jobId, @index, @startSeconds, @endSeconds, @text, @confidence, @createdAt)
+    `INSERT INTO transcript_segments (
+       id, job_id, segment_index, start_seconds, end_seconds, text, original_text, confidence, created_at, edited_at
+     )
+     VALUES (
+       @id, @jobId, @index, @startSeconds, @endSeconds, @text, @originalText, @confidence, @createdAt, @editedAt
+     )
      ON CONFLICT(job_id, segment_index) DO UPDATE SET
        start_seconds = excluded.start_seconds,
        end_seconds = excluded.end_seconds,
        text = CASE
          WHEN transcript_segments.edited_at IS NULL THEN excluded.text
          ELSE transcript_segments.text
+       END,
+       original_text = CASE
+         WHEN transcript_segments.edited_at IS NULL THEN excluded.original_text
+         ELSE transcript_segments.original_text
        END,
        confidence = excluded.confidence`
   ).run(toSegmentRow(parsedSegment));
@@ -296,6 +304,145 @@ export function updateTranscriptSegmentText(
   });
 
   return getTranscriptSegment(db, jobId, segmentId);
+}
+
+export function splitTranscriptSegment(
+  db: VoxmireDatabase,
+  jobId: string,
+  segmentId: string,
+  offset: number
+): TranscriptSegment[] {
+  const current = getTranscriptSegment(db, jobId, segmentId);
+  if (!current || offset <= 0 || offset >= current.text.length) {
+    return getTranscriptSegments(db, jobId);
+  }
+
+  const leftText = current.text.slice(0, offset).trimEnd();
+  const rightText = current.text.slice(offset).trimStart();
+  if (!leftText || !rightText) {
+    return getTranscriptSegments(db, jobId);
+  }
+
+  const now = new Date().toISOString();
+  const splitRatio = Math.min(Math.max(offset / current.text.length, 0.05), 0.95);
+  const splitSeconds = current.startSeconds + (current.endSeconds - current.startSeconds) * splitRatio;
+  const originalText = current.originalText ?? current.text;
+  const nextSegment: TranscriptSegment = {
+    id: createId('seg'),
+    jobId,
+    index: current.index + 1,
+    startSeconds: splitSeconds,
+    endSeconds: current.endSeconds,
+    text: rightText,
+    originalText,
+    confidence: current.confidence,
+    createdAt: now,
+    editedAt: now
+  };
+
+  runTransaction(db, () => {
+    db.prepare(
+      `UPDATE transcript_segments
+       SET segment_index = -(segment_index + 1)
+       WHERE job_id = @jobId
+         AND segment_index > @index`
+    ).run({ jobId, index: current.index });
+
+    db.prepare(
+      `UPDATE transcript_segments
+       SET text = @text,
+           end_seconds = @endSeconds,
+           original_text = @originalText,
+           edited_at = @editedAt
+       WHERE job_id = @jobId
+         AND id = @segmentId`
+    ).run({
+      jobId,
+      segmentId,
+      text: leftText,
+      endSeconds: splitSeconds,
+      originalText,
+      editedAt: now
+    });
+
+    db.prepare(
+      `INSERT INTO transcript_segments (
+         id, job_id, segment_index, start_seconds, end_seconds, text, original_text, confidence, created_at, edited_at
+       )
+       VALUES (
+         @id, @jobId, @index, @startSeconds, @endSeconds, @text, @originalText, @confidence, @createdAt, @editedAt
+       )`
+    ).run(toSegmentRow(nextSegment));
+
+    db.prepare(
+      `UPDATE transcript_segments
+       SET segment_index = -segment_index
+       WHERE job_id = @jobId
+         AND segment_index < 0`
+    ).run({ jobId });
+  });
+
+  return getTranscriptSegments(db, jobId);
+}
+
+export function mergeTranscriptSegment(
+  db: VoxmireDatabase,
+  jobId: string,
+  segmentId: string,
+  direction: 'previous' | 'next'
+): TranscriptSegment[] {
+  const segments = getTranscriptSegments(db, jobId);
+  const currentIndex = segments.findIndex((segment) => segment.id === segmentId);
+  if (currentIndex < 0) {
+    return segments;
+  }
+
+  const neighborIndex = direction === 'previous' ? currentIndex - 1 : currentIndex + 1;
+  const neighbor = segments[neighborIndex];
+  const current = segments[currentIndex];
+  if (!neighbor || !current) {
+    return segments;
+  }
+
+  const first = direction === 'previous' ? neighbor : current;
+  const second = direction === 'previous' ? current : neighbor;
+  const now = new Date().toISOString();
+  const mergedText = joinSegmentText(first.text, second.text);
+  const originalText = first.originalText ?? second.originalText ?? first.text;
+
+  runTransaction(db, () => {
+    db.prepare(
+      `UPDATE transcript_segments
+       SET text = @text,
+           start_seconds = @startSeconds,
+           end_seconds = @endSeconds,
+           original_text = @originalText,
+           edited_at = @editedAt,
+           confidence = @confidence
+       WHERE job_id = @jobId
+         AND id = @segmentId`
+    ).run({
+      jobId,
+      segmentId: first.id,
+      text: mergedText,
+      startSeconds: first.startSeconds,
+      endSeconds: second.endSeconds,
+      originalText,
+      editedAt: now,
+      confidence: mergeConfidence(first.confidence, second.confidence)
+    });
+
+    db.prepare('DELETE FROM transcript_segments WHERE job_id = ? AND id = ?').run(jobId, second.id);
+
+    db.prepare(
+      `UPDATE transcript_segments
+       SET segment_index = segment_index - 1
+       WHERE job_id = @jobId
+         AND segment_index > @removedIndex`
+    ).run({ jobId, removedIndex: second.index });
+  });
+
+  return getTranscriptSegments(db, jobId);
 }
 
 export function saveTranscriptionChunk(db: VoxmireDatabase, chunk: TranscriptionChunk): TranscriptionChunk {
@@ -550,7 +697,42 @@ function toSegmentRow(segment: TranscriptSegment): Record<string, SQLInputValue>
     startSeconds: segment.startSeconds,
     endSeconds: segment.endSeconds,
     text: segment.text,
+    originalText: segment.originalText ?? null,
     confidence: segment.confidence,
-    createdAt: segment.createdAt
+    createdAt: segment.createdAt,
+    editedAt: segment.editedAt ?? null
   };
+}
+
+function runTransaction(db: VoxmireDatabase, operation: () => void): void {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    operation();
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+function joinSegmentText(first: string, second: string): string {
+  const left = first.trimEnd();
+  const right = second.trimStart();
+  if (!left) {
+    return right;
+  }
+  if (!right) {
+    return left;
+  }
+  return `${left} ${right}`;
+}
+
+function mergeConfidence(first: number | null, second: number | null): number | null {
+  if (first === null) {
+    return second;
+  }
+  if (second === null) {
+    return first;
+  }
+  return (first + second) / 2;
 }

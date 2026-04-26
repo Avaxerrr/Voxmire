@@ -30,6 +30,8 @@ import {
   SkipBack,
   SkipForward,
   SlidersHorizontal,
+  Scissors,
+  Merge,
   Sparkles,
   Square,
   Trash2,
@@ -436,6 +438,48 @@ export function App(): ReactElement {
     }
   }
 
+  async function splitTranscriptSegment(segmentId: string, offset: number): Promise<TranscriptSegment[] | null> {
+    if (!selectedJob) {
+      return null;
+    }
+
+    if (!api) {
+      setMessage('Desktop bridge unavailable.');
+      return null;
+    }
+
+    try {
+      const updatedSegments = await api.transcripts.splitSegment(selectedJob.job.id, segmentId, offset);
+      setSegments(updatedSegments);
+      setMessage('Transcript segment split.');
+      return updatedSegments;
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to split transcript segment.');
+      return null;
+    }
+  }
+
+  async function mergeTranscriptSegment(segmentId: string, direction: 'previous' | 'next'): Promise<TranscriptSegment[] | null> {
+    if (!selectedJob) {
+      return null;
+    }
+
+    if (!api) {
+      setMessage('Desktop bridge unavailable.');
+      return null;
+    }
+
+    try {
+      const updatedSegments = await api.transcripts.mergeSegment(selectedJob.job.id, segmentId, direction);
+      setSegments(updatedSegments);
+      setMessage('Transcript segments merged.');
+      return updatedSegments;
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to merge transcript segments.');
+      return null;
+    }
+  }
+
   function openProjectDetails(jobId: string): void {
     setDetailsJobId(jobId);
   }
@@ -586,6 +630,8 @@ export function App(): ReactElement {
             selectedJob={selectedJob}
             segments={segments}
             setPlaying={setPlaying}
+            splitSegment={splitTranscriptSegment}
+            mergeSegment={mergeTranscriptSegment}
             updateSegment={updateTranscriptSegment}
           />
         ) : null}
@@ -828,6 +874,8 @@ type TranscriptViewProps = {
   selectedJob: JobWithSource | null;
   segments: TranscriptSegment[];
   setPlaying: (playing: boolean) => void;
+  splitSegment: (segmentId: string, offset: number) => Promise<TranscriptSegment[] | null>;
+  mergeSegment: (segmentId: string, direction: 'previous' | 'next') => Promise<TranscriptSegment[] | null>;
   updateSegment: (segmentId: string, text: string) => Promise<TranscriptSegment | null>;
 };
 
@@ -848,6 +896,8 @@ function TranscriptView({
   selectedJob,
   segments,
   setPlaying,
+  splitSegment,
+  mergeSegment,
   updateSegment,
 }: TranscriptViewProps): ReactElement {
   const [switcherOpen, setSwitcherOpen] = useState(false);
@@ -1208,13 +1258,27 @@ function TranscriptView({
                     {segments.length === 0 ? (
                       <EmptyState title="Transcript pending" body="Transcript text will appear here as the job progresses." />
                     ) : (
-                      <VirtualizedSegmentList activeSegmentIndex={activeSegmentIndex} onSeek={seekToSegment} onUpdateSegment={updateSegment} segments={segments} />
+                      <VirtualizedSegmentList
+                        activeSegmentIndex={activeSegmentIndex}
+                        onMergeSegment={mergeSegment}
+                        onSeek={seekToSegment}
+                        onSplitSegment={splitSegment}
+                        onUpdateSegment={updateSegment}
+                        segments={segments}
+                      />
                     )}
                   </div>
                 ) : segments.length === 0 ? (
                   <EmptyState title="Transcript pending" body="Transcript text will appear here as the job progresses." />
                 ) : (
-                  <VirtualizedSegmentList activeSegmentIndex={activeSegmentIndex} onSeek={seekToSegment} onUpdateSegment={updateSegment} segments={segments} />
+                  <VirtualizedSegmentList
+                    activeSegmentIndex={activeSegmentIndex}
+                    onMergeSegment={mergeSegment}
+                    onSeek={seekToSegment}
+                    onSplitSegment={splitSegment}
+                    onUpdateSegment={updateSegment}
+                    segments={segments}
+                  />
                 )}
               </>
             ) : (
@@ -1800,16 +1864,26 @@ function DeleteProjectModal({ busy, project, onClose, onDelete }: DeleteProjectM
 
 type VirtualizedSegmentListProps = {
   activeSegmentIndex: number;
+  onMergeSegment: (segmentId: string, direction: 'previous' | 'next') => Promise<TranscriptSegment[] | null>;
   onSeek: (segment: TranscriptSegment) => void;
+  onSplitSegment: (segmentId: string, offset: number) => Promise<TranscriptSegment[] | null>;
   onUpdateSegment: (segmentId: string, text: string) => Promise<TranscriptSegment | null>;
   segments: TranscriptSegment[];
 };
 
-function VirtualizedSegmentList({ activeSegmentIndex, onSeek, onUpdateSegment, segments }: VirtualizedSegmentListProps): ReactElement {
+function VirtualizedSegmentList({
+  activeSegmentIndex,
+  onMergeSegment,
+  onSeek,
+  onSplitSegment,
+  onUpdateSegment,
+  segments
+}: VirtualizedSegmentListProps): ReactElement {
   const [editingSegmentId, setEditingSegmentId] = useState<string | null>(null);
   const [draftText, setDraftText] = useState('');
   const [savingSegmentId, setSavingSegmentId] = useState<string | null>(null);
   const [saveErrorSegmentId, setSaveErrorSegmentId] = useState<string | null>(null);
+  const [cursorOffset, setCursorOffset] = useState(0);
   const scrollParentRef = useRef<HTMLDivElement | null>(null);
   const rowVirtualizer = useVirtualizer({
     count: segments.length,
@@ -1829,11 +1903,13 @@ function VirtualizedSegmentList({ activeSegmentIndex, onSeek, onUpdateSegment, s
     setSaveErrorSegmentId(null);
     setEditingSegmentId(segment.id);
     setDraftText(segment.text);
+    setCursorOffset(segment.text.length);
   }
 
   function cancelEditing(): void {
     setEditingSegmentId(null);
     setDraftText('');
+    setCursorOffset(0);
   }
 
   async function saveSegmentText(segment: TranscriptSegment, nextText: string): Promise<boolean> {
@@ -1879,8 +1955,55 @@ function VirtualizedSegmentList({ activeSegmentIndex, onSeek, onUpdateSegment, s
 
     setEditingSegmentId(nextSegment.id);
     setDraftText(nextSegment.text);
+    setCursorOffset(nextSegment.text.length);
     rowVirtualizer.scrollToIndex(currentIndex + 1, { align: 'center' });
     return true;
+  }
+
+  async function splitSegment(segment: TranscriptSegment, offset: number, currentIndex: number): Promise<void> {
+    const text = segment.id === editingSegmentId ? draftText : segment.text;
+    const saved = await saveSegmentText(segment, text);
+    if (!saved) {
+      return;
+    }
+
+    const splitOffset = Math.max(1, Math.min(offset, text.trimEnd().length - 1));
+    const updatedSegments = await onSplitSegment(segment.id, splitOffset);
+    if (!updatedSegments) {
+      setSaveErrorSegmentId(segment.id);
+      return;
+    }
+
+    const nextSegment = updatedSegments[currentIndex + 1] ?? updatedSegments[currentIndex];
+    if (nextSegment) {
+      setEditingSegmentId(nextSegment.id);
+      setDraftText(nextSegment.text);
+      setCursorOffset(0);
+      rowVirtualizer.scrollToIndex(Math.min(currentIndex + 1, updatedSegments.length - 1), { align: 'center' });
+    }
+  }
+
+  async function mergeSegment(segment: TranscriptSegment, direction: 'previous' | 'next', currentIndex: number): Promise<void> {
+    const text = segment.id === editingSegmentId ? draftText : segment.text;
+    const saved = await saveSegmentText(segment, text);
+    if (!saved) {
+      return;
+    }
+
+    const updatedSegments = await onMergeSegment(segment.id, direction);
+    if (!updatedSegments) {
+      setSaveErrorSegmentId(segment.id);
+      return;
+    }
+
+    const nextIndex = direction === 'previous' ? Math.max(currentIndex - 1, 0) : currentIndex;
+    const mergedSegment = updatedSegments[nextIndex];
+    if (mergedSegment) {
+      setEditingSegmentId(mergedSegment.id);
+      setDraftText(mergedSegment.text);
+      setCursorOffset(mergedSegment.text.length);
+      rowVirtualizer.scrollToIndex(nextIndex, { align: 'center' });
+    }
   }
 
   useEffect(() => {
@@ -1924,15 +2047,22 @@ function VirtualizedSegmentList({ activeSegmentIndex, onSeek, onUpdateSegment, s
             >
               <EditableSegmentRow
                 active={active}
+                canMergeNext={virtualRow.index < segments.length - 1}
+                canMergePrevious={virtualRow.index > 0}
+                cursorOffset={cursorOffset}
                 draftText={draftText}
                 editing={editing}
                 onCancel={cancelEditing}
                 onDraftChange={setDraftText}
+                onCursorOffsetChange={setCursorOffset}
                 onFocus={() => startEditing(segment)}
+                onMergeNext={() => mergeSegment(segment, 'next', virtualRow.index)}
+                onMergePrevious={() => mergeSegment(segment, 'previous', virtualRow.index)}
                 onSave={(nextText) => saveSegmentText(segment, nextText)}
                 onSaveAndClose={(nextText) => saveAndClose(segment, nextText)}
                 onSaveAndMoveNext={(nextText) => saveAndMoveToNext(segment, nextText, virtualRow.index)}
                 onSeek={() => onSeek(segment)}
+                onSplit={(offset) => splitSegment(segment, offset, virtualRow.index)}
                 saveError={saveError}
                 saving={saving}
                 segment={segment}
@@ -1947,15 +2077,22 @@ function VirtualizedSegmentList({ activeSegmentIndex, onSeek, onUpdateSegment, s
 
 type EditableSegmentRowProps = {
   active: boolean;
+  canMergeNext: boolean;
+  canMergePrevious: boolean;
+  cursorOffset: number;
   draftText: string;
   editing: boolean;
   onCancel: () => void;
+  onCursorOffsetChange: (offset: number) => void;
   onDraftChange: (text: string) => void;
   onFocus: () => void;
+  onMergeNext: () => Promise<void>;
+  onMergePrevious: () => Promise<void>;
   onSave: (nextText: string) => Promise<boolean>;
   onSaveAndClose: (nextText: string) => Promise<void>;
   onSaveAndMoveNext: (nextText: string) => Promise<boolean>;
   onSeek: () => void;
+  onSplit: (offset: number) => Promise<void>;
   saveError: boolean;
   saving: boolean;
   segment: TranscriptSegment;
@@ -1963,21 +2100,29 @@ type EditableSegmentRowProps = {
 
 function EditableSegmentRow({
   active,
+  canMergeNext,
+  canMergePrevious,
+  cursorOffset,
   draftText,
   editing,
   onCancel,
+  onCursorOffsetChange,
   onDraftChange,
   onSave,
   onFocus,
+  onMergeNext,
+  onMergePrevious,
   onSaveAndClose,
   onSaveAndMoveNext,
   onSeek,
+  onSplit,
   saveError,
   saving,
   segment
 }: EditableSegmentRowProps): ReactElement {
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const skipBlurSaveRef = useRef(false);
+  const activeText = editing ? draftText : segment.text;
 
   useEffect(() => {
     if (!editing) {
@@ -2040,22 +2185,82 @@ function EditableSegmentRow({
     }
   }
 
+  function syncCursorOffset(): void {
+    const textArea = textAreaRef.current;
+    if (textArea) {
+      onCursorOffsetChange(textArea.selectionStart);
+    }
+  }
+
+  function handleStructureToolPointerDown(event: ReactPointerEvent<HTMLButtonElement>): void {
+    event.preventDefault();
+  }
+
+  function runStructureTool(action: () => Promise<void>): void {
+    skipBlurSaveRef.current = true;
+    void action().finally(() => {
+      skipBlurSaveRef.current = false;
+    });
+  }
+
+  const canSplit = editing && activeText.trim().length > 1 && cursorOffset > 0 && cursorOffset < activeText.length;
+
   return (
     <div className={`segment-row ${active ? 'active' : ''} ${editing ? 'editing' : ''} ${segment.editedAt ? 'edited' : ''}`}>
-      <button aria-label={`Seek to ${formatTime(segment.startSeconds)}`} className="segment-seek-target" onClick={onSeek} type="button">
-        <time>{formatTime(segment.startSeconds)} - {formatTime(segment.endSeconds)}</time>
-      </button>
+      <div className="segment-gutter">
+        <button aria-label={`Seek to ${formatTime(segment.startSeconds)}`} className="segment-seek-target" onClick={onSeek} type="button">
+          <time>{formatTime(segment.startSeconds)} - {formatTime(segment.endSeconds)}</time>
+        </button>
+        <div className="segment-structure-tools">
+          <button
+            aria-label="Merge with previous segment"
+            disabled={!canMergePrevious || saving}
+            onClick={() => runStructureTool(onMergePrevious)}
+            onPointerDown={handleStructureToolPointerDown}
+            title="Merge with previous"
+            type="button"
+          >
+            <Merge size={13} />
+          </button>
+          <button
+            aria-label="Split segment at cursor"
+            disabled={!canSplit || saving}
+            onClick={() => runStructureTool(() => onSplit(cursorOffset))}
+            onPointerDown={handleStructureToolPointerDown}
+            title="Split at cursor"
+            type="button"
+          >
+            <Scissors size={13} />
+          </button>
+          <button
+            aria-label="Merge with next segment"
+            disabled={!canMergeNext || saving}
+            onClick={() => runStructureTool(onMergeNext)}
+            onPointerDown={handleStructureToolPointerDown}
+            title="Merge with next"
+            type="button"
+          >
+            <Merge size={13} />
+          </button>
+        </div>
+      </div>
       <div className="segment-edit-stack">
         <textarea
           aria-label="Transcript segment text"
           className="segment-text-input"
           onBlur={handleEditBlur}
-          onChange={(event) => onDraftChange(event.target.value)}
+          onChange={(event) => {
+            onDraftChange(event.target.value);
+            onCursorOffsetChange(event.target.selectionStart);
+          }}
+          onClick={syncCursorOffset}
           onFocus={onFocus}
           onKeyDown={handleEditKeyDown}
+          onKeyUp={syncCursorOffset}
+          onSelect={syncCursorOffset}
           ref={textAreaRef}
           spellCheck
-          value={editing ? draftText : segment.text}
+          value={activeText}
         />
         <div className={`segment-save-state ${saving ? 'saving' : ''} ${saveError ? 'error' : ''}`} role="status">
           {saveError ? 'Not saved' : saving ? 'Saving' : segment.editedAt ? 'Edited' : ''}

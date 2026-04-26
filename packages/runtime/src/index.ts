@@ -35,10 +35,12 @@ import {
   getTranscriptSegments,
   getTranscriptionChunks,
   listJobs,
+  mergeTranscriptSegment as mergeStoredTranscriptSegment,
   renameProject,
   resetInterruptedTranscriptionChunks,
   saveTranscriptionChunk,
   saveTranscriptSegment,
+  splitTranscriptSegment as splitStoredTranscriptSegment,
   updateJobEngineBackend,
   updateJobProgress,
   updateJobStatus,
@@ -135,6 +137,32 @@ export class VoxmireRuntime {
     }
 
     return segment;
+  }
+
+  splitTranscriptSegment(jobId: string, segmentId: string, offset: number): TranscriptSegment[] {
+    const segments = splitStoredTranscriptSegment(this.options.db, jobId, segmentId, offset);
+    this.log({
+      level: 'info',
+      event: 'transcript.segment.split',
+      jobId,
+      chunkId: null,
+      message: 'Split transcript segment.',
+      details: { segmentId, offset, segmentCount: segments.length }
+    });
+    return segments;
+  }
+
+  mergeTranscriptSegment(jobId: string, segmentId: string, direction: 'previous' | 'next'): TranscriptSegment[] {
+    const segments = mergeStoredTranscriptSegment(this.options.db, jobId, segmentId, direction);
+    this.log({
+      level: 'info',
+      event: 'transcript.segment.merged',
+      jobId,
+      chunkId: null,
+      message: 'Merged transcript segments.',
+      details: { segmentId, direction, segmentCount: segments.length }
+    });
+    return segments;
   }
 
   getProjectDetails(jobId: string): ProjectDetails | null {

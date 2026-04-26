@@ -145,6 +145,8 @@ textarea,
 .ghost-button,
 .segment-row,
 .segment-seek-target,
+.segment-structure-tools,
+.segment-structure-tools button,
 .segment-text-input,
 .segment-save-state,
 .video-preview-surface,
@@ -988,6 +990,11 @@ textarea,
 .segment-row:hover { border-left-color: var(--violet); background: linear-gradient(90deg, rgba(168, 85, 247, 0.09), transparent 72%); }
 .segment-row:focus-visible { outline: 2px solid rgba(34, 211, 238, 0.5); outline-offset: 2px; }
 .segment-row time { color: var(--faint); font-family: "Fira Code", Consolas, monospace; font-size: 11px; font-weight: 500; }
+.segment-gutter {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
 .segment-seek-target {
   display: inline-flex;
   align-items: flex-start;
@@ -1000,6 +1007,41 @@ textarea,
   background: transparent;
   cursor: pointer;
   text-align: left;
+}
+.segment-structure-tools {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+.segment-row:hover .segment-structure-tools,
+.segment-row.editing .segment-structure-tools,
+.segment-structure-tools:focus-within {
+  opacity: 1;
+  transform: translateY(0);
+}
+.segment-structure-tools button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 6px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.045);
+}
+.segment-structure-tools button:hover:not(:disabled),
+.segment-structure-tools button:focus-visible {
+  color: var(--cyan);
+  border-color: rgba(34, 211, 238, 0.34);
+  background: rgba(34, 211, 238, 0.1);
+}
+.segment-structure-tools button:disabled {
+  opacity: 0.28;
 }
 .segment-row.editing {
   background: linear-gradient(90deg, rgba(168, 85, 247, 0.12), rgba(34, 211, 238, 0.04) 72%);

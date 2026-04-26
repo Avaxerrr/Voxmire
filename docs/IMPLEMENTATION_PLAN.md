@@ -6,7 +6,7 @@ Build Voxmire in a pipeline-first order, with the first milestone proving the re
 
 `docs/IMPLEMENTATION_PLAN.md` is the repo source of truth for implementation status.
 
-Current focus: harden the direct transcript editor UX, then move into transcript structure editing such as split/merge and timestamp correction.
+Current focus: harden transcript structure editing, then add timestamp correction controls.
 
 Synchronized audio playback first pass is implemented for the transcript editor, and playback polish is in progress. See `docs/AUDIO_SYNC_PLAN.md` for remaining polish.
 
@@ -24,6 +24,7 @@ Synchronized audio playback first pass is implemented for the transcript editor,
 - Done: playback polish first pass. Media streaming now handles byte ranges directly, the audio deck has volume/mute controls, sits lower in the transcript view, and renders backend-generated waveform peaks.
 - Done: transcript editing foundation. Existing transcript segment text can be edited and persisted through storage/runtime/main/preload without moving filesystem or SQLite access into the renderer.
 - Done: real transcript editor UX first pass. Transcript text is directly editable, timestamps/gutters handle seeking, Enter commits and advances, Shift+Enter is the deliberate multiline path, autosave is debounced, and playback follow does not steal focus while editing.
+- Done: transcript structure editing first pass. Segments can be split at the text cursor and merged with adjacent segments through storage/runtime/main/preload, with segment indexes renumbered transactionally.
 - Started: packaging and real GPU sidecar support. CUDA/Vulkan remain blocked until the sidecar binaries and runtime DLL packaging are intentionally added.
 
 ## Key Changes
@@ -101,9 +102,13 @@ Synchronized audio playback first pass is implemented for the transcript editor,
   - [x] prevent playback follow/highlight from stealing focus while editing
   - [x] preserve virtualized rendering performance on large transcripts while editing
   - [x] keep TXT/JSON/SRT/VTT export behavior correct after edits
-- [ ] Add transcript structure editing:
-  - [ ] split one segment into two
-  - [ ] merge adjacent segments
+- [x] Add transcript structure editing first pass:
+  - [x] split one segment into two
+  - [x] merge adjacent segments
+  - [x] persist split/merge through storage/runtime/main/preload
+  - [x] transactionally renumber segment indexes after split/merge
+  - [x] add tests for split and merge storage behavior
+- [ ] Add timestamp correction:
   - [ ] timestamp correction controls
   - [ ] validation for subtitle-safe timestamps and segment order
 - [ ] Add advanced editor tools:
@@ -203,8 +208,8 @@ Synchronized audio playback first pass is implemented for the transcript editor,
 13. **Synchronized audio playback** - Done for first pass
    The transcript editor now uses a safe `voxmire-media://` URL from main/preload, native audio playback, current-time/duration display, skip/seek controls, active segment highlighting, click-to-seek against virtualized transcript rows, direct byte-range streaming, volume/mute controls, and backend-generated waveform peaks. Remaining polish is manual-scroll follow behavior, waveform persistence, and wider media-container edge testing.
 
-14. **Transcript editing** - Direct editor UX first pass done
-   Transcript editing is a core product area, not a finished polish item. The completed foundation proves that edited segment text can be persisted safely through the approved architecture. The direct editor first pass makes the transcript text itself editable while keeping timestamps as the media seek target.
+14. **Transcript editing** - Structure editing first pass done
+   Transcript editing is a core product area, not a finished polish item. The completed foundation proves that edited segment text can be persisted safely through the approved architecture. The direct editor first pass makes the transcript text itself editable while keeping timestamps as the media seek target. The structure editing first pass adds split and merge while keeping segment order durable.
 
    Phase 1: persistence foundation - Done
    - Add shared contracts:
@@ -242,9 +247,15 @@ Synchronized audio playback first pass is implemented for the transcript editor,
    - Disabled playback auto-follow while the user is actively editing.
    - Kept virtualization stable for long transcripts.
 
-   Phase 3: structure editing - Next
-   - split and merge adjacent segments
-   - timestamp correction
+   Phase 3: structure editing - Done for first pass
+   - Added split at cursor.
+   - Added merge with previous/next segment.
+   - Added contract, storage, runtime, main IPC, preload, and renderer bridge support.
+   - Renumbered segment indexes transactionally after split/merge.
+   - Added storage tests for split and merge behavior.
+
+   Phase 3b: timestamp correction - Next
+   - timestamp correction controls
    - validation for segment order and subtitle-safe timings
 
    Phase 4: advanced editor tools - Planned

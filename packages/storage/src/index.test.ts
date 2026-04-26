@@ -7,11 +7,13 @@ import {
   getJobWithSource,
   getTranscriptSegments,
   getTranscriptionChunks,
+  mergeTranscriptSegment,
   openVoxmireDatabase,
   renameProject,
   resetInterruptedTranscriptionChunks,
   saveTranscriptionChunk,
   saveTranscriptSegment,
+  splitTranscriptSegment,
   updateJobEngineBackend,
   updateTranscriptSegmentText,
   updateTranscriptionChunkStatus
@@ -138,6 +140,115 @@ describe('storage repositories', () => {
     });
 
     expect(getTranscriptSegments(db, created.job.id)[0]?.text).toBe('Edited transcript.');
+    db.close();
+  });
+
+  it('splits a transcript segment and reindexes later segments', () => {
+    const db = openVoxmireDatabase(':memory:');
+    const created = createJobRecord(db, {
+      modelId: 'large-v3-turbo',
+      sourceFile: {
+        id: 'src_1',
+        path: 'C:/audio/example.wav',
+        name: 'example.wav',
+        extension: 'wav',
+        sizeBytes: 100,
+        durationSeconds: 10,
+        createdAt: '2026-04-23T00:00:00.000Z'
+      }
+    });
+
+    saveTranscriptSegment(db, {
+      id: 'seg_1',
+      jobId: created.job.id,
+      index: 0,
+      startSeconds: 0,
+      endSeconds: 10,
+      text: 'Hello world',
+      confidence: 0.8,
+      createdAt: '2026-04-23T00:00:00.000Z'
+    });
+    saveTranscriptSegment(db, {
+      id: 'seg_2',
+      jobId: created.job.id,
+      index: 1,
+      startSeconds: 10,
+      endSeconds: 12,
+      text: 'After split.',
+      confidence: 0.9,
+      createdAt: '2026-04-23T00:00:00.000Z'
+    });
+
+    const segments = splitTranscriptSegment(db, created.job.id, 'seg_1', 5);
+
+    expect(segments.map((segment) => segment.index)).toEqual([0, 1, 2]);
+    expect(segments.map((segment) => segment.text)).toEqual(['Hello', 'world', 'After split.']);
+    expect(segments[0]?.endSeconds).toBeCloseTo(4.545, 3);
+    expect(segments[1]?.startSeconds).toBeCloseTo(4.545, 3);
+    expect(segments[0]?.editedAt).toEqual(expect.any(String));
+    expect(segments[1]?.editedAt).toEqual(expect.any(String));
+    db.close();
+  });
+
+  it('merges adjacent transcript segments and closes the index gap', () => {
+    const db = openVoxmireDatabase(':memory:');
+    const created = createJobRecord(db, {
+      modelId: 'large-v3-turbo',
+      sourceFile: {
+        id: 'src_1',
+        path: 'C:/audio/example.wav',
+        name: 'example.wav',
+        extension: 'wav',
+        sizeBytes: 100,
+        durationSeconds: 10,
+        createdAt: '2026-04-23T00:00:00.000Z'
+      }
+    });
+
+    saveTranscriptSegment(db, {
+      id: 'seg_1',
+      jobId: created.job.id,
+      index: 0,
+      startSeconds: 0,
+      endSeconds: 3,
+      text: 'Hello',
+      confidence: 0.8,
+      createdAt: '2026-04-23T00:00:00.000Z'
+    });
+    saveTranscriptSegment(db, {
+      id: 'seg_2',
+      jobId: created.job.id,
+      index: 1,
+      startSeconds: 3,
+      endSeconds: 6,
+      text: 'world',
+      confidence: 1,
+      createdAt: '2026-04-23T00:00:00.000Z'
+    });
+    saveTranscriptSegment(db, {
+      id: 'seg_3',
+      jobId: created.job.id,
+      index: 2,
+      startSeconds: 6,
+      endSeconds: 9,
+      text: 'after',
+      confidence: null,
+      createdAt: '2026-04-23T00:00:00.000Z'
+    });
+
+    const segments = mergeTranscriptSegment(db, created.job.id, 'seg_2', 'previous');
+
+    expect(segments).toHaveLength(2);
+    expect(segments.map((segment) => segment.index)).toEqual([0, 1]);
+    expect(segments[0]).toMatchObject({
+      id: 'seg_1',
+      startSeconds: 0,
+      endSeconds: 6,
+      text: 'Hello world',
+      confidence: 0.9
+    });
+    expect(segments[1]?.id).toBe('seg_3');
+    expect(segments[0]?.editedAt).toEqual(expect.any(String));
     db.close();
   });
 

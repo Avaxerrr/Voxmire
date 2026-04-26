@@ -181,6 +181,26 @@ export const updateTranscriptSegmentResultSchema = z.object({
   segment: transcriptSegmentSchema.nullable()
 });
 
+export const splitTranscriptSegmentInputSchema = z.object({
+  jobId: z.string().min(1),
+  segmentId: z.string().min(1),
+  offset: z.number().int().positive()
+});
+
+export const splitTranscriptSegmentResultSchema = z.object({
+  segments: z.array(transcriptSegmentSchema)
+});
+
+export const mergeTranscriptSegmentInputSchema = z.object({
+  jobId: z.string().min(1),
+  segmentId: z.string().min(1),
+  direction: z.enum(['previous', 'next'])
+});
+
+export const mergeTranscriptSegmentResultSchema = z.object({
+  segments: z.array(transcriptSegmentSchema)
+});
+
 export const exportTranscriptInputSchema = z.object({
   jobId: z.string().min(1),
   format: exportFormatSchema
@@ -233,5 +253,9 @@ export type DeleteProjectInput = z.input<typeof deleteProjectInputSchema>;
 export type DeleteProjectResult = z.infer<typeof deleteProjectResultSchema>;
 export type UpdateTranscriptSegmentInput = z.input<typeof updateTranscriptSegmentInputSchema>;
 export type UpdateTranscriptSegmentResult = z.infer<typeof updateTranscriptSegmentResultSchema>;
+export type SplitTranscriptSegmentInput = z.input<typeof splitTranscriptSegmentInputSchema>;
+export type SplitTranscriptSegmentResult = z.infer<typeof splitTranscriptSegmentResultSchema>;
+export type MergeTranscriptSegmentInput = z.input<typeof mergeTranscriptSegmentInputSchema>;
+export type MergeTranscriptSegmentResult = z.infer<typeof mergeTranscriptSegmentResultSchema>;
 export type ExportTranscriptInput = z.infer<typeof exportTranscriptInputSchema>;
 export type ExportTranscriptResult = z.infer<typeof exportTranscriptResultSchema>;
