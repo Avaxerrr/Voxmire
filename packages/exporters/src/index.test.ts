@@ -20,6 +20,12 @@ describe('exporters', () => {
     expect(renderTranscriptExport('txt', segments)).toContain('Hello world.');
   });
 
+  it('renders the current edited segment text', () => {
+    expect(renderTranscriptExport('txt', [{ ...segments[0]!, text: 'Corrected text.', originalText: 'Hello world.' }])).toContain(
+      'Corrected text.'
+    );
+  });
+
   it('renders VTT header', () => {
     expect(renderTranscriptExport('vtt', segments).startsWith('WEBVTT')).toBe(true);
   });

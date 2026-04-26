@@ -52,8 +52,10 @@ export const transcriptSegmentSchema = z.object({
   startSeconds: z.number().nonnegative(),
   endSeconds: z.number().nonnegative(),
   text: z.string(),
+  originalText: z.string().nullable().optional(),
   confidence: z.number().min(0).max(1).nullable(),
-  createdAt: z.string().datetime()
+  createdAt: z.string().datetime(),
+  editedAt: z.string().datetime().nullable().optional()
 });
 
 export const transcriptionChunkStatusSchema = z.enum(['queued', 'preparing', 'transcribing', 'completed', 'failed', 'canceled']);
@@ -169,6 +171,16 @@ export const deleteProjectResultSchema = z.object({
   deleted: z.boolean()
 });
 
+export const updateTranscriptSegmentInputSchema = z.object({
+  jobId: z.string().min(1),
+  segmentId: z.string().min(1),
+  text: z.string().max(20000)
+});
+
+export const updateTranscriptSegmentResultSchema = z.object({
+  segment: transcriptSegmentSchema.nullable()
+});
+
 export const exportTranscriptInputSchema = z.object({
   jobId: z.string().min(1),
   format: exportFormatSchema
@@ -219,5 +231,7 @@ export type ProjectDetails = z.infer<typeof projectDetailsSchema>;
 export type RenameProjectInput = z.input<typeof renameProjectInputSchema>;
 export type DeleteProjectInput = z.input<typeof deleteProjectInputSchema>;
 export type DeleteProjectResult = z.infer<typeof deleteProjectResultSchema>;
+export type UpdateTranscriptSegmentInput = z.input<typeof updateTranscriptSegmentInputSchema>;
+export type UpdateTranscriptSegmentResult = z.infer<typeof updateTranscriptSegmentResultSchema>;
 export type ExportTranscriptInput = z.infer<typeof exportTranscriptInputSchema>;
 export type ExportTranscriptResult = z.infer<typeof exportTranscriptResultSchema>;

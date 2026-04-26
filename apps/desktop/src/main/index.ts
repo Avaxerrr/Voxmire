@@ -9,7 +9,8 @@ import {
   createJobInputSchema,
   deleteProjectInputSchema,
   exportTranscriptInputSchema,
-  renameProjectInputSchema
+  renameProjectInputSchema,
+  updateTranscriptSegmentInputSchema
 } from '@voxmire/contracts';
 import { detectWhisperEngines, getMachineProfile, getResourceStatus, resolveFfmpegExecutable, resolveFfprobeExecutable, type ResourcePaths } from '@voxmire/engine';
 import { createJsonlRuntimeLogger, createVoxmireRuntime, type VoxmireRuntime } from '@voxmire/runtime';
@@ -132,6 +133,10 @@ function registerIpcHandlers(): void {
     return runtime.deleteProject(input.jobId);
   });
   ipcMain.handle('transcripts:get', (_event, jobId: string) => runtime.getTranscriptSegments(jobId));
+  ipcMain.handle('transcripts:update-segment', (_event, rawInput: unknown) => {
+    const input = updateTranscriptSegmentInputSchema.parse(rawInput);
+    return runtime.updateTranscriptSegment(input.jobId, input.segmentId, input.text);
+  });
   ipcMain.handle('media:get-source-url', (_event, jobId: string) => {
     const job = runtime.getJob(jobId);
     return job ? `voxmire-media://job/${encodeURIComponent(jobId)}` : null;

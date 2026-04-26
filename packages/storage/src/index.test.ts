@@ -13,6 +13,7 @@ import {
   saveTranscriptionChunk,
   saveTranscriptSegment,
   updateJobEngineBackend,
+  updateTranscriptSegmentText,
   updateTranscriptionChunkStatus
 } from './index';
 
@@ -65,6 +66,78 @@ describe('storage repositories', () => {
     });
 
     expect(updateJobEngineBackend(db, created.job.id, 'cpu')?.engineBackend).toBe('cpu');
+    db.close();
+  });
+
+  it('updates transcript segment text and preserves the original text', () => {
+    const db = openVoxmireDatabase(':memory:');
+    const created = createJobRecord(db, {
+      modelId: 'large-v3-turbo',
+      sourceFile: {
+        id: 'src_1',
+        path: 'C:/audio/example.wav',
+        name: 'example.wav',
+        extension: 'wav',
+        sizeBytes: 100,
+        durationSeconds: 5,
+        createdAt: '2026-04-23T00:00:00.000Z'
+      }
+    });
+
+    const segment = saveTranscriptSegment(db, {
+      id: 'seg_1',
+      jobId: created.job.id,
+      index: 0,
+      startSeconds: 0,
+      endSeconds: 5,
+      text: 'Generated transcript.',
+      confidence: null,
+      createdAt: '2026-04-23T00:00:00.000Z'
+    });
+
+    const edited = updateTranscriptSegmentText(db, created.job.id, segment.id, 'Edited transcript.');
+
+    expect(edited?.text).toBe('Edited transcript.');
+    expect(edited?.originalText).toBe('Generated transcript.');
+    expect(edited?.editedAt).toEqual(expect.any(String));
+    expect(updateTranscriptSegmentText(db, created.job.id, 'missing', 'Nope')).toBeNull();
+    db.close();
+  });
+
+  it('does not overwrite edited text when a generated segment is saved again', () => {
+    const db = openVoxmireDatabase(':memory:');
+    const created = createJobRecord(db, {
+      modelId: 'large-v3-turbo',
+      sourceFile: {
+        id: 'src_1',
+        path: 'C:/audio/example.wav',
+        name: 'example.wav',
+        extension: 'wav',
+        sizeBytes: 100,
+        durationSeconds: 5,
+        createdAt: '2026-04-23T00:00:00.000Z'
+      }
+    });
+
+    const segment = saveTranscriptSegment(db, {
+      id: 'seg_1',
+      jobId: created.job.id,
+      index: 0,
+      startSeconds: 0,
+      endSeconds: 5,
+      text: 'Generated transcript.',
+      confidence: null,
+      createdAt: '2026-04-23T00:00:00.000Z'
+    });
+    updateTranscriptSegmentText(db, created.job.id, segment.id, 'Edited transcript.');
+
+    saveTranscriptSegment(db, {
+      ...segment,
+      id: 'seg_2',
+      text: 'Generated transcript replacement.'
+    });
+
+    expect(getTranscriptSegments(db, created.job.id)[0]?.text).toBe('Edited transcript.');
     db.close();
   });
 

@@ -1,4 +1,4 @@
-import { type CSSProperties, type MouseEvent as ReactMouseEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent, type ReactElement, memo, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent, type ReactElement, memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   AlertTriangle,
@@ -408,6 +408,34 @@ export function App(): ReactElement {
     }
   }
 
+  async function updateTranscriptSegment(segmentId: string, text: string): Promise<TranscriptSegment | null> {
+    if (!selectedJob) {
+      return null;
+    }
+
+    if (!api) {
+      setMessage('Desktop bridge unavailable.');
+      return null;
+    }
+
+    try {
+      const updatedSegment = await api.transcripts.updateSegment(selectedJob.job.id, segmentId, text);
+      if (!updatedSegment) {
+        setMessage('Transcript segment not found.');
+        return null;
+      }
+
+      setSegments((currentSegments) =>
+        currentSegments.map((segment) => (segment.id === updatedSegment.id ? updatedSegment : segment))
+      );
+      setMessage('Transcript updated.');
+      return updatedSegment;
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to update transcript segment.');
+      return null;
+    }
+  }
+
   function openProjectDetails(jobId: string): void {
     setDetailsJobId(jobId);
   }
@@ -558,6 +586,7 @@ export function App(): ReactElement {
             selectedJob={selectedJob}
             segments={segments}
             setPlaying={setPlaying}
+            updateSegment={updateTranscriptSegment}
           />
         ) : null}
 
@@ -799,6 +828,7 @@ type TranscriptViewProps = {
   selectedJob: JobWithSource | null;
   segments: TranscriptSegment[];
   setPlaying: (playing: boolean) => void;
+  updateSegment: (segmentId: string, text: string) => Promise<TranscriptSegment | null>;
 };
 
 function TranscriptView({
@@ -818,6 +848,7 @@ function TranscriptView({
   selectedJob,
   segments,
   setPlaying,
+  updateSegment,
 }: TranscriptViewProps): ReactElement {
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [switcherQuery, setSwitcherQuery] = useState('');
@@ -1177,13 +1208,13 @@ function TranscriptView({
                     {segments.length === 0 ? (
                       <EmptyState title="Transcript pending" body="Transcript text will appear here as the job progresses." />
                     ) : (
-                      <VirtualizedSegmentList activeSegmentIndex={activeSegmentIndex} onSeek={seekToSegment} segments={segments} />
+                      <VirtualizedSegmentList activeSegmentIndex={activeSegmentIndex} onSeek={seekToSegment} onUpdateSegment={updateSegment} segments={segments} />
                     )}
                   </div>
                 ) : segments.length === 0 ? (
                   <EmptyState title="Transcript pending" body="Transcript text will appear here as the job progresses." />
                 ) : (
-                  <VirtualizedSegmentList activeSegmentIndex={activeSegmentIndex} onSeek={seekToSegment} segments={segments} />
+                  <VirtualizedSegmentList activeSegmentIndex={activeSegmentIndex} onSeek={seekToSegment} onUpdateSegment={updateSegment} segments={segments} />
                 )}
               </>
             ) : (
@@ -1770,10 +1801,14 @@ function DeleteProjectModal({ busy, project, onClose, onDelete }: DeleteProjectM
 type VirtualizedSegmentListProps = {
   activeSegmentIndex: number;
   onSeek: (segment: TranscriptSegment) => void;
+  onUpdateSegment: (segmentId: string, text: string) => Promise<TranscriptSegment | null>;
   segments: TranscriptSegment[];
 };
 
-function VirtualizedSegmentList({ activeSegmentIndex, onSeek, segments }: VirtualizedSegmentListProps): ReactElement {
+function VirtualizedSegmentList({ activeSegmentIndex, onSeek, onUpdateSegment, segments }: VirtualizedSegmentListProps): ReactElement {
+  const [editingSegmentId, setEditingSegmentId] = useState<string | null>(null);
+  const [draftText, setDraftText] = useState('');
+  const [savingSegmentId, setSavingSegmentId] = useState<string | null>(null);
   const scrollParentRef = useRef<HTMLDivElement | null>(null);
   const rowVirtualizer = useVirtualizer({
     count: segments.length,
@@ -1784,10 +1819,37 @@ function VirtualizedSegmentList({ activeSegmentIndex, onSeek, segments }: Virtua
   });
 
   useEffect(() => {
-    if (activeSegmentIndex >= 0) {
+    if (activeSegmentIndex >= 0 && !editingSegmentId) {
       rowVirtualizer.scrollToIndex(activeSegmentIndex, { align: 'center' });
     }
-  }, [activeSegmentIndex]);
+  }, [activeSegmentIndex, editingSegmentId]);
+
+  function startEditing(segment: TranscriptSegment): void {
+    setEditingSegmentId(segment.id);
+    setDraftText(segment.text);
+  }
+
+  function cancelEditing(): void {
+    setEditingSegmentId(null);
+    setDraftText('');
+  }
+
+  async function saveEditing(segment: TranscriptSegment): Promise<void> {
+    const nextText = draftText;
+    setSavingSegmentId(segment.id);
+    try {
+      if (nextText !== segment.text) {
+        const updated = await onUpdateSegment(segment.id, nextText);
+        if (!updated) {
+          return;
+        }
+      }
+
+      cancelEditing();
+    } finally {
+      setSavingSegmentId(null);
+    }
+  }
 
   return (
     <div className="segment-list virtualized" ref={scrollParentRef}>
@@ -1799,6 +1861,8 @@ function VirtualizedSegmentList({ activeSegmentIndex, onSeek, segments }: Virtua
           }
 
           const active = virtualRow.index === activeSegmentIndex;
+          const editing = segment.id === editingSegmentId;
+          const saving = segment.id === savingSegmentId;
 
           return (
             <div
@@ -1808,14 +1872,137 @@ function VirtualizedSegmentList({ activeSegmentIndex, onSeek, segments }: Virtua
               ref={rowVirtualizer.measureElement}
               style={{ transform: `translateY(${virtualRow.start}px)` }}
             >
-              <button className={`segment-row ${active ? 'active' : ''}`} onClick={() => onSeek(segment)} type="button">
-                <time>{formatTime(segment.startSeconds)} - {formatTime(segment.endSeconds)}</time>
-                <p>{segment.text}</p>
-              </button>
+              <EditableSegmentRow
+                active={active}
+                draftText={draftText}
+                editing={editing}
+                onCancel={cancelEditing}
+                onDraftChange={setDraftText}
+                onEdit={() => startEditing(segment)}
+                onSave={() => saveEditing(segment)}
+                onSeek={() => onSeek(segment)}
+                saving={saving}
+                segment={segment}
+              />
             </div>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+type EditableSegmentRowProps = {
+  active: boolean;
+  draftText: string;
+  editing: boolean;
+  onCancel: () => void;
+  onDraftChange: (text: string) => void;
+  onEdit: () => void;
+  onSave: () => Promise<void>;
+  onSeek: () => void;
+  saving: boolean;
+  segment: TranscriptSegment;
+};
+
+function EditableSegmentRow({
+  active,
+  draftText,
+  editing,
+  onCancel,
+  onDraftChange,
+  onEdit,
+  onSave,
+  onSeek,
+  saving,
+  segment
+}: EditableSegmentRowProps): ReactElement {
+  const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    if (!editing) {
+      return;
+    }
+
+    const textArea = textAreaRef.current;
+    if (!textArea) {
+      return;
+    }
+
+    textArea.focus();
+    textArea.setSelectionRange(textArea.value.length, textArea.value.length);
+  }, [editing]);
+
+  useEffect(() => {
+    if (!editing) {
+      return;
+    }
+
+    const textArea = textAreaRef.current;
+    if (!textArea) {
+      return;
+    }
+
+    textArea.style.height = 'auto';
+    textArea.style.height = `${textArea.scrollHeight}px`;
+  }, [draftText, editing]);
+
+  function handleEditBlur(event: ReactFocusEvent<HTMLDivElement>): void {
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      return;
+    }
+
+    void onSave();
+  }
+
+  function handleEditKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>): void {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      onCancel();
+      return;
+    }
+
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      void onSave();
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className={`segment-row editing ${active ? 'active' : ''}`} onBlur={handleEditBlur}>
+        <time>{formatTime(segment.startSeconds)} - {formatTime(segment.endSeconds)}</time>
+        <div className="segment-edit-stack">
+          <textarea
+            aria-label="Edit transcript segment"
+            disabled={saving}
+            onChange={(event) => onDraftChange(event.target.value)}
+            onKeyDown={handleEditKeyDown}
+            ref={textAreaRef}
+            value={draftText}
+          />
+          <div className="segment-edit-actions">
+            <button className="secondary-action compact-row-action" disabled={saving} onClick={onCancel} type="button">
+              Cancel
+            </button>
+            <button className="primary-action compact row-save-action" disabled={saving} onClick={() => void onSave()} type="button">
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`segment-row ${active ? 'active' : ''} ${segment.editedAt ? 'edited' : ''}`}>
+      <button className="segment-seek-target" onClick={onSeek} type="button">
+        <time>{formatTime(segment.startSeconds)} - {formatTime(segment.endSeconds)}</time>
+        <p>{segment.text}</p>
+      </button>
+      <button aria-label="Edit transcript segment" className="icon-button segment-edit-button" onClick={onEdit} title="Edit segment" type="button">
+        <Pencil size={14} />
+      </button>
     </div>
   );
 }

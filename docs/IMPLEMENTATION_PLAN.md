@@ -6,7 +6,7 @@ Build Voxmire in a pipeline-first order, with the first milestone proving the re
 
 `docs/IMPLEMENTATION_PLAN.md` is the repo source of truth for implementation status.
 
-Current focus: finish the remaining hardware and packaging work after the first machine profile, model inventory, and performance preset pass.
+Current focus: turn the storage-backed transcript editing foundation into a real transcript editor UX. The persistence path is done, but direct editing, editor keyboard behavior, autosave polish, and later split/merge tools are still active core work.
 
 Synchronized audio playback first pass is implemented for the transcript editor, and playback polish is in progress. See `docs/AUDIO_SYNC_PLAN.md` for remaining polish.
 
@@ -22,6 +22,8 @@ Synchronized audio playback first pass is implemented for the transcript editor,
 - Done: model inventory first pass. Settings shows installed/missing local models and disables missing models for new imports.
 - Done: synchronized audio playback first pass. The transcript editor now resolves a safe Electron media URL, plays through a native audio element, highlights active transcript rows, and seeks when a segment is clicked.
 - Done: playback polish first pass. Media streaming now handles byte ranges directly, the audio deck has volume/mute controls, sits lower in the transcript view, and renders backend-generated waveform peaks.
+- Done: transcript editing foundation. Existing transcript segment text can be edited and persisted through storage/runtime/main/preload without moving filesystem or SQLite access into the renderer.
+- Active: real transcript editor UX. Text editing must become direct and natural, with correct keyboard behavior, autosave, playback separation, and a path toward split/merge and timestamp correction.
 - Started: packaging and real GPU sidecar support. CUDA/Vulkan remain blocked until the sidecar binaries and runtime DLL packaging are intentionally added.
 
 ## Key Changes
@@ -82,6 +84,33 @@ Synchronized audio playback first pass is implemented for the transcript editor,
   - [x] model manager inventory/status UI for installed and missing local models
   - [ ] model download/install flow
   - [ ] real CUDA/Vulkan transcription engine selection after sidecar binaries are available
+- [x] Add transcript editing persistence foundation:
+  - [x] define edit contract schemas for transcript segment updates
+  - [x] add storage repository APIs for updating segment text and edit metadata
+  - [x] expose runtime methods for editing transcript text
+  - [x] add typed desktop IPC/preload methods for transcript edits
+  - [x] make transcript rows editable in the renderer
+  - [x] keep playback seeking, active row highlighting, and virtualization working while editing
+  - [x] make exports use edited transcript text automatically
+  - [x] add tests for segment editing and export-after-edit behavior
+- [ ] Build real transcript editor UX:
+  - [ ] direct text editing without an explicit edit button
+  - [ ] move seek behavior to timestamp/gutter controls so clicking transcript text edits instead of seeking
+  - [ ] define keyboard behavior: Enter commits/moves to next segment, Shift+Enter inserts a deliberate line break if multiline text is enabled, Escape cancels, Ctrl/Command+S saves
+  - [ ] add autosave/debounce and visible saving/error state
+  - [ ] prevent playback follow/highlight from stealing focus while editing
+  - [ ] preserve virtualized rendering performance on large transcripts while editing
+  - [ ] keep TXT/JSON/SRT/VTT export behavior correct after edits
+- [ ] Add transcript structure editing:
+  - [ ] split one segment into two
+  - [ ] merge adjacent segments
+  - [ ] timestamp correction controls
+  - [ ] validation for subtitle-safe timestamps and segment order
+- [ ] Add advanced editor tools:
+  - [ ] speaker labels
+  - [ ] undo/redo edit history
+  - [ ] find/replace inside transcript text
+  - [ ] edit conflict handling if a job is still transcribing
 
 ## Build Order
 
@@ -174,7 +203,57 @@ Synchronized audio playback first pass is implemented for the transcript editor,
 13. **Synchronized audio playback** - Done for first pass
    The transcript editor now uses a safe `voxmire-media://` URL from main/preload, native audio playback, current-time/duration display, skip/seek controls, active segment highlighting, click-to-seek against virtualized transcript rows, direct byte-range streaming, volume/mute controls, and backend-generated waveform peaks. Remaining polish is manual-scroll follow behavior, waveform persistence, and wider media-container edge testing.
 
-14. **Packaging** - Planned
+14. **Transcript editing** - Foundation done, real editor UX active
+   Transcript editing is a core product area, not a finished polish item. The completed work proves that edited segment text can be persisted safely through the approved architecture. The next work turns that into an actual editor surface where users can click directly into transcript text and type naturally.
+
+   Phase 1: persistence foundation - Done
+   - Add shared contracts:
+     - `updateTranscriptSegmentInputSchema`
+     - `updateTranscriptSegmentResultSchema`
+   - Add storage support:
+     - migration columns `edited_at` and `original_text`
+     - `updateTranscriptSegmentText(db, jobId, segmentId, text)`
+     - keep `text` as the canonical export text
+   - Add runtime support:
+     - validate job/segment ownership before writing
+     - log edit events for debugging
+   - Add desktop bridge:
+     - `transcripts:update-segment`
+     - expose as `window.voxmire.transcripts.updateSegment(...)`
+   - Add renderer UX:
+     - click or explicit edit button enters edit mode for one segment
+     - save on blur or Ctrl/Command+Enter
+     - Escape cancels
+     - keep normal click-to-seek behavior separate from text editing
+     - prevent active playback scrolling from stealing focus while editing
+   - Add export behavior:
+     - TXT, JSON, SRT, and VTT read the edited `text` field with no separate export path
+
+   Phase 2: direct editor UX - Next
+   - Replace explicit edit-button flow with direct text editing.
+   - Make transcript text the editable target.
+   - Move seek behavior to timestamps or a row gutter so editing and seeking do not fight each other.
+   - Define keyboard rules:
+     - Enter commits and moves to the next segment by default.
+     - Shift+Enter inserts a deliberate line break only if multiline segment text is enabled.
+     - Escape cancels the active edit.
+     - Ctrl/Command+S saves.
+   - Add autosave/debounce with clear saving/error state.
+   - Disable playback auto-follow while the user is actively editing.
+   - Keep virtualization stable for long transcripts.
+
+   Phase 3: structure editing - Planned
+   - split and merge adjacent segments
+   - timestamp correction
+   - validation for segment order and subtitle-safe timings
+
+   Phase 4: advanced editor tools - Planned
+   - speaker labels
+   - undo/redo edit history
+   - find/replace
+   - edit conflict handling if a job is still transcribing
+
+15. **Packaging** - Planned
    Add electron-builder and resource packaging. Sidecar executables and runtime DLLs must be packaged outside ASAR under `process.resourcesPath/resources/...`.
 
 ## Test Plan
@@ -186,7 +265,13 @@ Synchronized audio playback first pass is implemented for the transcript editor,
 - Test contracts with valid and invalid job, segment, model, and export payloads.
 - Test core state transitions, including invalid transitions.
 - Test storage repositories against a temporary SQLite database.
+- Test transcript segment editing:
+  - [x] updating one segment changes stored text
+  - [x] edit metadata is written
+  - [x] updating a missing segment returns a safe not-found result
+  - generated source media paths are not touched
 - Test exporters with fixed transcript fixtures.
+- [x] Test exports after editing so TXT, JSON, SRT, and VTT use edited text.
 - Manual desktop checks:
   - app opens
   - file picker creates a job
@@ -194,6 +279,9 @@ Synchronized audio playback first pass is implemented for the transcript editor,
   - transcript segments appear incrementally
   - cancel works
   - completed transcript exports to TXT/JSON
+  - segment text can be edited, canceled, and saved
+  - editing does not break click-to-seek
+  - playback follow does not steal focus while editing
 - Agent checks:
   - CLI can resolve paths and resource status without Electron
   - CLI can list jobs

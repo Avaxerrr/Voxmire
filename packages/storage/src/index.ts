@@ -93,6 +93,9 @@ export function runMigrations(db: VoxmireDatabase): void {
     CREATE INDEX IF NOT EXISTS idx_segments_job_index ON transcript_segments(job_id, segment_index);
     CREATE INDEX IF NOT EXISTS idx_chunks_job_index ON transcription_chunks(job_id, chunk_index);
   `);
+
+  ensureColumn(db, 'transcript_segments', 'original_text', 'TEXT');
+  ensureColumn(db, 'transcript_segments', 'edited_at', 'TEXT');
 }
 
 export function createJobRecord(db: VoxmireDatabase, input: CreateJobRecordInput): JobWithSource {
@@ -255,11 +258,44 @@ export function saveTranscriptSegment(db: VoxmireDatabase, segment: TranscriptSe
      ON CONFLICT(job_id, segment_index) DO UPDATE SET
        start_seconds = excluded.start_seconds,
        end_seconds = excluded.end_seconds,
-       text = excluded.text,
+       text = CASE
+         WHEN transcript_segments.edited_at IS NULL THEN excluded.text
+         ELSE transcript_segments.text
+       END,
        confidence = excluded.confidence`
   ).run(toSegmentRow(parsedSegment));
 
   return parsedSegment;
+}
+
+export function updateTranscriptSegmentText(
+  db: VoxmireDatabase,
+  jobId: string,
+  segmentId: string,
+  text: string
+): TranscriptSegment | null {
+  const current = getTranscriptSegment(db, jobId, segmentId);
+  if (!current) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  db.prepare(
+    `UPDATE transcript_segments
+     SET text = @text,
+         original_text = @originalText,
+         edited_at = @editedAt
+     WHERE id = @segmentId
+       AND job_id = @jobId`
+  ).run({
+    jobId,
+    segmentId,
+    text,
+    originalText: current.originalText ?? current.text,
+    editedAt: now
+  });
+
+  return getTranscriptSegment(db, jobId, segmentId);
 }
 
 export function saveTranscriptionChunk(db: VoxmireDatabase, chunk: TranscriptionChunk): TranscriptionChunk {
@@ -340,6 +376,11 @@ export function getTranscriptSegments(db: VoxmireDatabase, jobId: string): Trans
   return rows.map(parseSegmentRow);
 }
 
+export function getTranscriptSegment(db: VoxmireDatabase, jobId: string, segmentId: string): TranscriptSegment | null {
+  const row = db.prepare('SELECT * FROM transcript_segments WHERE job_id = ? AND id = ?').get(jobId, segmentId);
+  return row ? parseSegmentRow(row) : null;
+}
+
 export function countTranscriptSegments(db: VoxmireDatabase, jobId: string): number {
   const row = db.prepare('SELECT COUNT(*) AS count FROM transcript_segments WHERE job_id = ?').get(jobId) as
     | { count: number }
@@ -360,6 +401,15 @@ export function createId(prefix: string): string {
 
 function clampProgress(value: number): number {
   return Math.max(0, Math.min(1, value));
+}
+
+function ensureColumn(db: VoxmireDatabase, tableName: string, columnName: string, definition: string): void {
+  const rows = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name?: string }>;
+  if (rows.some((row) => row.name === columnName)) {
+    return;
+  }
+
+  db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
 }
 
 function jobColumns(): string {
@@ -425,8 +475,10 @@ function parseSegmentRow(row: unknown): TranscriptSegment {
     startSeconds: value.start_seconds,
     endSeconds: value.end_seconds,
     text: value.text,
+    originalText: value.original_text,
     confidence: value.confidence,
-    createdAt: value.created_at
+    createdAt: value.created_at,
+    editedAt: value.edited_at
   });
 }
 

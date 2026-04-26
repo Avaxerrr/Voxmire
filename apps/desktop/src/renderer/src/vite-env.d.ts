@@ -69,6 +69,7 @@ declare global {
       };
       transcripts: {
         get: (jobId: string) => Promise<TranscriptSegment[]>;
+        updateSegment: (jobId: string, segmentId: string, text: string) => Promise<TranscriptSegment | null>;
       };
       media: {
         getSourceUrl: (jobId: string) => Promise<string | null>;

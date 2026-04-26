@@ -57,7 +57,9 @@ const api = {
       ipcRenderer.invoke('projects:delete', { jobId })
   },
   transcripts: {
-    get: (jobId: string): Promise<TranscriptSegment[]> => ipcRenderer.invoke('transcripts:get', jobId)
+    get: (jobId: string): Promise<TranscriptSegment[]> => ipcRenderer.invoke('transcripts:get', jobId),
+    updateSegment: (jobId: string, segmentId: string, text: string): Promise<TranscriptSegment | null> =>
+      ipcRenderer.invoke('transcripts:update-segment', { jobId, segmentId, text })
   },
   media: {
     getSourceUrl: (jobId: string): Promise<string | null> => ipcRenderer.invoke('media:get-source-url', jobId),
