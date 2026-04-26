@@ -157,6 +157,41 @@ export function getJobWithSource(db: VoxmireDatabase, jobId: string): JobWithSou
   return row ? parseJobWithSourceRow(row) : null;
 }
 
+export function renameProject(db: VoxmireDatabase, jobId: string, name: string): JobWithSource | null {
+  const current = getJobWithSource(db, jobId);
+  if (!current) {
+    return null;
+  }
+
+  const nextName = name.trim();
+  db.prepare('UPDATE source_files SET name = ? WHERE id = ?').run(nextName, current.sourceFile.id);
+  db.prepare('UPDATE jobs SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), jobId);
+
+  return getJobWithSource(db, jobId);
+}
+
+export function deleteProject(db: VoxmireDatabase, jobId: string): boolean {
+  const current = getJobWithSource(db, jobId);
+  if (!current) {
+    return false;
+  }
+
+  db.exec('BEGIN');
+  try {
+    const result = db.prepare('DELETE FROM jobs WHERE id = ?').run(jobId);
+    db.prepare(
+      `DELETE FROM source_files
+       WHERE id = ?
+         AND NOT EXISTS (SELECT 1 FROM jobs WHERE source_file_id = ?)`
+    ).run(current.sourceFile.id, current.sourceFile.id);
+    db.exec('COMMIT');
+    return Number(result.changes) > 0;
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
 export function updateJobStatus(
   db: VoxmireDatabase,
   jobId: string,
@@ -303,6 +338,20 @@ export function getTranscriptSegments(db: VoxmireDatabase, jobId: string): Trans
     .all(jobId);
 
   return rows.map(parseSegmentRow);
+}
+
+export function countTranscriptSegments(db: VoxmireDatabase, jobId: string): number {
+  const row = db.prepare('SELECT COUNT(*) AS count FROM transcript_segments WHERE job_id = ?').get(jobId) as
+    | { count: number }
+    | undefined;
+  return Number(row?.count ?? 0);
+}
+
+export function countTranscriptionChunks(db: VoxmireDatabase, jobId: string): number {
+  const row = db.prepare('SELECT COUNT(*) AS count FROM transcription_chunks WHERE job_id = ?').get(jobId) as
+    | { count: number }
+    | undefined;
+  return Number(row?.count ?? 0);
 }
 
 export function createId(prefix: string): string {

@@ -147,6 +147,28 @@ export const jobWithSourceSchema = z.object({
   sourceFile: sourceFileSchema
 });
 
+export const projectDetailsSchema = z.object({
+  job: transcriptionJobSchema,
+  sourceFile: sourceFileSchema,
+  segmentCount: z.number().int().nonnegative(),
+  chunkCount: z.number().int().nonnegative(),
+  mediaAvailable: z.boolean()
+});
+
+export const renameProjectInputSchema = z.object({
+  jobId: z.string().min(1),
+  name: z.string().trim().min(1).max(180)
+});
+
+export const deleteProjectInputSchema = z.object({
+  jobId: z.string().min(1)
+});
+
+export const deleteProjectResultSchema = z.object({
+  jobId: z.string().min(1),
+  deleted: z.boolean()
+});
+
 export const exportTranscriptInputSchema = z.object({
   jobId: z.string().min(1),
   format: exportFormatSchema
@@ -193,5 +215,9 @@ export type TranscriptionProgressEvent = z.infer<typeof transcriptionProgressEve
 export type CreateJobInput = z.input<typeof createJobInputSchema>;
 export type CreateJobResult = z.infer<typeof createJobResultSchema>;
 export type JobWithSource = z.infer<typeof jobWithSourceSchema>;
+export type ProjectDetails = z.infer<typeof projectDetailsSchema>;
+export type RenameProjectInput = z.input<typeof renameProjectInputSchema>;
+export type DeleteProjectInput = z.input<typeof deleteProjectInputSchema>;
+export type DeleteProjectResult = z.infer<typeof deleteProjectResultSchema>;
 export type ExportTranscriptInput = z.infer<typeof exportTranscriptInputSchema>;
 export type ExportTranscriptResult = z.infer<typeof exportTranscriptResultSchema>;

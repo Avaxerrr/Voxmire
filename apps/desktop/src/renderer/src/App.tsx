@@ -14,12 +14,15 @@ import {
   FileVideo,
   FolderOpen,
   Home,
+  Info,
   Lock,
   Maximize2,
   MicVocal,
   Minimize2,
   Minus,
+  MoreHorizontal,
   Pause,
+  Pencil,
   Play,
   Plus,
   Search,
@@ -29,6 +32,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Square,
+  Trash2,
   UploadCloud,
   Video,
   Volume2,
@@ -50,6 +54,7 @@ import type {
   MachineProfile,
   ModelId,
   ModelProfile,
+  ProjectDetails,
   ResourceStatus,
   TranscriptSegment,
   TranscriptionPresetId,
@@ -157,6 +162,12 @@ export function App(): ReactElement {
   const [view, setView] = useState<ViewId>('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [detailsJobId, setDetailsJobId] = useState<string | null>(null);
+  const [details, setDetails] = useState<ProjectDetails | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<JobWithSource | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<JobWithSource | null>(null);
+  const [projectBusy, setProjectBusy] = useState(false);
   const [playing, setPlaying] = useState(false);
   const progressRefreshSequence = useRef(0);
   const selectedJobIdRef = useRef<string | null>(null);
@@ -229,6 +240,38 @@ export function App(): ReactElement {
   useEffect(() => {
     selectedJobIdRef.current = selectedJobId;
   }, [selectedJobId]);
+
+  useEffect(() => {
+    if (!detailsJobId || !api) {
+      setDetails(null);
+      setDetailsLoading(false);
+      return;
+    }
+
+    let canceled = false;
+    setDetailsLoading(true);
+    void api.projects.getDetails(detailsJobId)
+      .then((projectDetails) => {
+        if (!canceled) {
+          setDetails(projectDetails);
+        }
+      })
+      .catch((error) => {
+        if (!canceled) {
+          setDetails(null);
+          setMessage(error instanceof Error ? error.message : 'Failed to load project details.');
+        }
+      })
+      .finally(() => {
+        if (!canceled) {
+          setDetailsLoading(false);
+        }
+      });
+
+    return () => {
+      canceled = true;
+    };
+  }, [api, detailsJobId]);
 
   useEffect(() => {
     if (!selectedJob || !api) {
@@ -365,6 +408,84 @@ export function App(): ReactElement {
     }
   }
 
+  function openProjectDetails(jobId: string): void {
+    setDetailsJobId(jobId);
+  }
+
+  async function renameProject(jobId: string, name: string): Promise<void> {
+    const nextName = name.trim();
+    if (!nextName) {
+      setMessage('Project name cannot be empty.');
+      return;
+    }
+
+    if (!api) {
+      setMessage('Desktop bridge unavailable.');
+      return;
+    }
+
+    setProjectBusy(true);
+    try {
+      const renamed = await api.projects.rename(jobId, nextName);
+      if (!renamed) {
+        setMessage('Project not found.');
+        return;
+      }
+
+      const updated = await api.jobs.list();
+      setJobs(updated);
+      if (detailsJobId === jobId) {
+        setDetails(await api.projects.getDetails(jobId));
+      }
+      setRenameTarget(null);
+      setMessage('Project renamed.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to rename project.');
+    } finally {
+      setProjectBusy(false);
+    }
+  }
+
+  async function deleteProject(jobId: string): Promise<void> {
+    if (!api) {
+      setMessage('Desktop bridge unavailable.');
+      return;
+    }
+
+    setProjectBusy(true);
+    try {
+      const result = await api.projects.delete(jobId);
+      if (!result.deleted) {
+        setMessage('Project not found.');
+        return;
+      }
+
+      const updated = await api.jobs.list();
+      const nextSelectedId =
+        selectedJobIdRef.current === jobId
+          ? updated[0]?.job.id ?? null
+          : selectedJobIdRef.current;
+      setJobs(updated);
+      setSelectedJobId(nextSelectedId);
+      if (selectedJobIdRef.current === jobId) {
+        setSegments([]);
+        setPlaying(false);
+        if (!nextSelectedId) {
+          setView('dashboard');
+        }
+      }
+      if (detailsJobId === jobId) {
+        setDetailsJobId(null);
+      }
+      setDeleteTarget(null);
+      setMessage('Project deleted. Original media file was not deleted.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to delete project.');
+    } finally {
+      setProjectBusy(false);
+    }
+  }
+
   function openJob(jobId: string): void {
     setSelectedJobId(jobId);
     setView('transcript');
@@ -408,9 +529,12 @@ export function App(): ReactElement {
         {view === 'dashboard' ? (
           <DashboardView
             jobs={jobs}
+            onDeleteProject={setDeleteTarget}
+            onDetailsProject={openProjectDetails}
             onImport={() => setImportOpen(true)}
             onOpenJob={openJob}
             onOpenVoice={() => setView('voice')}
+            onRenameProject={setRenameTarget}
             selectedBackend={selectedPresetResolution.engineBackend}
             selectedModel={selectedModel}
           />
@@ -423,8 +547,11 @@ export function App(): ReactElement {
             jobs={jobs}
             onCancel={cancelJob}
             onBrowseLibrary={() => setView('dashboard')}
+            onDeleteProject={setDeleteTarget}
+            onDetailsProject={openProjectDetails}
             onImport={() => setImportOpen(true)}
             onPause={pauseJob}
+            onRenameProject={setRenameTarget}
             onResume={resumeJob}
             onSelectJob={setSelectedJobId}
             playing={playing}
@@ -462,6 +589,34 @@ export function App(): ReactElement {
           selectedPresetId={selectedPresetId}
           selectedPresetResolution={selectedPresetResolution}
           setSelectedPresetId={setSelectedPresetId}
+        />
+      ) : null}
+
+      {detailsJobId ? (
+        <ProjectDetailsDrawer
+          details={details}
+          loading={detailsLoading}
+          onClose={() => setDetailsJobId(null)}
+          onDelete={(project) => setDeleteTarget(project)}
+          onRename={(project) => setRenameTarget(project)}
+        />
+      ) : null}
+
+      {renameTarget ? (
+        <RenameProjectModal
+          busy={projectBusy}
+          project={renameTarget}
+          onClose={() => setRenameTarget(null)}
+          onRename={renameProject}
+        />
+      ) : null}
+
+      {deleteTarget ? (
+        <DeleteProjectModal
+          busy={projectBusy}
+          project={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onDelete={deleteProject}
         />
       ) : null}
     </main>
@@ -523,14 +678,27 @@ function NavButton({ active, badge, collapsed, icon, label, onClick }: NavButton
 
 type DashboardViewProps = {
   jobs: JobWithSource[];
+  onDeleteProject: (project: JobWithSource) => void;
+  onDetailsProject: (jobId: string) => void;
   onImport: () => void;
   onOpenJob: (jobId: string) => void;
   onOpenVoice: () => void;
+  onRenameProject: (project: JobWithSource) => void;
   selectedBackend: EngineBackend;
   selectedModel: ModelProfile | null;
 };
 
-function DashboardView({ jobs, onImport, onOpenJob, onOpenVoice, selectedBackend, selectedModel }: DashboardViewProps): ReactElement {
+function DashboardView({
+  jobs,
+  onDeleteProject,
+  onDetailsProject,
+  onImport,
+  onOpenJob,
+  onOpenVoice,
+  onRenameProject,
+  selectedBackend,
+  selectedModel
+}: DashboardViewProps): ReactElement {
   return (
     <div className="view dashboard-view">
       <header className="dashboard-header">
@@ -590,14 +758,21 @@ function DashboardView({ jobs, onImport, onOpenJob, onOpenVoice, selectedBackend
                 const showStatus = entry.job.status !== 'completed';
 
                 return (
-                  <button className={`project-row ${isLive ? 'live' : ''}`} key={entry.job.id} onClick={() => onOpenJob(entry.job.id)} type="button">
-                    <span className="project-icon">{mediaKindFromExtension(entry.sourceFile.extension) === 'video' ? <FileVideo size={17} /> : <FileAudio size={17} />}</span>
-                    <span className="project-main">
-                      <strong>{entry.sourceFile.name}</strong>
-                      <small>{formatDuration(entry.sourceFile.durationSeconds)} / {formatDate(entry.job.createdAt)}</small>
-                    </span>
-                    {showStatus ? <ProgressPill job={entry} /> : null}
-                  </button>
+                  <div className={`project-row ${isLive ? 'live' : ''}`} key={entry.job.id}>
+                    <button className="project-open-button" onClick={() => onOpenJob(entry.job.id)} type="button">
+                      <span className="project-icon">{mediaKindFromExtension(entry.sourceFile.extension) === 'video' ? <FileVideo size={17} /> : <FileAudio size={17} />}</span>
+                      <span className="project-main">
+                        <strong>{entry.sourceFile.name}</strong>
+                        <small>{formatDuration(entry.sourceFile.durationSeconds)} / {formatDate(entry.job.createdAt)}</small>
+                      </span>
+                      {showStatus ? <ProgressPill job={entry} /> : null}
+                    </button>
+                    <ProjectInlineActions
+                      onDelete={() => onDeleteProject(entry)}
+                      onDetails={() => onDetailsProject(entry.job.id)}
+                      onRename={() => onRenameProject(entry)}
+                    />
+                  </div>
                 );
               })}
             </div>
@@ -613,8 +788,11 @@ type TranscriptViewProps = {
   jobs: JobWithSource[];
   onCancel: (jobId: string) => Promise<void>;
   onBrowseLibrary: () => void;
+  onDeleteProject: (project: JobWithSource) => void;
+  onDetailsProject: (jobId: string) => void;
   onImport: () => void;
   onPause: (jobId: string) => Promise<void>;
+  onRenameProject: (project: JobWithSource) => void;
   onResume: (jobId: string) => Promise<void>;
   onSelectJob: (jobId: string) => void;
   playing: boolean;
@@ -629,8 +807,11 @@ function TranscriptView({
   jobs,
   onCancel,
   onBrowseLibrary,
+  onDeleteProject,
+  onDetailsProject,
   onImport,
   onPause,
+  onRenameProject,
   onResume,
   onSelectJob,
   playing,
@@ -830,6 +1011,13 @@ function TranscriptView({
 
         <div className="transcript-actions">
           <button aria-label="Search transcript" className="icon-button" title="Search transcript" type="button"><Search size={17} /></button>
+          {selectedJob ? (
+            <ProjectActionsMenu
+              onDelete={() => onDeleteProject(selectedJob)}
+              onDetails={() => onDetailsProject(selectedJob.job.id)}
+              onRename={() => onRenameProject(selectedJob)}
+            />
+          ) : null}
           <div className="export-menu" ref={exportMenuRef}>
             <button
               aria-expanded={exportMenuOpen}
@@ -1040,6 +1228,116 @@ function TranscriptView({
     </div>
   );
 }
+
+type ProjectActionsMenuProps = {
+  onDelete: () => void;
+  onDetails: () => void;
+  onRename: () => void;
+};
+
+function ProjectInlineActions({ onDelete, onDetails, onRename }: ProjectActionsMenuProps): ReactElement {
+  return (
+    <div className="project-inline-actions" aria-label="Project actions">
+      <button aria-label="Project details" className="icon-button" onClick={onDetails} title="Details" type="button">
+        <Info size={15} />
+      </button>
+      <button aria-label="Rename project" className="icon-button" onClick={onRename} title="Rename" type="button">
+        <Pencil size={15} />
+      </button>
+      <button aria-label="Delete project" className="icon-button danger-icon-button" onClick={onDelete} title="Delete project" type="button">
+        <Trash2 size={15} />
+      </button>
+    </div>
+  );
+}
+
+function ProjectActionsMenu({ onDelete, onDetails, onRename }: ProjectActionsMenuProps): ReactElement {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key === 'Escape') {
+        setOpen(false);
+      }
+    }
+
+    function handlePointerDown(event: MouseEvent): void {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('mousedown', handlePointerDown);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('mousedown', handlePointerDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="project-action-menu" ref={menuRef}>
+      <button
+        aria-expanded={open}
+        aria-label="Project actions"
+        className={`icon-button project-action-trigger ${open ? 'active' : ''}`}
+        onClick={(event) => {
+          event.stopPropagation();
+          setOpen((current) => !current);
+        }}
+        title="Project actions"
+        type="button"
+      >
+        <MoreHorizontal size={16} />
+      </button>
+      {open ? (
+        <div className="project-action-popover" role="menu">
+          <button
+            onClick={() => {
+              setOpen(false);
+              onDetails();
+            }}
+            role="menuitem"
+            type="button"
+          >
+            <Info size={14} />
+            <span>Details</span>
+          </button>
+          <button
+            onClick={() => {
+              setOpen(false);
+              onRename();
+            }}
+            role="menuitem"
+            type="button"
+          >
+            <Pencil size={14} />
+            <span>Rename</span>
+          </button>
+          <button
+            className="danger-menu-item"
+            onClick={() => {
+              setOpen(false);
+              onDelete();
+            }}
+            role="menuitem"
+            type="button"
+          >
+            <Trash2 size={14} />
+            <span>Delete project</span>
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function VoiceStudioView(): ReactElement {
   return (
     <div className="view voice-view">
@@ -1304,6 +1602,166 @@ function ImportModal({ busy, createJob, models, resources, onClose, selectedPres
           <strong>{busy ? 'Opening file picker...' : 'Choose audio or video'}</strong>
           <small>MP3, WAV, M4A, FLAC, OGG, MP4, MOV, and WebM</small>
         </button>
+      </section>
+    </div>
+  );
+}
+
+type ProjectDetailsDrawerProps = {
+  details: ProjectDetails | null;
+  loading: boolean;
+  onClose: () => void;
+  onDelete: (project: JobWithSource) => void;
+  onRename: (project: JobWithSource) => void;
+};
+
+function ProjectDetailsDrawer({ details, loading, onClose, onDelete, onRename }: ProjectDetailsDrawerProps): ReactElement {
+  const project = details ? { job: details.job, sourceFile: details.sourceFile } : null;
+  const mediaKind = details ? mediaKindFromExtension(details.sourceFile.extension) : 'audio';
+
+  return (
+    <div className="details-drawer-layer" onClick={onClose} role="presentation">
+      <aside className="project-details-drawer" aria-label="Project details" onClick={(event) => event.stopPropagation()}>
+        <header className="modal-header details-header">
+          <div>
+            <p className="eyebrow">Project</p>
+            <h2>Details</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} title="Close details" type="button"><X size={18} /></button>
+        </header>
+
+        {loading ? (
+          <EmptyState title="Loading details" body="Reading project metadata from the local workspace." />
+        ) : details ? (
+          <>
+            <section className="details-summary">
+              <span className="project-icon">{mediaKind === 'video' ? <FileVideo size={18} /> : <FileAudio size={18} />}</span>
+              <div>
+                <strong>{details.sourceFile.name}</strong>
+                <small>{formatDuration(details.sourceFile.durationSeconds)} {mediaKindLabel(mediaKind)}</small>
+              </div>
+            </section>
+
+            <dl className="details-grid">
+              <div><dt>Status</dt><dd>{statusLabel(details.job.status)}</dd></div>
+              <div><dt>Progress</dt><dd>{Math.round(details.job.progress * 100)}%</dd></div>
+              <div><dt>Model</dt><dd>{details.job.modelId}</dd></div>
+              <div><dt>Backend</dt><dd>{details.job.engineBackend.toUpperCase()}</dd></div>
+              <div><dt>Transcript segments</dt><dd>{details.segmentCount.toLocaleString()}</dd></div>
+              <div><dt>Prepared chunks</dt><dd>{details.chunkCount.toLocaleString()}</dd></div>
+              <div><dt>Media source</dt><dd>{details.mediaAvailable ? 'Available' : 'Missing'}</dd></div>
+              <div><dt>Size</dt><dd>{formatFileSize(details.sourceFile.sizeBytes)}</dd></div>
+              <div><dt>Imported</dt><dd>{formatDateTime(details.job.createdAt)}</dd></div>
+              <div><dt>Updated</dt><dd>{formatDateTime(details.job.updatedAt)}</dd></div>
+              {details.job.completedAt ? <div><dt>Completed</dt><dd>{formatDateTime(details.job.completedAt)}</dd></div> : null}
+            </dl>
+
+            <section className="details-path">
+              <span>Source path</span>
+              <p>{details.sourceFile.path}</p>
+            </section>
+
+            {details.job.errorMessage ? <div className="error-text details-error"><AlertTriangle size={16} /> {details.job.errorMessage}</div> : null}
+
+            <footer className="details-actions">
+              <button className="secondary-action" disabled={!project} onClick={() => project && onRename(project)} type="button">
+                <Pencil size={14} />
+                Rename
+              </button>
+              <button className="secondary-action danger" disabled={!project} onClick={() => project && onDelete(project)} type="button">
+                <Trash2 size={14} />
+                Delete
+              </button>
+            </footer>
+          </>
+        ) : (
+          <EmptyState title="Project not found" body="This project may have already been deleted." />
+        )}
+      </aside>
+    </div>
+  );
+}
+
+type RenameProjectModalProps = {
+  busy: boolean;
+  project: JobWithSource;
+  onClose: () => void;
+  onRename: (jobId: string, name: string) => Promise<void>;
+};
+
+function RenameProjectModal({ busy, project, onClose, onRename }: RenameProjectModalProps): ReactElement {
+  const [name, setName] = useState(project.sourceFile.name);
+  const trimmedName = name.trim();
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="import-modal project-modal" aria-labelledby="rename-project-title" role="dialog">
+        <div className="modal-glow" />
+        <header className="modal-header">
+          <div>
+            <p className="eyebrow">Project</p>
+            <h2 id="rename-project-title">Rename project</h2>
+          </div>
+          <button className="icon-button" disabled={busy} onClick={onClose} title="Close" type="button"><X size={18} /></button>
+        </header>
+
+        <label className="project-name-field">
+          <span className="field-label">Display name</span>
+          <input
+            autoFocus
+            maxLength={180}
+            onChange={(event) => setName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && trimmedName) {
+                void onRename(project.job.id, trimmedName);
+              }
+            }}
+            value={name}
+          />
+        </label>
+
+        <footer className="modal-actions">
+          <button className="secondary-action" disabled={busy} onClick={onClose} type="button">Cancel</button>
+          <button className="primary-action compact" disabled={busy || !trimmedName} onClick={() => void onRename(project.job.id, trimmedName)} type="button">
+            Save
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+type DeleteProjectModalProps = {
+  busy: boolean;
+  project: JobWithSource;
+  onClose: () => void;
+  onDelete: (jobId: string) => Promise<void>;
+};
+
+function DeleteProjectModal({ busy, project, onClose, onDelete }: DeleteProjectModalProps): ReactElement {
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="import-modal project-modal delete-project-modal" aria-labelledby="delete-project-title" role="dialog">
+        <div className="modal-glow danger-glow" />
+        <header className="modal-header">
+          <div>
+            <p className="eyebrow">Project</p>
+            <h2 id="delete-project-title">Delete project</h2>
+          </div>
+          <button className="icon-button" disabled={busy} onClick={onClose} title="Close" type="button"><X size={18} /></button>
+        </header>
+
+        <p className="delete-copy">
+          Delete <strong>{project.sourceFile.name}</strong> from Voxmire. This removes the transcript and job records only. The original media file stays on disk.
+        </p>
+
+        <footer className="modal-actions">
+          <button className="secondary-action" disabled={busy} onClick={onClose} type="button">Cancel</button>
+          <button className="secondary-action danger solid-danger" disabled={busy} onClick={() => void onDelete(project.job.id)} type="button">
+            <Trash2 size={14} />
+            Delete project
+          </button>
+        </footer>
       </section>
     </div>
   );
@@ -2298,6 +2756,17 @@ function formatDuration(seconds: number | null): string {
   return seconds === null ? 'Duration unknown' : formatTime(seconds);
 }
 
+function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return '0 B';
+  }
+
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** exponent;
+  return `${value.toFixed(value >= 10 || exponent === 0 ? 0 : 1)} ${units[exponent]}`;
+}
+
 function formatDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -2305,4 +2774,16 @@ function formatDate(value: string): string {
   }
 
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date);
+}
+
+function formatDateTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'Unknown date';
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }).format(date);
 }

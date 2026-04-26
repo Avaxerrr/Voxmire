@@ -4,7 +4,13 @@ import { join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { Readable } from 'node:stream';
 import { modelProfiles, resolveTranscriptionPreset } from '@voxmire/core';
-import { type TranscriptionProgressEvent, createJobInputSchema, exportTranscriptInputSchema } from '@voxmire/contracts';
+import {
+  type TranscriptionProgressEvent,
+  createJobInputSchema,
+  deleteProjectInputSchema,
+  exportTranscriptInputSchema,
+  renameProjectInputSchema
+} from '@voxmire/contracts';
 import { detectWhisperEngines, getMachineProfile, getResourceStatus, resolveFfmpegExecutable, resolveFfprobeExecutable, type ResourcePaths } from '@voxmire/engine';
 import { createJsonlRuntimeLogger, createVoxmireRuntime, type VoxmireRuntime } from '@voxmire/runtime';
 import { openVoxmireDatabase, type VoxmireDatabase } from '@voxmire/storage';
@@ -92,6 +98,17 @@ function registerIpcHandlers(): void {
   ipcMain.handle('models:list', () => modelProfiles);
   ipcMain.handle('jobs:list', () => runtime.listJobs());
   ipcMain.handle('jobs:get', (_event, jobId: string) => runtime.getJob(jobId));
+  ipcMain.handle('projects:get-details', (_event, jobId: string) => runtime.getProjectDetails(jobId));
+  ipcMain.handle('projects:rename', (_event, rawInput: unknown) => {
+    const input = renameProjectInputSchema.parse(rawInput);
+    return runtime.renameProject(input.jobId, input.name);
+  });
+  ipcMain.handle('projects:delete', (_event, rawInput: unknown) => {
+    const input = deleteProjectInputSchema.parse(rawInput);
+    waveformCache.delete(input.jobId);
+    mediaInfoCache.delete(input.jobId);
+    return runtime.deleteProject(input.jobId);
+  });
   ipcMain.handle('transcripts:get', (_event, jobId: string) => runtime.getTranscriptSegments(jobId));
   ipcMain.handle('media:get-source-url', (_event, jobId: string) => {
     const job = runtime.getJob(jobId);
