@@ -1,10 +1,16 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, protocol, shell } from 'electron';
-import { createReadStream, existsSync, mkdirSync, statSync } from 'node:fs';
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, protocol, screen, shell } from 'electron';
+import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { Readable } from 'node:stream';
 import { modelProfiles, resolveTranscriptionPreset } from '@voxmire/core';
-import { type TranscriptionProgressEvent, createJobInputSchema, exportTranscriptInputSchema } from '@voxmire/contracts';
+import {
+  type TranscriptionProgressEvent,
+  createJobInputSchema,
+  deleteProjectInputSchema,
+  exportTranscriptInputSchema,
+  renameProjectInputSchema
+} from '@voxmire/contracts';
 import { detectWhisperEngines, getMachineProfile, getResourceStatus, resolveFfmpegExecutable, resolveFfprobeExecutable, type ResourcePaths } from '@voxmire/engine';
 import { createJsonlRuntimeLogger, createVoxmireRuntime, type VoxmireRuntime } from '@voxmire/runtime';
 import { openVoxmireDatabase, type VoxmireDatabase } from '@voxmire/storage';
@@ -15,6 +21,12 @@ let resources: ResourcePaths;
 let runtime: VoxmireRuntime;
 const waveformCache = new Map<string, Promise<MediaWaveformResult | null>>();
 const mediaInfoCache = new Map<string, Promise<MediaInfoResult>>();
+const minimumWindowWidth = 1024;
+const minimumWindowHeight = 680;
+const defaultWindowBounds = {
+  width: 1280,
+  height: 820
+};
 
 type MediaKind = 'audio' | 'video';
 
@@ -30,6 +42,17 @@ type MediaInfoResult = {
   kind: MediaKind;
 };
 
+type WindowBounds = {
+  height: number;
+  width: number;
+  x?: number;
+  y?: number;
+};
+
+type WindowState = WindowBounds & {
+  isMaximized: boolean;
+};
+
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'voxmire-media',
@@ -43,11 +66,11 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 function createMainWindow(): void {
+  const windowState = loadWindowState();
   const mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 820,
-    minWidth: 1024,
-    minHeight: 680,
+    ...windowStateToBrowserBounds(windowState),
+    minWidth: minimumWindowWidth,
+    minHeight: minimumWindowHeight,
     title: 'Voxmire',
     frame: false,
     titleBarStyle: 'hidden',
@@ -60,6 +83,11 @@ function createMainWindow(): void {
       sandbox: false
     }
   });
+
+  attachWindowStatePersistence(mainWindow);
+  if (windowState?.isMaximized) {
+    mainWindow.maximize();
+  }
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
@@ -92,6 +120,17 @@ function registerIpcHandlers(): void {
   ipcMain.handle('models:list', () => modelProfiles);
   ipcMain.handle('jobs:list', () => runtime.listJobs());
   ipcMain.handle('jobs:get', (_event, jobId: string) => runtime.getJob(jobId));
+  ipcMain.handle('projects:get-details', (_event, jobId: string) => runtime.getProjectDetails(jobId));
+  ipcMain.handle('projects:rename', (_event, rawInput: unknown) => {
+    const input = renameProjectInputSchema.parse(rawInput);
+    return runtime.renameProject(input.jobId, input.name);
+  });
+  ipcMain.handle('projects:delete', (_event, rawInput: unknown) => {
+    const input = deleteProjectInputSchema.parse(rawInput);
+    waveformCache.delete(input.jobId);
+    mediaInfoCache.delete(input.jobId);
+    return runtime.deleteProject(input.jobId);
+  });
   ipcMain.handle('transcripts:get', (_event, jobId: string) => runtime.getTranscriptSegments(jobId));
   ipcMain.handle('media:get-source-url', (_event, jobId: string) => {
     const job = runtime.getJob(jobId);
@@ -184,6 +223,128 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('window:is-maximized', (event) => BrowserWindow.fromWebContents(event.sender)?.isMaximized() ?? false);
+}
+
+function attachWindowStatePersistence(window: BrowserWindow): void {
+  let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const scheduleSave = (): void => {
+    if (window.isDestroyed() || window.isMinimized()) {
+      return;
+    }
+
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+    }
+
+    saveTimer = setTimeout(() => {
+      saveTimer = null;
+      saveWindowState(window);
+    }, 400);
+  };
+
+  window.on('move', scheduleSave);
+  window.on('resize', scheduleSave);
+  window.on('maximize', scheduleSave);
+  window.on('unmaximize', scheduleSave);
+  window.on('close', () => {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    saveWindowState(window);
+  });
+}
+
+function saveWindowState(window: BrowserWindow): void {
+  if (window.isDestroyed() || window.isMinimized()) {
+    return;
+  }
+
+  const bounds = window.isMaximized() ? window.getNormalBounds() : window.getBounds();
+  const state: WindowState = {
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+    isMaximized: window.isMaximized()
+  };
+
+  try {
+    writeFileSync(windowStatePath(), JSON.stringify(state, null, 2), 'utf8');
+  } catch {
+    // Window state is a best-effort UI preference.
+  }
+}
+
+function loadWindowState(): WindowState | null {
+  try {
+    const parsed = JSON.parse(readFileSync(windowStatePath(), 'utf8')) as Partial<WindowState>;
+    const bounds = normalizeWindowBounds(parsed);
+    if (!bounds || !windowBoundsAreVisible(bounds)) {
+      return null;
+    }
+
+    return {
+      ...bounds,
+      isMaximized: parsed.isMaximized === true
+    };
+  } catch {
+    return null;
+  }
+}
+
+function windowStateToBrowserBounds(state: WindowState | null): WindowBounds {
+  if (!state) {
+    return defaultWindowBounds;
+  }
+
+  return {
+    ...(state.x !== undefined ? { x: state.x } : {}),
+    ...(state.y !== undefined ? { y: state.y } : {}),
+    width: state.width,
+    height: state.height
+  };
+}
+
+function normalizeWindowBounds(value: Partial<WindowBounds>): WindowBounds | null {
+  if (!Number.isFinite(value.width) || !Number.isFinite(value.height)) {
+    return null;
+  }
+
+  const width = Math.max(minimumWindowWidth, Math.round(value.width ?? defaultWindowBounds.width));
+  const height = Math.max(minimumWindowHeight, Math.round(value.height ?? defaultWindowBounds.height));
+  const x = Number.isFinite(value.x) ? Math.round(value.x as number) : undefined;
+  const y = Number.isFinite(value.y) ? Math.round(value.y as number) : undefined;
+
+  return {
+    ...(x !== undefined ? { x } : {}),
+    ...(y !== undefined ? { y } : {}),
+    width,
+    height
+  };
+}
+
+function windowBoundsAreVisible(bounds: WindowBounds): boolean {
+  if (bounds.x === undefined || bounds.y === undefined) {
+    return true;
+  }
+
+  const visibleBounds = { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+  return screen.getAllDisplays().some((display) => rectanglesIntersect(visibleBounds, display.workArea));
+}
+
+function rectanglesIntersect(first: Required<WindowBounds>, second: Electron.Rectangle): boolean {
+  return (
+    first.x < second.x + second.width &&
+    first.x + first.width > second.x &&
+    first.y < second.y + second.height &&
+    first.y + first.height > second.y
+  );
+}
+
+function windowStatePath(): string {
+  return join(app.getPath('userData'), 'window-state.json');
 }
 
 

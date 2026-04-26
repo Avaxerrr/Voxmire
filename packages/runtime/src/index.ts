@@ -6,6 +6,7 @@ import type {
   JobStatus,
   JobWithSource,
   ModelId,
+  ProjectDetails,
   SourceFile,
   TranscriptionChunk,
   TranscriptionChunkStatus,
@@ -25,12 +26,16 @@ import {
 } from '@voxmire/engine';
 import { exportFileExtension, renderTranscriptExport } from '@voxmire/exporters';
 import {
+  countTranscriptSegments,
+  countTranscriptionChunks,
   createId,
   createJobRecord,
+  deleteProject,
   getJobWithSource,
   getTranscriptSegments,
   getTranscriptionChunks,
   listJobs,
+  renameProject,
   resetInterruptedTranscriptionChunks,
   saveTranscriptionChunk,
   saveTranscriptSegment,
@@ -113,6 +118,59 @@ export class VoxmireRuntime {
 
   getTranscriptSegments(jobId: string): TranscriptSegment[] {
     return getTranscriptSegments(this.options.db, jobId);
+  }
+
+  getProjectDetails(jobId: string): ProjectDetails | null {
+    const current = getJobWithSource(this.options.db, jobId);
+    if (!current) {
+      return null;
+    }
+
+    return {
+      ...current,
+      segmentCount: countTranscriptSegments(this.options.db, jobId),
+      chunkCount: countTranscriptionChunks(this.options.db, jobId),
+      mediaAvailable: existsSync(current.sourceFile.path)
+    };
+  }
+
+  renameProject(jobId: string, name: string): JobWithSource | null {
+    const renamed = renameProject(this.options.db, jobId, name);
+    if (renamed) {
+      this.log({
+        level: 'info',
+        event: 'project.renamed',
+        jobId,
+        chunkId: null,
+        message: 'Project renamed.',
+        details: { name: renamed.sourceFile.name }
+      });
+    }
+
+    return renamed;
+  }
+
+  deleteProject(jobId: string): { jobId: string; deleted: boolean } {
+    const active = this.activeJobs.get(jobId);
+    active?.abortController.abort();
+    if (active?.currentChunkId) {
+      updateTranscriptionChunkStatus(this.options.db, active.currentChunkId, 'canceled');
+    }
+    this.activeJobs.delete(jobId);
+
+    const deleted = deleteProject(this.options.db, jobId);
+    if (deleted) {
+      this.log({
+        level: 'warn',
+        event: 'project.deleted',
+        jobId,
+        chunkId: null,
+        message: 'Project deleted from local workspace.',
+        details: null
+      });
+    }
+
+    return { jobId, deleted };
   }
 
   async createTranscriptionJob(input: CreateTranscriptionJobInput): Promise<JobWithSource> {

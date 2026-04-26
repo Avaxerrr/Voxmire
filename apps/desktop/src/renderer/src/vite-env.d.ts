@@ -9,6 +9,7 @@ import type {
   JobWithSource,
   MachineProfile,
   ModelProfile,
+  ProjectDetails,
   ResourceStatus,
   TranscriptSegment,
   TranscriptionJob,
@@ -60,6 +61,11 @@ declare global {
         pause: (jobId: string) => Promise<TranscriptionJob | null>;
         resume: (jobId: string) => Promise<JobWithSource | null>;
         onProgress: (callback: (event: TranscriptionProgressEvent) => void) => Unsubscribe;
+      };
+      projects: {
+        getDetails: (jobId: string) => Promise<ProjectDetails | null>;
+        rename: (jobId: string, name: string) => Promise<JobWithSource | null>;
+        delete: (jobId: string) => Promise<{ jobId: string; deleted: boolean }>;
       };
       transcripts: {
         get: (jobId: string) => Promise<TranscriptSegment[]>;

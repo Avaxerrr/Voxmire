@@ -8,6 +8,7 @@ import type {
   JobWithSource,
   MachineProfile,
   ModelProfile,
+  ProjectDetails,
   ResourceStatus,
   TranscriptSegment,
   TranscriptionJob,
@@ -47,6 +48,13 @@ const api = {
       ipcRenderer.on('jobs:progress', listener);
       return () => ipcRenderer.removeListener('jobs:progress', listener);
     }
+  },
+  projects: {
+    getDetails: (jobId: string): Promise<ProjectDetails | null> => ipcRenderer.invoke('projects:get-details', jobId),
+    rename: (jobId: string, name: string): Promise<JobWithSource | null> =>
+      ipcRenderer.invoke('projects:rename', { jobId, name }),
+    delete: (jobId: string): Promise<{ jobId: string; deleted: boolean }> =>
+      ipcRenderer.invoke('projects:delete', { jobId })
   },
   transcripts: {
     get: (jobId: string): Promise<TranscriptSegment[]> => ipcRenderer.invoke('transcripts:get', jobId)
