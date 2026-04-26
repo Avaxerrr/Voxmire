@@ -1,4 +1,4 @@
-import { type MutableRefObject, type ReactElement, memo, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, type MouseEvent as ReactMouseEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent, type ReactElement, memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   AlertTriangle,
@@ -69,6 +69,7 @@ type ViewId = 'dashboard' | 'transcript' | 'voice' | 'settings';
 type StatusTone = 'ready' | 'active' | 'warning' | 'error';
 type MediaKind = 'audio' | 'video';
 type WaveformScaleMode = 'actual' | 'boost' | 'db';
+type VideoPreviewDock = 'top' | 'side';
 
 type MediaInfo = {
   contentType: string;
@@ -83,6 +84,13 @@ const waveformScaleModes: WaveformScaleMode[] = ['actual', 'boost', 'db'];
 const playbackSpeeds = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 const playbackSyncIntervalMs = 250;
 const audioSeekThrottleMs = 50;
+const videoSeekThrottleMs = 140;
+const videoPreviewPreferenceKey = 'voxmire:videoPreviewPreference';
+const defaultVideoPreviewWidth = 320;
+const minVideoPreviewWidth = 180;
+const maxTopVideoPreviewWidth = 420;
+const maxSideVideoPreviewWidth = 360;
+const sidePreviewBreakpoint = 1180;
 
 const fallbackModels: ModelProfile[] = [
   {
@@ -639,7 +647,10 @@ function TranscriptView({
   const [playbackTime, setPlaybackTime] = useState(0);
   const [playbackDuration, setPlaybackDuration] = useState<number | null>(null);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
-  const [videoPreviewCollapsed, setVideoPreviewCollapsed] = useState(false);
+  const [videoPreviewHidden, setVideoPreviewHidden] = useState(() => loadVideoPreviewPreference().hidden);
+  const [videoPreviewDock, setVideoPreviewDock] = useState<VideoPreviewDock>(() => loadVideoPreviewPreference().dock);
+  const [videoPreviewWidth, setVideoPreviewWidth] = useState(() => loadVideoPreviewPreference().width);
+  const [viewportSize, setViewportSize] = useState(() => ({ height: window.innerHeight, width: window.innerWidth }));
   const [waveformPeaks, setWaveformPeaks] = useState<number[]>([]);
   const [waveformLoading, setWaveformLoading] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement | null>(null);
@@ -690,6 +701,19 @@ function TranscriptView({
       window.removeEventListener('mousedown', handlePointerDown);
     };
   }, [exportMenuOpen, switcherOpen]);
+
+  useEffect(() => {
+    function handleResize(): void {
+      setViewportSize({ height: window.innerHeight, width: window.innerWidth });
+    }
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    saveVideoPreviewPreference({ dock: videoPreviewDock, hidden: videoPreviewHidden, width: videoPreviewWidth });
+  }, [videoPreviewDock, videoPreviewHidden, videoPreviewWidth]);
 
   useEffect(() => {
     let canceled = false;
@@ -905,7 +929,7 @@ function TranscriptView({
         ) : null}
 
         <div className="transcript-main">
-          <section className={`transcript-stage ${selectedMediaKind === 'video' && mediaUrl ? 'has-video-preview' : ''}`}>
+          <section className={'transcript-stage ' + (selectedMediaKind === 'video' && mediaUrl ? 'has-video-preview preview-' + (videoPreviewHidden ? 'hidden' : videoPreviewDock) : '')}>
             {selectedJob ? (
               <>
                 <div className="job-progress-row">
@@ -935,22 +959,40 @@ function TranscriptView({
                 </div>
                 {selectedJob.job.errorMessage ? <div className="error-text"><AlertTriangle size={16} /> {selectedJob.job.errorMessage}</div> : null}
                 {selectedMediaKind === 'video' && mediaUrl ? (
-                  <VideoPreview
-                    collapsed={videoPreviewCollapsed}
-                    currentTime={playbackTime}
-                    duration={resolvedPlaybackDuration}
-                    mediaRef={audioRef}
-                    mediaUrl={mediaUrl}
-                    onDurationChange={setPlaybackDuration}
-                    onError={setMediaError}
-                    onTimeChange={setPlaybackTime}
-                    playbackSpeed={playbackSpeed}
-                    playing={playing}
-                    setCollapsed={setVideoPreviewCollapsed}
-                    setPlaying={setPlaying}
-                  />
-                ) : null}
-                {segments.length === 0 ? (
+                  <div className={'transcript-content-with-preview ' + (videoPreviewHidden ? 'hidden' : videoPreviewDock)}>
+                    {videoPreviewHidden ? (
+                      <button className="show-video-preview" onClick={() => setVideoPreviewHidden(false)} type="button">
+                        <Video size={14} />
+                        Show video preview
+                      </button>
+                    ) : null}
+                    <VideoPreview
+                      currentTime={playbackTime}
+                      dock={videoPreviewDock}
+                      duration={resolvedPlaybackDuration}
+                      hidden={videoPreviewHidden}
+                      mediaRef={audioRef}
+                      mediaUrl={mediaUrl}
+                      onDurationChange={setPlaybackDuration}
+                      onError={setMediaError}
+                      onHide={() => setVideoPreviewHidden(true)}
+                      onTimeChange={setPlaybackTime}
+                      onWidthChange={setVideoPreviewWidth}
+                      playbackSpeed={playbackSpeed}
+                      playing={playing}
+                      setDock={setVideoPreviewDock}
+                      setPlaying={setPlaying}
+                      viewportHeight={viewportSize.height}
+                      viewportWidth={viewportSize.width}
+                      width={videoPreviewWidth}
+                    />
+                    {segments.length === 0 ? (
+                      <EmptyState title="Transcript pending" body="Transcript text will appear here as the job progresses." />
+                    ) : (
+                      <VirtualizedSegmentList activeSegmentIndex={activeSegmentIndex} onSeek={seekToSegment} segments={segments} />
+                    )}
+                  </div>
+                ) : segments.length === 0 ? (
                   <EmptyState title="Transcript pending" body="Transcript text will appear here as the job progresses." />
                 ) : (
                   <VirtualizedSegmentList activeSegmentIndex={activeSegmentIndex} onSeek={seekToSegment} segments={segments} />
@@ -1321,49 +1363,103 @@ function VirtualizedSegmentList({ activeSegmentIndex, onSeek, segments }: Virtua
 }
 
 type VideoPreviewProps = {
-  collapsed: boolean;
   currentTime: number;
+  dock: VideoPreviewDock;
   duration: number | null;
+  hidden: boolean;
   mediaRef: MutableRefObject<HTMLMediaElement | null>;
   mediaUrl: string;
   onDurationChange: (duration: number | null) => void;
   onError: (message: string | null) => void;
+  onHide: () => void;
   onTimeChange: (time: number) => void;
+  onWidthChange: (width: number) => void;
   playbackSpeed: number;
   playing: boolean;
-  setCollapsed: (collapsed: boolean) => void;
+  setDock: (dock: VideoPreviewDock) => void;
   setPlaying: (playing: boolean) => void;
+  viewportHeight: number;
+  viewportWidth: number;
+  width: number;
 };
 
 function VideoPreview({
-  collapsed,
   currentTime,
+  dock,
   duration,
+  hidden,
   mediaRef,
   mediaUrl,
   onDurationChange,
   onError,
+  onHide,
   onTimeChange,
+  onWidthChange,
   playbackSpeed,
   playing,
-  setCollapsed,
-  setPlaying
+  setDock,
+  setPlaying,
+  viewportHeight,
+  viewportWidth,
+  width
 }: VideoPreviewProps): ReactElement {
+  const [resizing, setResizing] = useState(false);
+  const dragStartXRef = useRef(0);
+  const dragStartWidthRef = useRef(width);
+  const boundedWidth = clampVideoPreviewWidth(width, dock, viewportWidth, viewportHeight);
+
+  useEffect(() => {
+    const nextWidth = clampVideoPreviewWidth(width, dock, viewportWidth, viewportHeight);
+    if (nextWidth !== width) {
+      onWidthChange(nextWidth);
+    }
+  }, [dock, onWidthChange, viewportHeight, viewportWidth, width]);
+
+  function beginResize(event: ReactPointerEvent<HTMLButtonElement>): void {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragStartXRef.current = event.clientX;
+    dragStartWidthRef.current = boundedWidth;
+    setResizing(true);
+  }
+
+  function resize(event: ReactPointerEvent<HTMLButtonElement>): void {
+    if (!resizing) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onWidthChange(clampVideoPreviewWidth(dragStartWidthRef.current + event.clientX - dragStartXRef.current, dock, viewportWidth, viewportHeight));
+  }
+
+  function endResize(event: ReactPointerEvent<HTMLButtonElement>): void {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setResizing(false);
+  }
+
+  function resetSize(event: ReactMouseEvent<HTMLButtonElement>): void {
+    event.preventDefault();
+    event.stopPropagation();
+    onWidthChange(clampVideoPreviewWidth(defaultVideoPreviewWidth, dock, viewportWidth, viewportHeight));
+  }
+
   return (
-    <section className={`video-preview-panel ${collapsed ? 'collapsed' : ''}`} aria-label="Video preview">
-      <div className="video-preview-header">
-        <span><Video size={14} /> Video preview</span>
-        <button className="secondary-action compact" onClick={() => setCollapsed(!collapsed)} type="button">
-          {collapsed ? 'Show' : 'Hide'}
-        </button>
-      </div>
-      <button
-        aria-hidden={collapsed}
+    <section aria-hidden={hidden || undefined} className={'video-preview-panel ' + (hidden ? 'hidden ' : '') + (resizing ? 'resizing' : '')} style={{ '--preview-width': boundedWidth + 'px' } as CSSProperties} aria-label="Video preview">
+      <div
         className="video-preview-surface"
         onClick={() => setPlaying(!playing)}
-        tabIndex={collapsed ? -1 : 0}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            setPlaying(!playing);
+          }
+        }}
+        role="button"
+        tabIndex={hidden ? -1 : 0}
         title={playing ? 'Pause video' : 'Play video'}
-        type="button"
       >
         <video
           onDurationChange={(event) => {
@@ -1393,17 +1489,22 @@ function VideoPreview({
           onWaiting={(event) => logPlaybackDiagnostic('video:waiting', event.currentTarget)}
           playsInline
           preload="metadata"
-          ref={(element) => {
-            mediaRef.current = element;
-          }}
+          ref={(element) => { mediaRef.current = element; }}
           src={mediaUrl}
         />
-        <span>{formatTime(currentTime)} / {formatDuration(duration)}</span>
-      </button>
+        <div className="video-preview-actions" onClick={(event) => event.stopPropagation()}>
+          <button aria-label={dock === 'top' ? 'Dock video preview to side' : 'Dock video preview above transcript'} onClick={() => setDock(dock === 'top' ? 'side' : 'top')} title={dock === 'top' ? 'Dock side' : 'Dock top'} type="button">
+            {dock === 'top' ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
+          </button>
+          <button aria-label="Hide video preview" onClick={onHide} title="Hide preview" type="button"><X size={14} /></button>
+        </div>
+        <span className="video-preview-time">{formatTime(currentTime)} / {formatDuration(duration)}</span>
+        <span className="video-preview-size">{Math.round(boundedWidth)}px</span>
+        <button aria-label="Resize video preview" className="video-resize-handle" onClick={(event) => event.stopPropagation()} onDoubleClick={resetSize} onPointerCancel={endResize} onPointerDown={beginResize} onPointerMove={resize} onPointerUp={endResize} title="Drag to resize. Double-click to reset." type="button" />
+      </div>
     </section>
   );
 }
-
 type WaveformGraphProps = {
   loading: boolean;
   peaks: number[];
@@ -1554,7 +1655,7 @@ function AudioDeck({
 
     const updateVisualTime = (timestamp: number): void => {
       const audio = audioRef.current;
-      if (audio && timestamp - lastUpdate >= 33) {
+      if (audio && draftSeekTime === null && timestamp - lastUpdate >= 33) {
         const nextTime = audio.currentTime;
         setVisualTime(nextTime);
         syncPlaybackSample(nextTime);
@@ -1566,7 +1667,7 @@ function AudioDeck({
     animationFrame = window.requestAnimationFrame(updateVisualTime);
 
     return () => window.cancelAnimationFrame(animationFrame);
-  }, [audioRef, canPlay, onTimeChange, playing]);
+  }, [audioRef, canPlay, draftSeekTime, onTimeChange, playing]);
 
   function skipBy(seconds: number): void {
     const audio = audioRef.current;
@@ -1600,17 +1701,19 @@ function AudioDeck({
     const nextTime = Math.min(resolvedDuration, Math.max(0, seconds));
     setDraftSeekTime(nextTime);
     setVisualTime(nextTime);
+    syncPlaybackSample(nextTime, true);
 
-    if (!audio || !canPlay || mediaKind === 'video') {
+    if (!audio || !canPlay) {
       return;
     }
 
     const now = performance.now();
-    if (now - lastPreviewSeekRef.current < audioSeekThrottleMs) {
+    const seekThrottle = mediaKind === 'video' ? videoSeekThrottleMs : audioSeekThrottleMs;
+    if (now - lastPreviewSeekRef.current < seekThrottle) {
       return;
     }
 
-    applyMediaSeek(audio, nextTime, false);
+    applyMediaSeek(audio, nextTime, mediaKind === 'video');
     lastPreviewSeekRef.current = now;
   }
 
@@ -2041,12 +2144,57 @@ function waveformScaleDescription(mode: WaveformScaleMode): string {
   }
 }
 
+type VideoPreviewPreference = {
+  dock: VideoPreviewDock;
+  hidden: boolean;
+  width: number;
+};
+
+function loadVideoPreviewPreference(): VideoPreviewPreference {
+  const fallback: VideoPreviewPreference = { dock: 'top', hidden: false, width: defaultVideoPreviewWidth };
+
+  try {
+    const rawValue = window.localStorage.getItem(videoPreviewPreferenceKey);
+    if (!rawValue) {
+      return fallback;
+    }
+
+    const value = JSON.parse(rawValue) as Partial<VideoPreviewPreference>;
+    return {
+      dock: value.dock === 'side' ? 'side' : 'top',
+      hidden: typeof value.hidden === 'boolean' ? value.hidden : fallback.hidden,
+      width: typeof value.width === 'number' && Number.isFinite(value.width) ? Math.max(minVideoPreviewWidth, Math.min(maxTopVideoPreviewWidth, Math.round(value.width))) : fallback.width
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function saveVideoPreviewPreference(preference: VideoPreviewPreference): void {
+  try {
+    window.localStorage.setItem(videoPreviewPreferenceKey, JSON.stringify(preference));
+  } catch {
+    // Best-effort UI preference only.
+  }
+}
+
 function statusClass(status: JobStatus): string {
   if (status === 'completed') return 'ready';
   if (status === 'failed') return 'missing';
   if (status === 'canceled') return 'optional';
   if (activeStatuses.includes(status)) return 'active';
   return 'optional';
+}
+
+function clampVideoPreviewWidth(width: number, dock: VideoPreviewDock, viewportWidth: number, viewportHeight: number): number {
+  const dockedToSide = dock === 'side' && viewportWidth > sidePreviewBreakpoint;
+  const baseMaxWidth = dockedToSide ? maxSideVideoPreviewWidth : maxTopVideoPreviewWidth;
+  const widthLimit = dockedToSide ? Math.floor(viewportWidth * 0.28) : Math.floor(viewportWidth * 0.5);
+  const availableHeight = viewportHeight - (dockedToSide ? 300 : 430);
+  const heightLimit = Math.floor(Math.max(0, availableHeight) * 9 / 16);
+  const maxWidth = Math.max(minVideoPreviewWidth, Math.min(baseMaxWidth, widthLimit, Math.max(minVideoPreviewWidth, heightLimit)));
+
+  return Math.max(minVideoPreviewWidth, Math.min(maxWidth, Math.round(width)));
 }
 
 function applyMediaSeek(media: HTMLMediaElement, seconds: number, approximate: boolean): void {
