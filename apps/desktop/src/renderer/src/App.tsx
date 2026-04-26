@@ -84,6 +84,7 @@ const waveformScaleModes: WaveformScaleMode[] = ['actual', 'boost', 'db'];
 const playbackSpeeds = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 const playbackSyncIntervalMs = 250;
 const audioSeekThrottleMs = 50;
+const videoSeekThrottleMs = 140;
 const videoPreviewPreferenceKey = 'voxmire:videoPreviewPreference';
 const defaultVideoPreviewWidth = 320;
 const minVideoPreviewWidth = 180;
@@ -1654,7 +1655,7 @@ function AudioDeck({
 
     const updateVisualTime = (timestamp: number): void => {
       const audio = audioRef.current;
-      if (audio && timestamp - lastUpdate >= 33) {
+      if (audio && draftSeekTime === null && timestamp - lastUpdate >= 33) {
         const nextTime = audio.currentTime;
         setVisualTime(nextTime);
         syncPlaybackSample(nextTime);
@@ -1666,7 +1667,7 @@ function AudioDeck({
     animationFrame = window.requestAnimationFrame(updateVisualTime);
 
     return () => window.cancelAnimationFrame(animationFrame);
-  }, [audioRef, canPlay, onTimeChange, playing]);
+  }, [audioRef, canPlay, draftSeekTime, onTimeChange, playing]);
 
   function skipBy(seconds: number): void {
     const audio = audioRef.current;
@@ -1700,17 +1701,19 @@ function AudioDeck({
     const nextTime = Math.min(resolvedDuration, Math.max(0, seconds));
     setDraftSeekTime(nextTime);
     setVisualTime(nextTime);
+    syncPlaybackSample(nextTime, true);
 
-    if (!audio || !canPlay || mediaKind === 'video') {
+    if (!audio || !canPlay) {
       return;
     }
 
     const now = performance.now();
-    if (now - lastPreviewSeekRef.current < audioSeekThrottleMs) {
+    const seekThrottle = mediaKind === 'video' ? videoSeekThrottleMs : audioSeekThrottleMs;
+    if (now - lastPreviewSeekRef.current < seekThrottle) {
       return;
     }
 
-    applyMediaSeek(audio, nextTime, false);
+    applyMediaSeek(audio, nextTime, mediaKind === 'video');
     lastPreviewSeekRef.current = now;
   }
 
