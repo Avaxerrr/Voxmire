@@ -1809,6 +1809,7 @@ function VirtualizedSegmentList({ activeSegmentIndex, onSeek, onUpdateSegment, s
   const [editingSegmentId, setEditingSegmentId] = useState<string | null>(null);
   const [draftText, setDraftText] = useState('');
   const [savingSegmentId, setSavingSegmentId] = useState<string | null>(null);
+  const [saveErrorSegmentId, setSaveErrorSegmentId] = useState<string | null>(null);
   const scrollParentRef = useRef<HTMLDivElement | null>(null);
   const rowVirtualizer = useVirtualizer({
     count: segments.length,
@@ -1825,6 +1826,7 @@ function VirtualizedSegmentList({ activeSegmentIndex, onSeek, onUpdateSegment, s
   }, [activeSegmentIndex, editingSegmentId]);
 
   function startEditing(segment: TranscriptSegment): void {
+    setSaveErrorSegmentId(null);
     setEditingSegmentId(segment.id);
     setDraftText(segment.text);
   }
@@ -1834,22 +1836,69 @@ function VirtualizedSegmentList({ activeSegmentIndex, onSeek, onUpdateSegment, s
     setDraftText('');
   }
 
-  async function saveEditing(segment: TranscriptSegment): Promise<void> {
-    const nextText = draftText;
+  async function saveSegmentText(segment: TranscriptSegment, nextText: string): Promise<boolean> {
+    const normalizedText = nextText.trimEnd();
+    if (normalizedText === segment.text) {
+      setSaveErrorSegmentId(null);
+      return true;
+    }
+
     setSavingSegmentId(segment.id);
+    setSaveErrorSegmentId(null);
     try {
-      if (nextText !== segment.text) {
-        const updated = await onUpdateSegment(segment.id, nextText);
-        if (!updated) {
-          return;
-        }
+      const updated = await onUpdateSegment(segment.id, normalizedText);
+      if (!updated) {
+        setSaveErrorSegmentId(segment.id);
+        return false;
       }
 
-      cancelEditing();
+      return true;
     } finally {
       setSavingSegmentId(null);
     }
   }
+
+  async function saveAndClose(segment: TranscriptSegment, nextText: string): Promise<void> {
+    const saved = await saveSegmentText(segment, nextText);
+    if (saved && editingSegmentId === segment.id) {
+      cancelEditing();
+    }
+  }
+
+  async function saveAndMoveToNext(segment: TranscriptSegment, nextText: string, currentIndex: number): Promise<boolean> {
+    const saved = await saveSegmentText(segment, nextText);
+    if (!saved) {
+      return false;
+    }
+
+    const nextSegment = segments[currentIndex + 1];
+    if (!nextSegment) {
+      cancelEditing();
+      return true;
+    }
+
+    setEditingSegmentId(nextSegment.id);
+    setDraftText(nextSegment.text);
+    rowVirtualizer.scrollToIndex(currentIndex + 1, { align: 'center' });
+    return true;
+  }
+
+  useEffect(() => {
+    if (!editingSegmentId) {
+      return;
+    }
+
+    const segment = segments.find((candidate) => candidate.id === editingSegmentId);
+    if (!segment || draftText.trimEnd() === segment.text || savingSegmentId === editingSegmentId) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void saveSegmentText(segment, draftText);
+    }, 1200);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [draftText, editingSegmentId, savingSegmentId, segments]);
 
   return (
     <div className="segment-list virtualized" ref={scrollParentRef}>
@@ -1863,6 +1912,7 @@ function VirtualizedSegmentList({ activeSegmentIndex, onSeek, onUpdateSegment, s
           const active = virtualRow.index === activeSegmentIndex;
           const editing = segment.id === editingSegmentId;
           const saving = segment.id === savingSegmentId;
+          const saveError = segment.id === saveErrorSegmentId;
 
           return (
             <div
@@ -1878,9 +1928,12 @@ function VirtualizedSegmentList({ activeSegmentIndex, onSeek, onUpdateSegment, s
                 editing={editing}
                 onCancel={cancelEditing}
                 onDraftChange={setDraftText}
-                onEdit={() => startEditing(segment)}
-                onSave={() => saveEditing(segment)}
+                onFocus={() => startEditing(segment)}
+                onSave={(nextText) => saveSegmentText(segment, nextText)}
+                onSaveAndClose={(nextText) => saveAndClose(segment, nextText)}
+                onSaveAndMoveNext={(nextText) => saveAndMoveToNext(segment, nextText, virtualRow.index)}
                 onSeek={() => onSeek(segment)}
+                saveError={saveError}
                 saving={saving}
                 segment={segment}
               />
@@ -1898,9 +1951,12 @@ type EditableSegmentRowProps = {
   editing: boolean;
   onCancel: () => void;
   onDraftChange: (text: string) => void;
-  onEdit: () => void;
-  onSave: () => Promise<void>;
+  onFocus: () => void;
+  onSave: (nextText: string) => Promise<boolean>;
+  onSaveAndClose: (nextText: string) => Promise<void>;
+  onSaveAndMoveNext: (nextText: string) => Promise<boolean>;
   onSeek: () => void;
+  saveError: boolean;
   saving: boolean;
   segment: TranscriptSegment;
 };
@@ -1911,13 +1967,17 @@ function EditableSegmentRow({
   editing,
   onCancel,
   onDraftChange,
-  onEdit,
   onSave,
+  onFocus,
+  onSaveAndClose,
+  onSaveAndMoveNext,
   onSeek,
+  saveError,
   saving,
   segment
 }: EditableSegmentRowProps): ReactElement {
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
+  const skipBlurSaveRef = useRef(false);
 
   useEffect(() => {
     if (!editing) {
@@ -1929,15 +1989,13 @@ function EditableSegmentRow({
       return;
     }
 
-    textArea.focus();
-    textArea.setSelectionRange(textArea.value.length, textArea.value.length);
+    if (document.activeElement !== textArea) {
+      textArea.focus();
+      textArea.setSelectionRange(textArea.value.length, textArea.value.length);
+    }
   }, [editing]);
 
   useEffect(() => {
-    if (!editing) {
-      return;
-    }
-
     const textArea = textAreaRef.current;
     if (!textArea) {
       return;
@@ -1945,64 +2003,64 @@ function EditableSegmentRow({
 
     textArea.style.height = 'auto';
     textArea.style.height = `${textArea.scrollHeight}px`;
-  }, [draftText, editing]);
+  }, [draftText, editing, segment.text]);
 
-  function handleEditBlur(event: ReactFocusEvent<HTMLDivElement>): void {
-    if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
+  function handleEditBlur(event: ReactFocusEvent<HTMLTextAreaElement>): void {
+    if (skipBlurSaveRef.current) {
+      skipBlurSaveRef.current = false;
       return;
     }
 
-    void onSave();
+    void onSaveAndClose(event.currentTarget.value);
   }
 
   function handleEditKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>): void {
     if (event.key === 'Escape') {
       event.preventDefault();
+      skipBlurSaveRef.current = true;
       onCancel();
+      event.currentTarget.blur();
       return;
     }
 
-    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
       event.preventDefault();
-      void onSave();
+      void onSave(event.currentTarget.value);
+      return;
+    }
+
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      skipBlurSaveRef.current = true;
+      void onSaveAndMoveNext(event.currentTarget.value).then((moved) => {
+        if (!moved) {
+          skipBlurSaveRef.current = false;
+        }
+      });
     }
   }
 
-  if (editing) {
-    return (
-      <div className={`segment-row editing ${active ? 'active' : ''}`} onBlur={handleEditBlur}>
+  return (
+    <div className={`segment-row ${active ? 'active' : ''} ${editing ? 'editing' : ''} ${segment.editedAt ? 'edited' : ''}`}>
+      <button aria-label={`Seek to ${formatTime(segment.startSeconds)}`} className="segment-seek-target" onClick={onSeek} type="button">
         <time>{formatTime(segment.startSeconds)} - {formatTime(segment.endSeconds)}</time>
-        <div className="segment-edit-stack">
-          <textarea
-            aria-label="Edit transcript segment"
-            disabled={saving}
-            onChange={(event) => onDraftChange(event.target.value)}
-            onKeyDown={handleEditKeyDown}
-            ref={textAreaRef}
-            value={draftText}
-          />
-          <div className="segment-edit-actions">
-            <button className="secondary-action compact-row-action" disabled={saving} onClick={onCancel} type="button">
-              Cancel
-            </button>
-            <button className="primary-action compact row-save-action" disabled={saving} onClick={() => void onSave()} type="button">
-              Save
-            </button>
-          </div>
+      </button>
+      <div className="segment-edit-stack">
+        <textarea
+          aria-label="Transcript segment text"
+          className="segment-text-input"
+          onBlur={handleEditBlur}
+          onChange={(event) => onDraftChange(event.target.value)}
+          onFocus={onFocus}
+          onKeyDown={handleEditKeyDown}
+          ref={textAreaRef}
+          spellCheck
+          value={editing ? draftText : segment.text}
+        />
+        <div className={`segment-save-state ${saving ? 'saving' : ''} ${saveError ? 'error' : ''}`} role="status">
+          {saveError ? 'Not saved' : saving ? 'Saving' : segment.editedAt ? 'Edited' : ''}
         </div>
       </div>
-    );
-  }
-
-  return (
-    <div className={`segment-row ${active ? 'active' : ''} ${segment.editedAt ? 'edited' : ''}`}>
-      <button className="segment-seek-target" onClick={onSeek} type="button">
-        <time>{formatTime(segment.startSeconds)} - {formatTime(segment.endSeconds)}</time>
-        <p>{segment.text}</p>
-      </button>
-      <button aria-label="Edit transcript segment" className="icon-button segment-edit-button" onClick={onEdit} title="Edit segment" type="button">
-        <Pencil size={14} />
-      </button>
     </div>
   );
 }

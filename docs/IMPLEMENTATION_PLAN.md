@@ -6,7 +6,7 @@ Build Voxmire in a pipeline-first order, with the first milestone proving the re
 
 `docs/IMPLEMENTATION_PLAN.md` is the repo source of truth for implementation status.
 
-Current focus: turn the storage-backed transcript editing foundation into a real transcript editor UX. The persistence path is done, but direct editing, editor keyboard behavior, autosave polish, and later split/merge tools are still active core work.
+Current focus: harden the direct transcript editor UX, then move into transcript structure editing such as split/merge and timestamp correction.
 
 Synchronized audio playback first pass is implemented for the transcript editor, and playback polish is in progress. See `docs/AUDIO_SYNC_PLAN.md` for remaining polish.
 
@@ -23,7 +23,7 @@ Synchronized audio playback first pass is implemented for the transcript editor,
 - Done: synchronized audio playback first pass. The transcript editor now resolves a safe Electron media URL, plays through a native audio element, highlights active transcript rows, and seeks when a segment is clicked.
 - Done: playback polish first pass. Media streaming now handles byte ranges directly, the audio deck has volume/mute controls, sits lower in the transcript view, and renders backend-generated waveform peaks.
 - Done: transcript editing foundation. Existing transcript segment text can be edited and persisted through storage/runtime/main/preload without moving filesystem or SQLite access into the renderer.
-- Active: real transcript editor UX. Text editing must become direct and natural, with correct keyboard behavior, autosave, playback separation, and a path toward split/merge and timestamp correction.
+- Done: real transcript editor UX first pass. Transcript text is directly editable, timestamps/gutters handle seeking, Enter commits and advances, Shift+Enter is the deliberate multiline path, autosave is debounced, and playback follow does not steal focus while editing.
 - Started: packaging and real GPU sidecar support. CUDA/Vulkan remain blocked until the sidecar binaries and runtime DLL packaging are intentionally added.
 
 ## Key Changes
@@ -93,14 +93,14 @@ Synchronized audio playback first pass is implemented for the transcript editor,
   - [x] keep playback seeking, active row highlighting, and virtualization working while editing
   - [x] make exports use edited transcript text automatically
   - [x] add tests for segment editing and export-after-edit behavior
-- [ ] Build real transcript editor UX:
-  - [ ] direct text editing without an explicit edit button
-  - [ ] move seek behavior to timestamp/gutter controls so clicking transcript text edits instead of seeking
-  - [ ] define keyboard behavior: Enter commits/moves to next segment, Shift+Enter inserts a deliberate line break if multiline text is enabled, Escape cancels, Ctrl/Command+S saves
-  - [ ] add autosave/debounce and visible saving/error state
-  - [ ] prevent playback follow/highlight from stealing focus while editing
-  - [ ] preserve virtualized rendering performance on large transcripts while editing
-  - [ ] keep TXT/JSON/SRT/VTT export behavior correct after edits
+- [x] Build real transcript editor UX first pass:
+  - [x] direct text editing without an explicit edit button
+  - [x] move seek behavior to timestamp/gutter controls so clicking transcript text edits instead of seeking
+  - [x] define keyboard behavior: Enter commits/moves to next segment, Shift+Enter inserts a deliberate line break, Escape cancels, Ctrl/Command+S saves
+  - [x] add autosave/debounce and visible saving/error state
+  - [x] prevent playback follow/highlight from stealing focus while editing
+  - [x] preserve virtualized rendering performance on large transcripts while editing
+  - [x] keep TXT/JSON/SRT/VTT export behavior correct after edits
 - [ ] Add transcript structure editing:
   - [ ] split one segment into two
   - [ ] merge adjacent segments
@@ -203,8 +203,8 @@ Synchronized audio playback first pass is implemented for the transcript editor,
 13. **Synchronized audio playback** - Done for first pass
    The transcript editor now uses a safe `voxmire-media://` URL from main/preload, native audio playback, current-time/duration display, skip/seek controls, active segment highlighting, click-to-seek against virtualized transcript rows, direct byte-range streaming, volume/mute controls, and backend-generated waveform peaks. Remaining polish is manual-scroll follow behavior, waveform persistence, and wider media-container edge testing.
 
-14. **Transcript editing** - Foundation done, real editor UX active
-   Transcript editing is a core product area, not a finished polish item. The completed work proves that edited segment text can be persisted safely through the approved architecture. The next work turns that into an actual editor surface where users can click directly into transcript text and type naturally.
+14. **Transcript editing** - Direct editor UX first pass done
+   Transcript editing is a core product area, not a finished polish item. The completed foundation proves that edited segment text can be persisted safely through the approved architecture. The direct editor first pass makes the transcript text itself editable while keeping timestamps as the media seek target.
 
    Phase 1: persistence foundation - Done
    - Add shared contracts:
@@ -229,20 +229,20 @@ Synchronized audio playback first pass is implemented for the transcript editor,
    - Add export behavior:
      - TXT, JSON, SRT, and VTT read the edited `text` field with no separate export path
 
-   Phase 2: direct editor UX - Next
-   - Replace explicit edit-button flow with direct text editing.
-   - Make transcript text the editable target.
-   - Move seek behavior to timestamps or a row gutter so editing and seeking do not fight each other.
-   - Define keyboard rules:
+   Phase 2: direct editor UX - Done for first pass
+   - Replaced the explicit edit-button flow with direct text editing.
+   - Made transcript text the editable target.
+   - Moved seek behavior to timestamps so editing and seeking do not fight each other.
+   - Defined keyboard rules:
      - Enter commits and moves to the next segment by default.
-     - Shift+Enter inserts a deliberate line break only if multiline segment text is enabled.
+     - Shift+Enter inserts a deliberate line break.
      - Escape cancels the active edit.
      - Ctrl/Command+S saves.
-   - Add autosave/debounce with clear saving/error state.
-   - Disable playback auto-follow while the user is actively editing.
-   - Keep virtualization stable for long transcripts.
+   - Added autosave/debounce with clear saving/error state.
+   - Disabled playback auto-follow while the user is actively editing.
+   - Kept virtualization stable for long transcripts.
 
-   Phase 3: structure editing - Planned
+   Phase 3: structure editing - Next
    - split and merge adjacent segments
    - timestamp correction
    - validation for segment order and subtitle-safe timings

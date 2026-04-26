@@ -46,7 +46,6 @@ input,
 textarea,
 select,
 [contenteditable="true"],
-.segment-row p,
 .transcript-editor,
 .transcript-editor * {
   user-select: text;
@@ -146,8 +145,8 @@ textarea,
 .ghost-button,
 .segment-row,
 .segment-seek-target,
-.segment-edit-button,
-.segment-edit-actions button,
+.segment-text-input,
+.segment-save-state,
 .video-preview-surface,
 .audio-seek,
 .volume-slider,
@@ -236,7 +235,6 @@ textarea,
 .settings-panel-heading p,
 .empty-state h4,
 .empty-state p,
-.segment-row p,
 .status-bar strong,
 .status-bar span { margin: 0; }
 
@@ -985,84 +983,75 @@ textarea,
   width: 100%;
   padding-bottom: 18px;
 }
-.segment-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 34px; align-items: start; gap: 10px; width: 100%; padding: 0; border: 0; border-left: 2px solid transparent; border-radius: 8px; color: inherit; background: transparent; text-align: left; }
+.segment-row { position: relative; display: grid; grid-template-columns: 128px minmax(0, 1fr); align-items: start; gap: 20px; width: 100%; padding: 15px 16px; border: 0; border-left: 2px solid transparent; border-radius: 8px; color: inherit; background: transparent; text-align: left; }
 .segment-row.active,
 .segment-row:hover { border-left-color: var(--violet); background: linear-gradient(90deg, rgba(168, 85, 247, 0.09), transparent 72%); }
 .segment-row:focus-visible { outline: 2px solid rgba(34, 211, 238, 0.5); outline-offset: 2px; }
 .segment-row time { color: var(--faint); font-family: "Fira Code", Consolas, monospace; font-size: 11px; font-weight: 500; }
-.segment-row p { max-width: 1040px; color: #f4f4f5; font-family: "Space Grotesk", Inter, sans-serif; font-size: 21px; font-weight: 500; line-height: 1.48; }
-.segment-row.edited::after {
-  content: "Edited";
-  position: absolute;
-  right: 52px;
-  bottom: 7px;
-  color: var(--cyan);
-  font-family: "Fira Code", Consolas, monospace;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  opacity: 0.72;
-  pointer-events: none;
-}
 .segment-seek-target {
-  display: grid;
-  grid-template-columns: 128px minmax(0, 1fr);
-  gap: 20px;
+  display: inline-flex;
+  align-items: flex-start;
   width: 100%;
   min-width: 0;
-  padding: 15px 16px;
+  min-height: 34px;
+  padding: 7px 0 0;
   border: 0;
   color: inherit;
   background: transparent;
   cursor: pointer;
   text-align: left;
 }
-.segment-edit-button {
-  width: 31px;
-  height: 31px;
-  margin: 14px 12px 0 0;
-  opacity: 0;
-  transition: opacity 140ms ease, background 150ms ease, border-color 150ms ease, color 150ms ease;
-}
-.segment-row:hover .segment-edit-button,
-.segment-edit-button:focus-visible { opacity: 1; }
 .segment-row.editing {
-  grid-template-columns: 128px minmax(0, 1fr);
-  gap: 20px;
-  padding: 15px 16px;
   background: linear-gradient(90deg, rgba(168, 85, 247, 0.12), rgba(34, 211, 238, 0.04) 72%);
 }
 .segment-edit-stack {
   display: grid;
-  gap: 10px;
+  gap: 4px;
   min-width: 0;
 }
-.segment-edit-stack textarea {
+.segment-text-input {
   width: 100%;
-  min-height: 92px;
-  max-height: 260px;
-  resize: vertical;
-  padding: 10px 12px;
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.055);
-  border-color: rgba(168, 85, 247, 0.38);
+  max-width: 1180px;
+  min-height: 36px;
+  max-height: 280px;
+  resize: none;
+  overflow: hidden;
+  padding: 2px 6px;
+  color: #f4f4f5;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
   font-family: "Space Grotesk", Inter, sans-serif;
   font-size: 21px;
   font-weight: 500;
   line-height: 1.48;
 }
-.segment-edit-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
+.segment-text-input:hover {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
 }
-.compact-row-action,
-.row-save-action {
-  min-height: 30px;
-  padding: 0 11px;
-  font-size: 11px;
+.segment-text-input:focus {
+  outline: none;
+  border-color: rgba(168, 85, 247, 0.5);
+  background: rgba(168, 85, 247, 0.055);
+  box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.12);
+}
+.segment-save-state {
+  min-height: 13px;
+  padding-left: 6px;
+  color: var(--cyan);
+  font-family: "Fira Code", Consolas, monospace;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.68;
+}
+.segment-save-state.saving {
+  color: var(--violet-strong);
+}
+.segment-save-state.error {
+  color: #fca5a5;
 }
 
 .audio-deck {
