@@ -1960,6 +1960,24 @@ function VirtualizedSegmentList({
     return true;
   }
 
+  async function saveAndMoveToPrevious(segment: TranscriptSegment, nextText: string, currentIndex: number): Promise<boolean> {
+    const saved = await saveSegmentText(segment, nextText);
+    if (!saved) {
+      return false;
+    }
+
+    const previousSegment = segments[currentIndex - 1];
+    if (!previousSegment) {
+      return true;
+    }
+
+    setEditingSegmentId(previousSegment.id);
+    setDraftText(previousSegment.text);
+    setCursorOffset(previousSegment.text.length);
+    rowVirtualizer.scrollToIndex(currentIndex - 1, { align: 'center' });
+    return true;
+  }
+
   async function splitSegment(segment: TranscriptSegment, offset: number, currentIndex: number): Promise<void> {
     const text = segment.id === editingSegmentId ? draftText : segment.text;
     const saved = await saveSegmentText(segment, text);
@@ -2061,6 +2079,7 @@ function VirtualizedSegmentList({
                 onSave={(nextText) => saveSegmentText(segment, nextText)}
                 onSaveAndClose={(nextText) => saveAndClose(segment, nextText)}
                 onSaveAndMoveNext={(nextText) => saveAndMoveToNext(segment, nextText, virtualRow.index)}
+                onSaveAndMovePrevious={(nextText) => saveAndMoveToPrevious(segment, nextText, virtualRow.index)}
                 onSeek={() => onSeek(segment)}
                 onSplit={(offset) => splitSegment(segment, offset, virtualRow.index)}
                 saveError={saveError}
@@ -2091,6 +2110,7 @@ type EditableSegmentRowProps = {
   onSave: (nextText: string) => Promise<boolean>;
   onSaveAndClose: (nextText: string) => Promise<void>;
   onSaveAndMoveNext: (nextText: string) => Promise<boolean>;
+  onSaveAndMovePrevious: (nextText: string) => Promise<boolean>;
   onSeek: () => void;
   onSplit: (offset: number) => Promise<void>;
   saveError: boolean;
@@ -2114,6 +2134,7 @@ function EditableSegmentRow({
   onMergePrevious,
   onSaveAndClose,
   onSaveAndMoveNext,
+  onSaveAndMovePrevious,
   onSeek,
   onSplit,
   saveError,
@@ -2160,6 +2181,10 @@ function EditableSegmentRow({
   }
 
   function handleEditKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>): void {
+    const textArea = event.currentTarget;
+    const selectionStart = textArea.selectionStart;
+    const selectionEnd = textArea.selectionEnd;
+
     if (event.key === 'Escape') {
       event.preventDefault();
       skipBlurSaveRef.current = true;
@@ -2170,18 +2195,44 @@ function EditableSegmentRow({
 
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
       event.preventDefault();
-      void onSave(event.currentTarget.value);
+      void onSave(textArea.value);
+      return;
+    }
+
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      skipBlurSaveRef.current = true;
+      const move = event.shiftKey ? onSaveAndMovePrevious : onSaveAndMoveNext;
+      void move(textArea.value).then((moved) => {
+        if (!moved) {
+          skipBlurSaveRef.current = false;
+        }
+      });
       return;
     }
 
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
+      if (selectionStart <= 0 || selectionStart >= textArea.value.trimEnd().length) {
+        return;
+      }
+
       skipBlurSaveRef.current = true;
-      void onSaveAndMoveNext(event.currentTarget.value).then((moved) => {
-        if (!moved) {
-          skipBlurSaveRef.current = false;
-        }
+      void onSplit(selectionStart).finally(() => {
+        skipBlurSaveRef.current = false;
       });
+      return;
+    }
+
+    if (event.key === 'Backspace' && selectionStart === 0 && selectionEnd === 0 && canMergePrevious) {
+      event.preventDefault();
+      runStructureTool(onMergePrevious);
+      return;
+    }
+
+    if (event.key === 'Delete' && selectionStart === textArea.value.length && selectionEnd === textArea.value.length && canMergeNext) {
+      event.preventDefault();
+      runStructureTool(onMergeNext);
     }
   }
 

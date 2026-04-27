@@ -23,7 +23,7 @@ Synchronized audio playback first pass is implemented for the transcript editor,
 - Done: synchronized audio playback first pass. The transcript editor now resolves a safe Electron media URL, plays through a native audio element, highlights active transcript rows, and seeks when a segment is clicked.
 - Done: playback polish first pass. Media streaming now handles byte ranges directly, the audio deck has volume/mute controls, sits lower in the transcript view, and renders backend-generated waveform peaks.
 - Done: transcript editing foundation. Existing transcript segment text can be edited and persisted through storage/runtime/main/preload without moving filesystem or SQLite access into the renderer.
-- Done: real transcript editor UX first pass. Transcript text is directly editable, timestamps/gutters handle seeking, Enter commits and advances, Shift+Enter is the deliberate multiline path, autosave is debounced, and playback follow does not steal focus while editing.
+- Done: real transcript editor UX first pass. Transcript text is directly editable, timestamps/gutters handle seeking, transcript-app keyboard conventions are supported, autosave is debounced, and playback follow does not steal focus while editing.
 - Done: transcript structure editing first pass. Segments can be split at the text cursor and merged with adjacent segments through storage/runtime/main/preload, with segment indexes renumbered transactionally.
 - Started: packaging and real GPU sidecar support. CUDA/Vulkan remain blocked until the sidecar binaries and runtime DLL packaging are intentionally added.
 
@@ -97,7 +97,7 @@ Synchronized audio playback first pass is implemented for the transcript editor,
 - [x] Build real transcript editor UX first pass:
   - [x] direct text editing without an explicit edit button
   - [x] move seek behavior to timestamp/gutter controls so clicking transcript text edits instead of seeking
-  - [x] define keyboard behavior: Enter commits/moves to next segment, Shift+Enter inserts a deliberate line break, Escape cancels, Ctrl/Command+S saves
+  - [x] define keyboard behavior: Enter splits at cursor, Shift+Enter inserts a deliberate line break, Backspace/Delete merge at segment boundaries, Tab/Shift+Tab moves between segments, Escape cancels, Ctrl/Command+S saves
   - [x] add autosave/debounce and visible saving/error state
   - [x] prevent playback follow/highlight from stealing focus while editing
   - [x] preserve virtualized rendering performance on large transcripts while editing
@@ -239,8 +239,11 @@ Synchronized audio playback first pass is implemented for the transcript editor,
    - Made transcript text the editable target.
    - Moved seek behavior to timestamps so editing and seeking do not fight each other.
    - Defined keyboard rules:
-     - Enter commits and moves to the next segment by default.
+     - Enter splits at the cursor.
      - Shift+Enter inserts a deliberate line break.
+     - Backspace at the start of a segment merges with the previous segment.
+     - Delete at the end of a segment merges with the next segment.
+     - Tab and Shift+Tab move between segments.
      - Escape cancels the active edit.
      - Ctrl/Command+S saves.
    - Added autosave/debounce with clear saving/error state.
