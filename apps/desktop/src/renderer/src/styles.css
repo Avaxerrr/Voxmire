@@ -600,6 +600,28 @@ textarea,
   font-size: 12px;
   white-space: nowrap;
 }
+.find-nav-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.find-nav-controls button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.045);
+}
+.find-nav-controls button:hover:not(:disabled),
+.find-nav-controls button:focus-visible {
+  color: var(--cyan);
+  border-color: rgba(34, 211, 238, 0.34);
+  background: rgba(34, 211, 238, 0.1);
+}
 
 .project-list { display: grid; align-content: start; flex: 1; gap: 8px; min-height: 0; overflow: auto; padding-right: 4px; }
 .project-row {
@@ -1023,6 +1045,10 @@ textarea,
 .segment-row.active,
 .segment-row:hover { border-left-color: var(--violet); background: linear-gradient(90deg, rgba(168, 85, 247, 0.09), transparent 72%); }
 .segment-row.search-match { border-left-color: var(--cyan); background: linear-gradient(90deg, rgba(34, 211, 238, 0.08), transparent 72%); }
+.segment-row.search-current {
+  border-left-color: var(--violet-strong);
+  background: linear-gradient(90deg, rgba(168, 85, 247, 0.18), rgba(34, 211, 238, 0.08) 70%, transparent);
+}
 .segment-row:focus-visible { outline: 2px solid rgba(34, 211, 238, 0.5); outline-offset: 2px; }
 .segment-row time { color: var(--faint); font-family: "Fira Code", Consolas, monospace; font-size: 11px; font-weight: 500; }
 .segment-gutter {
@@ -1032,16 +1058,23 @@ textarea,
 }
 .segment-seek-target {
   display: inline-flex;
-  align-items: flex-start;
-  width: 100%;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
   min-width: 0;
-  min-height: 34px;
-  padding: 7px 0 0;
-  border: 0;
-  color: inherit;
-  background: transparent;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 6px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.045);
   cursor: pointer;
-  text-align: left;
+}
+.segment-seek-target:hover,
+.segment-seek-target:focus-visible {
+  color: var(--cyan);
+  border-color: rgba(34, 211, 238, 0.34);
+  background: rgba(34, 211, 238, 0.1);
 }
 .segment-time-editors {
   display: grid;
@@ -1256,6 +1289,38 @@ textarea,
 .settings-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .settings-field-grid label { min-width: 0; }
 .settings-field-grid select { width: 100%; max-width: none; }
+.shortcut-grid {
+  display: grid;
+  gap: 8px;
+}
+.shortcut-row {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+}
+.shortcut-row kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: var(--cyan);
+  background: rgba(34, 211, 238, 0.08);
+  font-family: "Fira Code", Consolas, monospace;
+  font-size: 11px;
+  font-weight: 800;
+}
+.shortcut-row span {
+  color: var(--muted);
+  font-size: 13px;
+}
 .modal-field-grid { margin-bottom: 16px; }
 .machine-profile-grid { display: grid; gap: 12px; }
 .machine-recommendation { display: grid; gap: 4px; padding: 13px; border: 1px solid rgba(34, 211, 238, 0.22); border-radius: 8px; background: rgba(34, 211, 238, 0.07); }

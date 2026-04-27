@@ -15,6 +15,7 @@ import {
   FolderOpen,
   Home,
   Info,
+  Keyboard,
   Lock,
   Maximize2,
   MicVocal,
@@ -99,6 +100,16 @@ const minVideoPreviewWidth = 180;
 const maxTopVideoPreviewWidth = 420;
 const maxSideVideoPreviewWidth = 360;
 const sidePreviewBreakpoint = 1180;
+const transcriptShortcuts = [
+  { keys: 'Enter', action: 'Split segment at the cursor' },
+  { keys: 'Shift+Enter', action: 'Insert a line break inside the segment' },
+  { keys: 'Backspace', action: 'At segment start, merge with previous' },
+  { keys: 'Delete', action: 'At segment end, merge with next' },
+  { keys: 'Tab', action: 'Save and move to next segment' },
+  { keys: 'Shift+Tab', action: 'Save and move to previous segment' },
+  { keys: 'Esc', action: 'Cancel the active edit' },
+  { keys: 'Ctrl/Cmd+S', action: 'Save the active segment' }
+];
 
 const fallbackModels: ModelProfile[] = [
   {
@@ -935,6 +946,7 @@ function TranscriptView({
   const [findPanelOpen, setFindPanelOpen] = useState(false);
   const [findQuery, setFindQuery] = useState('');
   const [replaceQuery, setReplaceQuery] = useState('');
+  const [activeFindIndex, setActiveFindIndex] = useState(0);
   const [replacingText, setReplacingText] = useState(false);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
@@ -970,6 +982,12 @@ function TranscriptView({
     return jobs.filter((entry) => entry.sourceFile.name.toLowerCase().includes(query));
   }, [jobs, switcherQuery]);
   const findMatchCount = useMemo(() => countTranscriptMatches(segments, findQuery), [findQuery, segments]);
+  const findMatchIndexes = useMemo(() => findTranscriptMatchIndexes(segments, findQuery), [findQuery, segments]);
+  const activeFindSegment = findMatchIndexes.length > 0 ? segments[findMatchIndexes[Math.min(activeFindIndex, findMatchIndexes.length - 1)] ?? -1] ?? null : null;
+
+  useEffect(() => {
+    setActiveFindIndex(0);
+  }, [findQuery]);
 
   useEffect(() => {
     if (!switcherOpen && !exportMenuOpen && !findPanelOpen) {
@@ -1101,6 +1119,22 @@ function TranscriptView({
     setPlaybackTime(nextTime);
     if (audio) {
       applyMediaSeek(audio, nextTime, false);
+    }
+  }
+
+  function jumpToFindMatch(direction: 'previous' | 'next'): void {
+    if (findMatchIndexes.length === 0) {
+      return;
+    }
+
+    const nextIndex =
+      direction === 'next'
+        ? (activeFindIndex + 1) % findMatchIndexes.length
+        : (activeFindIndex - 1 + findMatchIndexes.length) % findMatchIndexes.length;
+    const segment = segments[findMatchIndexes[nextIndex] ?? -1];
+    setActiveFindIndex(nextIndex);
+    if (segment) {
+      seekToSegment(segment);
     }
   }
 
@@ -1282,6 +1316,24 @@ function TranscriptView({
                 value={findQuery}
               />
             </label>
+            <div className="find-nav-controls" aria-label="Find result navigation">
+              <button
+                aria-label="Previous match"
+                disabled={findMatchIndexes.length === 0}
+                onClick={() => jumpToFindMatch('previous')}
+                type="button"
+              >
+                <SkipBack size={14} />
+              </button>
+              <button
+                aria-label="Next match"
+                disabled={findMatchIndexes.length === 0}
+                onClick={() => jumpToFindMatch('next')}
+                type="button"
+              >
+                <SkipForward size={14} />
+              </button>
+            </div>
             <input
               aria-label="Replace transcript text"
               className="replace-field"
@@ -1290,7 +1342,7 @@ function TranscriptView({
               type="text"
               value={replaceQuery}
             />
-            <span className="find-count">{findQuery.trim() ? `${findMatchCount} matches` : 'Find text'}</span>
+            <span className="find-count">{findQuery.trim() ? `${findMatchIndexes.length === 0 ? 0 : activeFindIndex + 1}/${findMatchCount}` : 'Find text'}</span>
             <button
               className="secondary-action"
               disabled={!findQuery.trim() || findMatchCount === 0 || replacingText}
@@ -1370,6 +1422,7 @@ function TranscriptView({
                         onSplitSegment={splitSegment}
                         onUpdateTiming={updateSegmentTiming}
                         onUpdateSegment={updateSegment}
+                        activeSearchSegmentId={activeFindSegment?.id ?? null}
                         searchQuery={findQuery}
                         segments={segments}
                       />
@@ -1385,6 +1438,7 @@ function TranscriptView({
                     onSplitSegment={splitSegment}
                     onUpdateTiming={updateSegmentTiming}
                     onUpdateSegment={updateSegment}
+                    activeSearchSegmentId={activeFindSegment?.id ?? null}
                     searchQuery={findQuery}
                     segments={segments}
                   />
@@ -1676,6 +1730,24 @@ function SettingsView({ appInfo, engines, machineProfile, models, resources, sel
                 </div>
               );
             })}
+          </div>
+        </section>
+
+        <section className="settings-panel panel-glow">
+          <div className="settings-panel-heading">
+            <Keyboard size={18} />
+            <div>
+              <h3>Transcript shortcuts</h3>
+              <p>Keyboard controls available while editing transcript text.</p>
+            </div>
+          </div>
+          <div className="shortcut-grid">
+            {transcriptShortcuts.map((shortcut) => (
+              <div className="shortcut-row" key={shortcut.keys}>
+                <kbd>{shortcut.keys}</kbd>
+                <span>{shortcut.action}</span>
+              </div>
+            ))}
           </div>
         </section>
 
@@ -1978,6 +2050,7 @@ type VirtualizedSegmentListProps = {
   onSplitSegment: (segmentId: string, offset: number) => Promise<TranscriptSegment[] | null>;
   onUpdateTiming: (segmentId: string, startSeconds: number, endSeconds: number) => Promise<TranscriptSegmentListResult | null>;
   onUpdateSegment: (segmentId: string, text: string) => Promise<TranscriptSegment | null>;
+  activeSearchSegmentId: string | null;
   searchQuery: string;
   segments: TranscriptSegment[];
 };
@@ -1989,6 +2062,7 @@ function VirtualizedSegmentList({
   onSplitSegment,
   onUpdateTiming,
   onUpdateSegment,
+  activeSearchSegmentId,
   searchQuery,
   segments
 }: VirtualizedSegmentListProps): ReactElement {
@@ -2012,6 +2086,17 @@ function VirtualizedSegmentList({
       rowVirtualizer.scrollToIndex(activeSegmentIndex, { align: 'center' });
     }
   }, [activeSegmentIndex, editingSegmentId]);
+
+  useEffect(() => {
+    if (!activeSearchSegmentId) {
+      return;
+    }
+
+    const index = segments.findIndex((segment) => segment.id === activeSearchSegmentId);
+    if (index >= 0) {
+      rowVirtualizer.scrollToIndex(index, { align: 'center' });
+    }
+  }, [activeSearchSegmentId, segments]);
 
   function startEditing(segment: TranscriptSegment): void {
     setSaveErrorSegmentId(null);
@@ -2191,6 +2276,7 @@ function VirtualizedSegmentList({
           const savingTiming = segment.id === savingTimingSegmentId;
           const saveError = segment.id === saveErrorSegmentId;
           const searchMatch = searchQuery.trim() ? segment.text.toLowerCase().includes(searchQuery.trim().toLowerCase()) : false;
+          const activeSearchMatch = segment.id === activeSearchSegmentId;
 
           return (
             <div
@@ -2203,6 +2289,7 @@ function VirtualizedSegmentList({
               <EditableSegmentRow
                 active={active}
                 searchMatch={searchMatch}
+                activeSearchMatch={activeSearchMatch}
                 canMergeNext={virtualRow.index < segments.length - 1}
                 canMergePrevious={virtualRow.index > 0}
                 cursorOffset={cursorOffset}
@@ -2236,6 +2323,7 @@ function VirtualizedSegmentList({
 
 type EditableSegmentRowProps = {
   active: boolean;
+  activeSearchMatch: boolean;
   searchMatch: boolean;
   canMergeNext: boolean;
   canMergePrevious: boolean;
@@ -2263,6 +2351,7 @@ type EditableSegmentRowProps = {
 
 function EditableSegmentRow({
   active,
+  activeSearchMatch,
   searchMatch,
   canMergeNext,
   canMergePrevious,
@@ -2436,10 +2525,10 @@ function EditableSegmentRow({
   const canSplit = editing && activeText.trim().length > 1 && cursorOffset > 0 && cursorOffset < activeText.length;
 
   return (
-    <div className={`segment-row ${active ? 'active' : ''} ${editing ? 'editing' : ''} ${searchMatch ? 'search-match' : ''} ${segment.editedAt ? 'edited' : ''}`}>
+    <div className={`segment-row ${active ? 'active' : ''} ${editing ? 'editing' : ''} ${searchMatch ? 'search-match' : ''} ${activeSearchMatch ? 'search-current' : ''} ${segment.editedAt ? 'edited' : ''}`}>
       <div className="segment-gutter">
-        <button aria-label={`Seek to ${formatTime(segment.startSeconds)}`} className="segment-seek-target" onClick={onSeek} type="button">
-          <time>{formatTime(segment.startSeconds)}</time>
+        <button aria-label={`Seek to ${formatTime(segment.startSeconds)}`} className="segment-seek-target" onClick={onSeek} title="Seek to segment" type="button">
+          <Clock3 size={13} />
         </button>
         <div className="segment-time-editors" aria-label="Segment timestamps">
           <input
@@ -3499,6 +3588,20 @@ function countTranscriptMatches(segments: TranscriptSegment[], query: string): n
   }
 
   return segments.reduce((count, segment) => count + (segment.text.toLowerCase().includes(normalizedQuery) ? 1 : 0), 0);
+}
+
+function findTranscriptMatchIndexes(segments: TranscriptSegment[], query: string): number[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return [];
+  }
+
+  return segments.reduce<number[]>((indexes, segment, index) => {
+    if (segment.text.toLowerCase().includes(normalizedQuery)) {
+      indexes.push(index);
+    }
+    return indexes;
+  }, []);
 }
 
 function formatDuration(seconds: number | null): string {
