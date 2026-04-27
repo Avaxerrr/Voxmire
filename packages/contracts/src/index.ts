@@ -181,6 +181,18 @@ export const updateTranscriptSegmentResultSchema = z.object({
   segment: transcriptSegmentSchema.nullable()
 });
 
+export const updateTranscriptSegmentTimingInputSchema = z.object({
+  jobId: z.string().min(1),
+  segmentId: z.string().min(1),
+  startSeconds: z.number().nonnegative(),
+  endSeconds: z.number().positive()
+});
+
+export const transcriptSegmentListResultSchema = z.object({
+  segments: z.array(transcriptSegmentSchema),
+  error: z.string().nullable()
+});
+
 export const splitTranscriptSegmentInputSchema = z.object({
   jobId: z.string().min(1),
   segmentId: z.string().min(1),
@@ -253,6 +265,8 @@ export type DeleteProjectInput = z.input<typeof deleteProjectInputSchema>;
 export type DeleteProjectResult = z.infer<typeof deleteProjectResultSchema>;
 export type UpdateTranscriptSegmentInput = z.input<typeof updateTranscriptSegmentInputSchema>;
 export type UpdateTranscriptSegmentResult = z.infer<typeof updateTranscriptSegmentResultSchema>;
+export type UpdateTranscriptSegmentTimingInput = z.input<typeof updateTranscriptSegmentTimingInputSchema>;
+export type TranscriptSegmentListResult = z.infer<typeof transcriptSegmentListResultSchema>;
 export type SplitTranscriptSegmentInput = z.input<typeof splitTranscriptSegmentInputSchema>;
 export type SplitTranscriptSegmentResult = z.infer<typeof splitTranscriptSegmentResultSchema>;
 export type MergeTranscriptSegmentInput = z.input<typeof mergeTranscriptSegmentInputSchema>;

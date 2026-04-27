@@ -59,6 +59,7 @@ import type {
   ProjectDetails,
   ResourceStatus,
   TranscriptSegment,
+  TranscriptSegmentListResult,
   TranscriptionPresetId,
   TranscriptionPresetProfile,
   TranscriptionProgressEvent
@@ -459,6 +460,31 @@ export function App(): ReactElement {
     }
   }
 
+  async function updateTranscriptSegmentTiming(
+    segmentId: string,
+    startSeconds: number,
+    endSeconds: number
+  ): Promise<TranscriptSegmentListResult | null> {
+    if (!selectedJob) {
+      return null;
+    }
+
+    if (!api) {
+      setMessage('Desktop bridge unavailable.');
+      return null;
+    }
+
+    try {
+      const result = await api.transcripts.updateTiming(selectedJob.job.id, segmentId, startSeconds, endSeconds);
+      setSegments(result.segments);
+      setMessage(result.error ?? 'Transcript timing updated.');
+      return result;
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to update transcript timing.');
+      return null;
+    }
+  }
+
   async function mergeTranscriptSegment(segmentId: string, direction: 'previous' | 'next'): Promise<TranscriptSegment[] | null> {
     if (!selectedJob) {
       return null;
@@ -632,6 +658,7 @@ export function App(): ReactElement {
             setPlaying={setPlaying}
             splitSegment={splitTranscriptSegment}
             mergeSegment={mergeTranscriptSegment}
+            updateSegmentTiming={updateTranscriptSegmentTiming}
             updateSegment={updateTranscriptSegment}
           />
         ) : null}
@@ -876,6 +903,7 @@ type TranscriptViewProps = {
   setPlaying: (playing: boolean) => void;
   splitSegment: (segmentId: string, offset: number) => Promise<TranscriptSegment[] | null>;
   mergeSegment: (segmentId: string, direction: 'previous' | 'next') => Promise<TranscriptSegment[] | null>;
+  updateSegmentTiming: (segmentId: string, startSeconds: number, endSeconds: number) => Promise<TranscriptSegmentListResult | null>;
   updateSegment: (segmentId: string, text: string) => Promise<TranscriptSegment | null>;
 };
 
@@ -898,11 +926,16 @@ function TranscriptView({
   setPlaying,
   splitSegment,
   mergeSegment,
+  updateSegmentTiming,
   updateSegment,
 }: TranscriptViewProps): ReactElement {
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [switcherQuery, setSwitcherQuery] = useState('');
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [findPanelOpen, setFindPanelOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState('');
+  const [replaceQuery, setReplaceQuery] = useState('');
+  const [replacingText, setReplacingText] = useState(false);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [mediaInfo, setMediaInfo] = useState<MediaInfo | null>(null);
@@ -936,9 +969,10 @@ function TranscriptView({
 
     return jobs.filter((entry) => entry.sourceFile.name.toLowerCase().includes(query));
   }, [jobs, switcherQuery]);
+  const findMatchCount = useMemo(() => countTranscriptMatches(segments, findQuery), [findQuery, segments]);
 
   useEffect(() => {
-    if (!switcherOpen && !exportMenuOpen) {
+    if (!switcherOpen && !exportMenuOpen && !findPanelOpen) {
       return;
     }
 
@@ -946,6 +980,7 @@ function TranscriptView({
       if (event.key === 'Escape') {
         setSwitcherOpen(false);
         setExportMenuOpen(false);
+        setFindPanelOpen(false);
       }
     }
 
@@ -962,7 +997,7 @@ function TranscriptView({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('mousedown', handlePointerDown);
     };
-  }, [exportMenuOpen, switcherOpen]);
+  }, [exportMenuOpen, findPanelOpen, switcherOpen]);
 
   useEffect(() => {
     function handleResize(): void {
@@ -1069,6 +1104,35 @@ function TranscriptView({
     }
   }
 
+  async function replaceAllTranscriptMatches(): Promise<void> {
+    const query = findQuery.trim();
+    if (!query || replacingText) {
+      return;
+    }
+
+    const matcher = new RegExp(escapeRegExp(query), 'gi');
+    const matchingSegments = segments.filter((segment) => {
+      matcher.lastIndex = 0;
+      return matcher.test(segment.text);
+    });
+    if (matchingSegments.length === 0) {
+      return;
+    }
+
+    setReplacingText(true);
+    try {
+      for (const segment of matchingSegments) {
+        matcher.lastIndex = 0;
+        const nextText = segment.text.replace(matcher, replaceQuery);
+        if (nextText !== segment.text) {
+          await updateSegment(segment.id, nextText);
+        }
+      }
+    } finally {
+      setReplacingText(false);
+    }
+  }
+
   return (
     <div className="view transcript-view">
       <header className="transcript-topbar glass-bar">
@@ -1091,7 +1155,16 @@ function TranscriptView({
         </div>
 
         <div className="transcript-actions">
-          <button aria-label="Search transcript" className="icon-button" title="Search transcript" type="button"><Search size={17} /></button>
+          <button
+            aria-expanded={findPanelOpen}
+            aria-label="Find and replace transcript"
+            className={`icon-button ${findPanelOpen ? 'active' : ''}`}
+            onClick={() => setFindPanelOpen((open) => !open)}
+            title="Find and replace"
+            type="button"
+          >
+            <Search size={17} />
+          </button>
           {selectedJob ? (
             <ProjectActionsMenu
               onDelete={() => onDeleteProject(selectedJob)}
@@ -1197,6 +1270,38 @@ function TranscriptView({
           </div>
         ) : null}
 
+        {findPanelOpen ? (
+          <div className="find-replace-panel">
+            <label className="search-field compact-find-field">
+              <Search size={14} />
+              <input
+                aria-label="Find transcript text"
+                onChange={(event) => setFindQuery(event.target.value)}
+                placeholder="Find"
+                type="search"
+                value={findQuery}
+              />
+            </label>
+            <input
+              aria-label="Replace transcript text"
+              className="replace-field"
+              onChange={(event) => setReplaceQuery(event.target.value)}
+              placeholder="Replace"
+              type="text"
+              value={replaceQuery}
+            />
+            <span className="find-count">{findQuery.trim() ? `${findMatchCount} matches` : 'Find text'}</span>
+            <button
+              className="secondary-action"
+              disabled={!findQuery.trim() || findMatchCount === 0 || replacingText}
+              onClick={() => void replaceAllTranscriptMatches()}
+              type="button"
+            >
+              Replace all
+            </button>
+          </div>
+        ) : null}
+
         <div className="transcript-main">
           <section className={'transcript-stage ' + (selectedMediaKind === 'video' && mediaUrl ? 'has-video-preview preview-' + (videoPreviewHidden ? 'hidden' : videoPreviewDock) : '')}>
             {selectedJob ? (
@@ -1263,7 +1368,9 @@ function TranscriptView({
                         onMergeSegment={mergeSegment}
                         onSeek={seekToSegment}
                         onSplitSegment={splitSegment}
+                        onUpdateTiming={updateSegmentTiming}
                         onUpdateSegment={updateSegment}
+                        searchQuery={findQuery}
                         segments={segments}
                       />
                     )}
@@ -1276,7 +1383,9 @@ function TranscriptView({
                     onMergeSegment={mergeSegment}
                     onSeek={seekToSegment}
                     onSplitSegment={splitSegment}
+                    onUpdateTiming={updateSegmentTiming}
                     onUpdateSegment={updateSegment}
+                    searchQuery={findQuery}
                     segments={segments}
                   />
                 )}
@@ -1867,7 +1976,9 @@ type VirtualizedSegmentListProps = {
   onMergeSegment: (segmentId: string, direction: 'previous' | 'next') => Promise<TranscriptSegment[] | null>;
   onSeek: (segment: TranscriptSegment) => void;
   onSplitSegment: (segmentId: string, offset: number) => Promise<TranscriptSegment[] | null>;
+  onUpdateTiming: (segmentId: string, startSeconds: number, endSeconds: number) => Promise<TranscriptSegmentListResult | null>;
   onUpdateSegment: (segmentId: string, text: string) => Promise<TranscriptSegment | null>;
+  searchQuery: string;
   segments: TranscriptSegment[];
 };
 
@@ -1876,12 +1987,15 @@ function VirtualizedSegmentList({
   onMergeSegment,
   onSeek,
   onSplitSegment,
+  onUpdateTiming,
   onUpdateSegment,
+  searchQuery,
   segments
 }: VirtualizedSegmentListProps): ReactElement {
   const [editingSegmentId, setEditingSegmentId] = useState<string | null>(null);
   const [draftText, setDraftText] = useState('');
   const [savingSegmentId, setSavingSegmentId] = useState<string | null>(null);
+  const [savingTimingSegmentId, setSavingTimingSegmentId] = useState<string | null>(null);
   const [saveErrorSegmentId, setSaveErrorSegmentId] = useState<string | null>(null);
   const [cursorOffset, setCursorOffset] = useState(0);
   const scrollParentRef = useRef<HTMLDivElement | null>(null);
@@ -2024,6 +2138,27 @@ function VirtualizedSegmentList({
     }
   }
 
+  async function saveSegmentTiming(segment: TranscriptSegment, startSeconds: number, endSeconds: number): Promise<boolean> {
+    if (startSeconds === segment.startSeconds && endSeconds === segment.endSeconds) {
+      setSaveErrorSegmentId(null);
+      return true;
+    }
+
+    setSavingTimingSegmentId(segment.id);
+    setSaveErrorSegmentId(null);
+    try {
+      const result = await onUpdateTiming(segment.id, startSeconds, endSeconds);
+      if (!result || result.error) {
+        setSaveErrorSegmentId(segment.id);
+        return false;
+      }
+
+      return true;
+    } finally {
+      setSavingTimingSegmentId(null);
+    }
+  }
+
   useEffect(() => {
     if (!editingSegmentId) {
       return;
@@ -2053,7 +2188,9 @@ function VirtualizedSegmentList({
           const active = virtualRow.index === activeSegmentIndex;
           const editing = segment.id === editingSegmentId;
           const saving = segment.id === savingSegmentId;
+          const savingTiming = segment.id === savingTimingSegmentId;
           const saveError = segment.id === saveErrorSegmentId;
+          const searchMatch = searchQuery.trim() ? segment.text.toLowerCase().includes(searchQuery.trim().toLowerCase()) : false;
 
           return (
             <div
@@ -2065,6 +2202,7 @@ function VirtualizedSegmentList({
             >
               <EditableSegmentRow
                 active={active}
+                searchMatch={searchMatch}
                 canMergeNext={virtualRow.index < segments.length - 1}
                 canMergePrevious={virtualRow.index > 0}
                 cursorOffset={cursorOffset}
@@ -2080,10 +2218,12 @@ function VirtualizedSegmentList({
                 onSaveAndClose={(nextText) => saveAndClose(segment, nextText)}
                 onSaveAndMoveNext={(nextText) => saveAndMoveToNext(segment, nextText, virtualRow.index)}
                 onSaveAndMovePrevious={(nextText) => saveAndMoveToPrevious(segment, nextText, virtualRow.index)}
+                onSaveTiming={(startSeconds, endSeconds) => saveSegmentTiming(segment, startSeconds, endSeconds)}
                 onSeek={() => onSeek(segment)}
                 onSplit={(offset) => splitSegment(segment, offset, virtualRow.index)}
                 saveError={saveError}
                 saving={saving}
+                savingTiming={savingTiming}
                 segment={segment}
               />
             </div>
@@ -2096,6 +2236,7 @@ function VirtualizedSegmentList({
 
 type EditableSegmentRowProps = {
   active: boolean;
+  searchMatch: boolean;
   canMergeNext: boolean;
   canMergePrevious: boolean;
   cursorOffset: number;
@@ -2111,15 +2252,18 @@ type EditableSegmentRowProps = {
   onSaveAndClose: (nextText: string) => Promise<void>;
   onSaveAndMoveNext: (nextText: string) => Promise<boolean>;
   onSaveAndMovePrevious: (nextText: string) => Promise<boolean>;
+  onSaveTiming: (startSeconds: number, endSeconds: number) => Promise<boolean>;
   onSeek: () => void;
   onSplit: (offset: number) => Promise<void>;
   saveError: boolean;
   saving: boolean;
+  savingTiming: boolean;
   segment: TranscriptSegment;
 };
 
 function EditableSegmentRow({
   active,
+  searchMatch,
   canMergeNext,
   canMergePrevious,
   cursorOffset,
@@ -2135,15 +2279,24 @@ function EditableSegmentRow({
   onSaveAndClose,
   onSaveAndMoveNext,
   onSaveAndMovePrevious,
+  onSaveTiming,
   onSeek,
   onSplit,
   saveError,
   saving,
+  savingTiming,
   segment
 }: EditableSegmentRowProps): ReactElement {
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const skipBlurSaveRef = useRef(false);
   const activeText = editing ? draftText : segment.text;
+  const [startDraft, setStartDraft] = useState(() => formatEditableTime(segment.startSeconds));
+  const [endDraft, setEndDraft] = useState(() => formatEditableTime(segment.endSeconds));
+
+  useEffect(() => {
+    setStartDraft(formatEditableTime(segment.startSeconds));
+    setEndDraft(formatEditableTime(segment.endSeconds));
+  }, [segment.endSeconds, segment.startSeconds]);
 
   useEffect(() => {
     if (!editing) {
@@ -2178,6 +2331,32 @@ function EditableSegmentRow({
     }
 
     void onSaveAndClose(event.currentTarget.value);
+  }
+
+  function saveTimingDraft(): void {
+    const nextStart = parseEditableTime(startDraft);
+    const nextEnd = parseEditableTime(endDraft);
+    if (nextStart === null || nextEnd === null) {
+      return;
+    }
+
+    void onSaveTiming(nextStart, nextEnd);
+  }
+
+  function handleTimingKeyDown(event: ReactKeyboardEvent<HTMLInputElement>): void {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      saveTimingDraft();
+      event.currentTarget.blur();
+      return;
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setStartDraft(formatEditableTime(segment.startSeconds));
+      setEndDraft(formatEditableTime(segment.endSeconds));
+      event.currentTarget.blur();
+    }
   }
 
   function handleEditKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>): void {
@@ -2257,11 +2436,30 @@ function EditableSegmentRow({
   const canSplit = editing && activeText.trim().length > 1 && cursorOffset > 0 && cursorOffset < activeText.length;
 
   return (
-    <div className={`segment-row ${active ? 'active' : ''} ${editing ? 'editing' : ''} ${segment.editedAt ? 'edited' : ''}`}>
+    <div className={`segment-row ${active ? 'active' : ''} ${editing ? 'editing' : ''} ${searchMatch ? 'search-match' : ''} ${segment.editedAt ? 'edited' : ''}`}>
       <div className="segment-gutter">
         <button aria-label={`Seek to ${formatTime(segment.startSeconds)}`} className="segment-seek-target" onClick={onSeek} type="button">
-          <time>{formatTime(segment.startSeconds)} - {formatTime(segment.endSeconds)}</time>
+          <time>{formatTime(segment.startSeconds)}</time>
         </button>
+        <div className="segment-time-editors" aria-label="Segment timestamps">
+          <input
+            aria-label="Segment start time"
+            disabled={savingTiming}
+            onBlur={saveTimingDraft}
+            onChange={(event) => setStartDraft(event.target.value)}
+            onKeyDown={handleTimingKeyDown}
+            value={startDraft}
+          />
+          <span>-</span>
+          <input
+            aria-label="Segment end time"
+            disabled={savingTiming}
+            onBlur={saveTimingDraft}
+            onChange={(event) => setEndDraft(event.target.value)}
+            onKeyDown={handleTimingKeyDown}
+            value={endDraft}
+          />
+        </div>
         <div className="segment-structure-tools">
           <button
             aria-label="Merge with previous segment"
@@ -3251,6 +3449,56 @@ function formatTime(seconds: number): string {
   }
 
   return `${minutes}:${remainder.toString().padStart(2, '0')}`;
+}
+
+function formatEditableTime(seconds: number): string {
+  const safeSeconds = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const wholeSeconds = Math.floor(safeSeconds % 60);
+  const milliseconds = Math.round((safeSeconds - Math.floor(safeSeconds)) * 1000);
+  const suffix = milliseconds > 0 ? `.${milliseconds.toString().padStart(3, '0').replace(/0+$/, '')}` : '';
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${wholeSeconds.toString().padStart(2, '0')}${suffix}`;
+  }
+
+  return `${minutes}:${wholeSeconds.toString().padStart(2, '0')}${suffix}`;
+}
+
+function parseEditableTime(value: string): number | null {
+  const parts = value.trim().split(':');
+  if (parts.length < 1 || parts.length > 3 || parts.some((part) => part.trim() === '')) {
+    return null;
+  }
+
+  const numericParts = parts.map((part) => Number(part));
+  if (numericParts.some((part) => !Number.isFinite(part) || part < 0)) {
+    return null;
+  }
+
+  if (numericParts.length === 1) {
+    return numericParts[0] ?? null;
+  }
+
+  if (numericParts.length === 2) {
+    return (numericParts[0] ?? 0) * 60 + (numericParts[1] ?? 0);
+  }
+
+  return (numericParts[0] ?? 0) * 3600 + (numericParts[1] ?? 0) * 60 + (numericParts[2] ?? 0);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function countTranscriptMatches(segments: TranscriptSegment[], query: string): number {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return 0;
+  }
+
+  return segments.reduce((count, segment) => count + (segment.text.toLowerCase().includes(normalizedQuery) ? 1 : 0), 0);
 }
 
 function formatDuration(seconds: number | null): string {

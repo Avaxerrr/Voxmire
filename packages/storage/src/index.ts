@@ -23,6 +23,11 @@ export type CreateJobRecordInput = {
   engineBackend?: EngineBackend;
 };
 
+export type TranscriptSegmentListUpdate = {
+  segments: TranscriptSegment[];
+  error: string | null;
+};
+
 export function openVoxmireDatabase(databasePath: string): VoxmireDatabase {
   const db = new DatabaseSync(databasePath);
   db.exec('PRAGMA journal_mode = WAL');
@@ -304,6 +309,43 @@ export function updateTranscriptSegmentText(
   });
 
   return getTranscriptSegment(db, jobId, segmentId);
+}
+
+export function updateTranscriptSegmentTiming(
+  db: VoxmireDatabase,
+  jobId: string,
+  segmentId: string,
+  startSeconds: number,
+  endSeconds: number
+): TranscriptSegmentListUpdate {
+  const segments = getTranscriptSegments(db, jobId);
+  const currentIndex = segments.findIndex((segment) => segment.id === segmentId);
+  const current = segments[currentIndex];
+  if (!current) {
+    return { segments, error: 'Transcript segment not found.' };
+  }
+
+  const validationError = validateSegmentTiming(segments, currentIndex, startSeconds, endSeconds);
+  if (validationError) {
+    return { segments, error: validationError };
+  }
+
+  db.prepare(
+    `UPDATE transcript_segments
+     SET start_seconds = @startSeconds,
+         end_seconds = @endSeconds,
+         edited_at = @editedAt
+     WHERE id = @segmentId
+       AND job_id = @jobId`
+  ).run({
+    jobId,
+    segmentId,
+    startSeconds,
+    endSeconds,
+    editedAt: new Date().toISOString()
+  });
+
+  return { segments: getTranscriptSegments(db, jobId), error: null };
 }
 
 export function splitTranscriptSegment(
@@ -735,4 +777,39 @@ function mergeConfidence(first: number | null, second: number | null): number | 
     return first;
   }
   return (first + second) / 2;
+}
+
+function validateSegmentTiming(
+  segments: TranscriptSegment[],
+  currentIndex: number,
+  startSeconds: number,
+  endSeconds: number
+): string | null {
+  if (!Number.isFinite(startSeconds) || !Number.isFinite(endSeconds)) {
+    return 'Timestamp must be a valid number.';
+  }
+
+  if (startSeconds < 0) {
+    return 'Start time cannot be negative.';
+  }
+
+  if (endSeconds <= startSeconds) {
+    return 'End time must be after start time.';
+  }
+
+  if (endSeconds - startSeconds < 0.05) {
+    return 'Segment duration must be at least 0.05 seconds.';
+  }
+
+  const previous = segments[currentIndex - 1];
+  if (previous && startSeconds < previous.endSeconds) {
+    return 'Start time cannot overlap the previous segment.';
+  }
+
+  const next = segments[currentIndex + 1];
+  if (next && endSeconds > next.startSeconds) {
+    return 'End time cannot overlap the next segment.';
+  }
+
+  return null;
 }

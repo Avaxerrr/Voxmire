@@ -12,6 +12,7 @@ import type {
   ProjectDetails,
   ResourceStatus,
   TranscriptSegment,
+  TranscriptSegmentListResult,
   TranscriptionJob,
   TranscriptionPresetId,
   TranscriptionProgressEvent
@@ -70,6 +71,7 @@ declare global {
       transcripts: {
         get: (jobId: string) => Promise<TranscriptSegment[]>;
         updateSegment: (jobId: string, segmentId: string, text: string) => Promise<TranscriptSegment | null>;
+        updateTiming: (jobId: string, segmentId: string, startSeconds: number, endSeconds: number) => Promise<TranscriptSegmentListResult>;
         splitSegment: (jobId: string, segmentId: string, offset: number) => Promise<TranscriptSegment[]>;
         mergeSegment: (jobId: string, segmentId: string, direction: 'previous' | 'next') => Promise<TranscriptSegment[]>;
       };

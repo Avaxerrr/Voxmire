@@ -11,6 +11,7 @@ import type {
   ProjectDetails,
   ResourceStatus,
   TranscriptSegment,
+  TranscriptSegmentListResult,
   TranscriptionJob,
   TranscriptionPresetId,
   TranscriptionProgressEvent
@@ -60,6 +61,8 @@ const api = {
     get: (jobId: string): Promise<TranscriptSegment[]> => ipcRenderer.invoke('transcripts:get', jobId),
     updateSegment: (jobId: string, segmentId: string, text: string): Promise<TranscriptSegment | null> =>
       ipcRenderer.invoke('transcripts:update-segment', { jobId, segmentId, text }),
+    updateTiming: (jobId: string, segmentId: string, startSeconds: number, endSeconds: number): Promise<TranscriptSegmentListResult> =>
+      ipcRenderer.invoke('transcripts:update-timing', { jobId, segmentId, startSeconds, endSeconds }),
     splitSegment: (jobId: string, segmentId: string, offset: number): Promise<TranscriptSegment[]> =>
       ipcRenderer.invoke('transcripts:split-segment', { jobId, segmentId, offset }),
     mergeSegment: (jobId: string, segmentId: string, direction: 'previous' | 'next'): Promise<TranscriptSegment[]> =>

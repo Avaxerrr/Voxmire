@@ -12,6 +12,7 @@ import {
   mergeTranscriptSegmentInputSchema,
   renameProjectInputSchema,
   splitTranscriptSegmentInputSchema,
+  updateTranscriptSegmentTimingInputSchema,
   updateTranscriptSegmentInputSchema
 } from '@voxmire/contracts';
 import { detectWhisperEngines, getMachineProfile, getResourceStatus, resolveFfmpegExecutable, resolveFfprobeExecutable, type ResourcePaths } from '@voxmire/engine';
@@ -138,6 +139,10 @@ function registerIpcHandlers(): void {
   ipcMain.handle('transcripts:update-segment', (_event, rawInput: unknown) => {
     const input = updateTranscriptSegmentInputSchema.parse(rawInput);
     return runtime.updateTranscriptSegment(input.jobId, input.segmentId, input.text);
+  });
+  ipcMain.handle('transcripts:update-timing', (_event, rawInput: unknown) => {
+    const input = updateTranscriptSegmentTimingInputSchema.parse(rawInput);
+    return runtime.updateTranscriptSegmentTiming(input.jobId, input.segmentId, input.startSeconds, input.endSeconds);
   });
   ipcMain.handle('transcripts:split-segment', (_event, rawInput: unknown) => {
     const input = splitTranscriptSegmentInputSchema.parse(rawInput);

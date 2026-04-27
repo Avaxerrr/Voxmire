@@ -145,6 +145,8 @@ textarea,
 .ghost-button,
 .segment-row,
 .segment-seek-target,
+.segment-time-editors,
+.segment-time-editors input,
 .segment-structure-tools,
 .segment-structure-tools button,
 .segment-text-input,
@@ -566,6 +568,38 @@ textarea,
 .library-controls { display: flex; align-items: center; gap: 8px; }
 .search-field { display: flex; align-items: center; gap: 8px; min-height: 36px; width: 240px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--muted); background: rgba(255, 255, 255, 0.04); }
 .search-field input { width: 100%; min-width: 0; border: 0; padding: 0; background: transparent; box-shadow: none; font-size: 13px; }
+.find-replace-panel {
+  position: absolute;
+  top: 12px;
+  right: 18px;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 36px);
+  padding: 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: rgba(14, 14, 18, 0.96);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
+}
+.compact-find-field { width: 180px; }
+.replace-field {
+  width: 160px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 13px;
+}
+.find-count {
+  min-width: 76px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
 
 .project-list { display: grid; align-content: start; flex: 1; gap: 8px; min-height: 0; overflow: auto; padding-right: 4px; }
 .project-row {
@@ -988,6 +1022,7 @@ textarea,
 .segment-row { position: relative; display: grid; grid-template-columns: 128px minmax(0, 1fr); align-items: start; gap: 20px; width: 100%; padding: 15px 16px; border: 0; border-left: 2px solid transparent; border-radius: 8px; color: inherit; background: transparent; text-align: left; }
 .segment-row.active,
 .segment-row:hover { border-left-color: var(--violet); background: linear-gradient(90deg, rgba(168, 85, 247, 0.09), transparent 72%); }
+.segment-row.search-match { border-left-color: var(--cyan); background: linear-gradient(90deg, rgba(34, 211, 238, 0.08), transparent 72%); }
 .segment-row:focus-visible { outline: 2px solid rgba(34, 211, 238, 0.5); outline-offset: 2px; }
 .segment-row time { color: var(--faint); font-family: "Fira Code", Consolas, monospace; font-size: 11px; font-weight: 500; }
 .segment-gutter {
@@ -1007,6 +1042,32 @@ textarea,
   background: transparent;
   cursor: pointer;
   text-align: left;
+}
+.segment-time-editors {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
+  max-width: 128px;
+  color: var(--faint);
+  font-family: "Fira Code", Consolas, monospace;
+  font-size: 10px;
+}
+.segment-time-editors input {
+  min-width: 0;
+  width: 100%;
+  padding: 4px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.035);
+  font: inherit;
+}
+.segment-time-editors input:focus {
+  outline: none;
+  color: var(--text);
+  border-color: rgba(34, 211, 238, 0.36);
+  background: rgba(34, 211, 238, 0.08);
 }
 .segment-structure-tools {
   display: flex;

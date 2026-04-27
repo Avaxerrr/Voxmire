@@ -44,6 +44,7 @@ import {
   updateJobEngineBackend,
   updateJobProgress,
   updateJobStatus,
+  updateTranscriptSegmentTiming,
   updateTranscriptSegmentText,
   updateTranscriptionChunkStatus,
   type VoxmireDatabase
@@ -137,6 +138,24 @@ export class VoxmireRuntime {
     }
 
     return segment;
+  }
+
+  updateTranscriptSegmentTiming(
+    jobId: string,
+    segmentId: string,
+    startSeconds: number,
+    endSeconds: number
+  ): { segments: TranscriptSegment[]; error: string | null } {
+    const result = updateTranscriptSegmentTiming(this.options.db, jobId, segmentId, startSeconds, endSeconds);
+    this.log({
+      level: result.error ? 'warn' : 'info',
+      event: result.error ? 'transcript.segment.timing_rejected' : 'transcript.segment.timing_edited',
+      jobId,
+      chunkId: null,
+      message: result.error ?? 'Edited transcript segment timing.',
+      details: { segmentId, startSeconds, endSeconds }
+    });
+    return result;
   }
 
   splitTranscriptSegment(jobId: string, segmentId: string, offset: number): TranscriptSegment[] {
