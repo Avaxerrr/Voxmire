@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createJobInputSchema, machineProfileSchema, transcriptionChunkSchema, transcriptionPresetProfileSchema, transcriptSegmentSchema, transcriptionJobSchema } from './index';
+import { createJobInputSchema, machineProfileSchema, transcriptionChunkSchema, transcriptionPresetProfileSchema, transcriptSegmentSchema, transcriptWordTimingSchema, transcriptionJobSchema } from './index';
 
 describe('contracts', () => {
   it('validates transcription job payloads', () => {
@@ -37,6 +37,30 @@ describe('contracts', () => {
         confidence: 2,
         createdAt: '2026-04-23T00:00:00.000Z'
       })
+    ).toThrow();
+  });
+
+  it('validates optional transcript word timing metadata', () => {
+    expect(() =>
+      transcriptSegmentSchema.parse({
+        id: 'seg_1',
+        jobId: 'job_1',
+        index: 0,
+        startSeconds: 0,
+        endSeconds: 2,
+        text: 'Hello world',
+        wordTimings: [
+          { text: 'Hello', startSeconds: 0, endSeconds: 0.8 },
+          { text: 'world', startSeconds: 0.9, endSeconds: 1.6 }
+        ],
+        alignmentStatus: 'aligned',
+        confidence: null,
+        createdAt: '2026-04-23T00:00:00.000Z'
+      })
+    ).not.toThrow();
+
+    expect(() =>
+      transcriptWordTimingSchema.parse({ text: 'broken', startSeconds: 2, endSeconds: 1 })
     ).toThrow();
   });
 

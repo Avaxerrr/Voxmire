@@ -23,6 +23,16 @@ export const transcriptionPresetIdSchema = z.enum(['balanced', 'fast', 'quality'
 
 export const transcriptionPresetBackendPreferenceSchema = z.enum(['auto', 'cpu']);
 
+export const transcriptAlignmentStatusSchema = z.enum(['aligned', 'partial', 'stale', 'none']);
+
+export const transcriptWordTimingSchema = z.object({
+  text: z.string().trim().min(1),
+  startSeconds: z.number().nonnegative(),
+  endSeconds: z.number().nonnegative()
+}).refine((word) => word.endSeconds > word.startSeconds, {
+  message: 'Word timing end must be greater than start.'
+});
+
 export const sourceFileSchema = z.object({
   id: z.string().min(1),
   path: z.string().min(1),
@@ -54,6 +64,8 @@ export const transcriptSegmentSchema = z.object({
   endSeconds: z.number().nonnegative(),
   text: z.string(),
   originalText: z.string().nullable().optional(),
+  wordTimings: z.array(transcriptWordTimingSchema).optional(),
+  alignmentStatus: transcriptAlignmentStatusSchema.optional(),
   confidence: z.number().min(0).max(1).nullable(),
   createdAt: z.string().datetime(),
   editedAt: z.string().datetime().nullable().optional()
@@ -249,6 +261,8 @@ export type EngineBackend = z.infer<typeof engineBackendSchema>;
 export type ModelId = z.infer<typeof modelIdSchema>;
 export type TranscriptionPresetId = z.infer<typeof transcriptionPresetIdSchema>;
 export type TranscriptionPresetBackendPreference = z.infer<typeof transcriptionPresetBackendPreferenceSchema>;
+export type TranscriptAlignmentStatus = z.infer<typeof transcriptAlignmentStatusSchema>;
+export type TranscriptWordTiming = z.infer<typeof transcriptWordTimingSchema>;
 export type SourceFile = z.infer<typeof sourceFileSchema>;
 export type TranscriptionJob = z.infer<typeof transcriptionJobSchema>;
 export type TranscriptSegment = z.infer<typeof transcriptSegmentSchema>;

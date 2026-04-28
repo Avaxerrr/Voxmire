@@ -1216,9 +1216,11 @@ textarea,
   background: rgba(168, 85, 247, 0.055);
   box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.12);
 }
-.segment-search-hit {
+.segment-text-highlight {
   padding: 0 2px;
   border-radius: 4px;
+}
+.segment-search-hit {
   color: #ffffff;
   background: rgba(34, 211, 238, 0.32);
   box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.3);
@@ -1227,6 +1229,15 @@ textarea,
   color: #fff7ed;
   background: rgba(245, 158, 11, 0.42);
   box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.36);
+}
+.segment-playback-word {
+  color: #ffffff;
+  background: rgba(168, 85, 247, 0.38);
+  box-shadow: 0 0 0 1px rgba(168, 85, 247, 0.36), 0 0 18px rgba(168, 85, 247, 0.28);
+}
+.segment-search-hit.segment-playback-word {
+  background: linear-gradient(90deg, rgba(34, 211, 238, 0.42), rgba(168, 85, 247, 0.5));
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.34), 0 0 18px rgba(168, 85, 247, 0.25);
 }
 .segment-save-state {
   min-height: 13px;

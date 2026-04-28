@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getMachineProfile, parseWhisperProgressLine } from './index';
+import { getMachineProfile, parseWhisperJsonSegmentsPayload, parseWhisperProgressLine } from './index';
 
 describe('parseWhisperProgressLine', () => {
   it('parses whisper.cpp progress output', () => {
@@ -9,6 +9,56 @@ describe('parseWhisperProgressLine', () => {
 
   it('ignores unrelated output', () => {
     expect(parseWhisperProgressLine('whisper_init_from_file_with_params: loading model')).toBeNull();
+  });
+});
+
+describe('parseWhisperJsonSegmentsPayload', () => {
+  it('preserves word timing metadata from whisper.cpp JSON', () => {
+    const segments = parseWhisperJsonSegmentsPayload({
+      transcription: [
+        {
+          text: ' Hello world',
+          offsets: { from: 1000, to: 2600 },
+          words: [
+            { word: 'Hello', offsets: { from: 1000, to: 1500 } },
+            { word: 'world', offsets: { from: 1600, to: 2300 } }
+          ]
+        }
+      ]
+    }, 'job_1');
+
+    expect(segments[0]).toMatchObject({
+      jobId: 'job_1',
+      index: 0,
+      startSeconds: 1,
+      endSeconds: 2.6,
+      text: 'Hello world',
+      alignmentStatus: 'aligned',
+      wordTimings: [
+        { text: 'Hello', startSeconds: 1, endSeconds: 1.5 },
+        { text: 'world', startSeconds: 1.6, endSeconds: 2.3 }
+      ]
+    });
+  });
+
+  it('falls back to token timings when word timings are absent', () => {
+    const segments = parseWhisperJsonSegmentsPayload({
+      transcription: [
+        {
+          text: 'Hello world',
+          offsets: { from: 0, to: 1200 },
+          tokens: [
+            { text: ' Hello', offsets: { from: 0, to: 500 } },
+            { text: ' world', offsets: { from: 600, to: 1100 } }
+          ]
+        }
+      ]
+    }, 'job_1');
+
+    expect(segments[0]?.wordTimings).toEqual([
+      { text: 'Hello', startSeconds: 0, endSeconds: 0.5 },
+      { text: 'world', startSeconds: 0.6, endSeconds: 1.1 }
+    ]);
   });
 });
 

@@ -5,13 +5,17 @@ import {
   type JobWithSource,
   type ModelId,
   type SourceFile,
+  type TranscriptAlignmentStatus,
   type TranscriptionChunk,
   type TranscriptionChunkStatus,
   type TranscriptSegment,
+  type TranscriptWordTiming,
   type TranscriptionJob,
   sourceFileSchema,
+  transcriptAlignmentStatusSchema,
   transcriptionChunkSchema,
   transcriptSegmentSchema,
+  transcriptWordTimingSchema,
   transcriptionJobSchema
 } from '@voxmire/contracts';
 
@@ -101,6 +105,8 @@ export function runMigrations(db: VoxmireDatabase): void {
 
   ensureColumn(db, 'transcript_segments', 'original_text', 'TEXT');
   ensureColumn(db, 'transcript_segments', 'edited_at', 'TEXT');
+  ensureColumn(db, 'transcript_segments', 'word_timings', 'TEXT');
+  ensureColumn(db, 'transcript_segments', 'alignment_status', 'TEXT');
 }
 
 export function createJobRecord(db: VoxmireDatabase, input: CreateJobRecordInput): JobWithSource {
@@ -259,10 +265,10 @@ export function saveTranscriptSegment(db: VoxmireDatabase, segment: TranscriptSe
   const parsedSegment = transcriptSegmentSchema.parse(segment);
   db.prepare(
     `INSERT INTO transcript_segments (
-       id, job_id, segment_index, start_seconds, end_seconds, text, original_text, confidence, created_at, edited_at
+       id, job_id, segment_index, start_seconds, end_seconds, text, original_text, word_timings, alignment_status, confidence, created_at, edited_at
      )
      VALUES (
-       @id, @jobId, @index, @startSeconds, @endSeconds, @text, @originalText, @confidence, @createdAt, @editedAt
+       @id, @jobId, @index, @startSeconds, @endSeconds, @text, @originalText, @wordTimings, @alignmentStatus, @confidence, @createdAt, @editedAt
      )
      ON CONFLICT(job_id, segment_index) DO UPDATE SET
        start_seconds = excluded.start_seconds,
@@ -274,6 +280,14 @@ export function saveTranscriptSegment(db: VoxmireDatabase, segment: TranscriptSe
        original_text = CASE
          WHEN transcript_segments.edited_at IS NULL THEN excluded.original_text
          ELSE transcript_segments.original_text
+       END,
+       word_timings = CASE
+         WHEN transcript_segments.edited_at IS NULL THEN excluded.word_timings
+         ELSE transcript_segments.word_timings
+       END,
+       alignment_status = CASE
+         WHEN transcript_segments.edited_at IS NULL THEN excluded.alignment_status
+         ELSE transcript_segments.alignment_status
        END,
        confidence = excluded.confidence`
   ).run(toSegmentRow(parsedSegment));
@@ -293,10 +307,13 @@ export function updateTranscriptSegmentText(
   }
 
   const now = new Date().toISOString();
+  const nextAlignment = reconcileTextEditAlignment(current, text);
   db.prepare(
     `UPDATE transcript_segments
      SET text = @text,
          original_text = @originalText,
+         word_timings = @wordTimings,
+         alignment_status = @alignmentStatus,
          edited_at = @editedAt
      WHERE id = @segmentId
        AND job_id = @jobId`
@@ -305,6 +322,8 @@ export function updateTranscriptSegmentText(
     segmentId,
     text,
     originalText: current.originalText ?? current.text,
+    wordTimings: serializeWordTimings(nextAlignment.wordTimings),
+    alignmentStatus: nextAlignment.alignmentStatus,
     editedAt: now
   });
 
@@ -330,10 +349,12 @@ export function updateTranscriptSegmentTiming(
     return { segments, error: validationError };
   }
 
+  const nextAlignmentStatus = alignmentStatusForTiming(current, startSeconds, endSeconds);
   db.prepare(
     `UPDATE transcript_segments
      SET start_seconds = @startSeconds,
          end_seconds = @endSeconds,
+         alignment_status = @alignmentStatus,
          edited_at = @editedAt
      WHERE id = @segmentId
        AND job_id = @jobId`
@@ -342,6 +363,7 @@ export function updateTranscriptSegmentTiming(
     segmentId,
     startSeconds,
     endSeconds,
+    alignmentStatus: nextAlignmentStatus,
     editedAt: new Date().toISOString()
   });
 
@@ -369,6 +391,7 @@ export function splitTranscriptSegment(
   const splitRatio = Math.min(Math.max(offset / current.text.length, 0.05), 0.95);
   const splitSeconds = current.startSeconds + (current.endSeconds - current.startSeconds) * splitRatio;
   const originalText = current.originalText ?? current.text;
+  const partitionedWordTimings = partitionWordTimingsForSplit(current, offset, splitSeconds);
   const nextSegment: TranscriptSegment = {
     id: createId('seg'),
     jobId,
@@ -377,6 +400,8 @@ export function splitTranscriptSegment(
     endSeconds: current.endSeconds,
     text: rightText,
     originalText,
+    wordTimings: partitionedWordTimings.right,
+    alignmentStatus: splitAlignmentStatus(current.alignmentStatus, partitionedWordTimings.right),
     confidence: current.confidence,
     createdAt: now,
     editedAt: now
@@ -395,6 +420,8 @@ export function splitTranscriptSegment(
        SET text = @text,
            end_seconds = @endSeconds,
            original_text = @originalText,
+           word_timings = @wordTimings,
+           alignment_status = @alignmentStatus,
            edited_at = @editedAt
        WHERE job_id = @jobId
          AND id = @segmentId`
@@ -404,15 +431,17 @@ export function splitTranscriptSegment(
       text: leftText,
       endSeconds: splitSeconds,
       originalText,
+      wordTimings: serializeWordTimings(partitionedWordTimings.left),
+      alignmentStatus: splitAlignmentStatus(current.alignmentStatus, partitionedWordTimings.left),
       editedAt: now
     });
 
     db.prepare(
       `INSERT INTO transcript_segments (
-         id, job_id, segment_index, start_seconds, end_seconds, text, original_text, confidence, created_at, edited_at
+         id, job_id, segment_index, start_seconds, end_seconds, text, original_text, word_timings, alignment_status, confidence, created_at, edited_at
        )
        VALUES (
-         @id, @jobId, @index, @startSeconds, @endSeconds, @text, @originalText, @confidence, @createdAt, @editedAt
+         @id, @jobId, @index, @startSeconds, @endSeconds, @text, @originalText, @wordTimings, @alignmentStatus, @confidence, @createdAt, @editedAt
        )`
     ).run(toSegmentRow(nextSegment));
 
@@ -451,6 +480,7 @@ export function mergeTranscriptSegment(
   const now = new Date().toISOString();
   const mergedText = joinSegmentText(first.text, second.text);
   const originalText = first.originalText ?? second.originalText ?? first.text;
+  const mergedWordTimings = mergeWordTimings(first, second);
 
   runTransaction(db, () => {
     db.prepare(
@@ -460,6 +490,8 @@ export function mergeTranscriptSegment(
            end_seconds = @endSeconds,
            original_text = @originalText,
            edited_at = @editedAt,
+           word_timings = @wordTimings,
+           alignment_status = @alignmentStatus,
            confidence = @confidence
        WHERE job_id = @jobId
          AND id = @segmentId`
@@ -471,6 +503,8 @@ export function mergeTranscriptSegment(
       endSeconds: second.endSeconds,
       originalText,
       editedAt: now,
+      wordTimings: serializeWordTimings(mergedWordTimings),
+      alignmentStatus: mergeAlignmentStatus(first, second, mergedWordTimings),
       confidence: mergeConfidence(first.confidence, second.confidence)
     });
 
@@ -665,6 +699,8 @@ function parseSegmentRow(row: unknown): TranscriptSegment {
     endSeconds: value.end_seconds,
     text: value.text,
     originalText: value.original_text,
+    wordTimings: parseWordTimings(value.word_timings),
+    alignmentStatus: parseAlignmentStatus(value.alignment_status),
     confidence: value.confidence,
     createdAt: value.created_at,
     editedAt: value.edited_at
@@ -740,10 +776,43 @@ function toSegmentRow(segment: TranscriptSegment): Record<string, SQLInputValue>
     endSeconds: segment.endSeconds,
     text: segment.text,
     originalText: segment.originalText ?? null,
+    wordTimings: serializeWordTimings(segment.wordTimings),
+    alignmentStatus: segment.alignmentStatus ?? defaultAlignmentStatus(segment.wordTimings),
     confidence: segment.confidence,
     createdAt: segment.createdAt,
     editedAt: segment.editedAt ?? null
   };
+}
+
+function parseWordTimings(value: unknown): TranscriptWordTiming[] | undefined {
+  if (typeof value !== 'string' || !value.trim()) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    const result = transcriptWordTimingSchema.array().safeParse(parsed);
+    return result.success && result.data.length > 0 ? result.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function parseAlignmentStatus(value: unknown): TranscriptAlignmentStatus | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const result = transcriptAlignmentStatusSchema.safeParse(value);
+  return result.success ? result.data : undefined;
+}
+
+function serializeWordTimings(wordTimings: TranscriptWordTiming[] | undefined): string | null {
+  return wordTimings && wordTimings.length > 0 ? JSON.stringify(wordTimings) : null;
+}
+
+function defaultAlignmentStatus(wordTimings: TranscriptWordTiming[] | undefined): TranscriptAlignmentStatus {
+  return wordTimings && wordTimings.length > 0 ? 'aligned' : 'none';
 }
 
 function runTransaction(db: VoxmireDatabase, operation: () => void): void {
@@ -767,6 +836,153 @@ function joinSegmentText(first: string, second: string): string {
     return left;
   }
   return `${left} ${right}`;
+}
+
+function reconcileTextEditAlignment(
+  current: TranscriptSegment,
+  nextText: string
+): { wordTimings: TranscriptWordTiming[] | undefined; alignmentStatus: TranscriptAlignmentStatus } {
+  const wordTimings = current.wordTimings;
+  if (!wordTimings || wordTimings.length === 0) {
+    return { wordTimings: undefined, alignmentStatus: 'none' };
+  }
+
+  if (normalizeWords(current.text).join(' ') === normalizeWords(nextText).join(' ')) {
+    return { wordTimings, alignmentStatus: current.alignmentStatus ?? 'aligned' };
+  }
+
+  return { wordTimings, alignmentStatus: 'stale' };
+}
+
+function alignmentStatusForTiming(
+  current: TranscriptSegment,
+  startSeconds: number,
+  endSeconds: number
+): TranscriptAlignmentStatus {
+  const wordTimings = current.wordTimings;
+  if (!wordTimings || wordTimings.length === 0) {
+    return 'none';
+  }
+
+  if (current.alignmentStatus === 'stale') {
+    return 'stale';
+  }
+
+  const inRangeCount = wordTimings.filter((word) => word.startSeconds >= startSeconds && word.endSeconds <= endSeconds).length;
+  if (inRangeCount === 0) {
+    return 'stale';
+  }
+
+  if (inRangeCount < wordTimings.length) {
+    return 'partial';
+  }
+
+  return current.alignmentStatus === 'partial' ? 'partial' : 'aligned';
+}
+
+function partitionWordTimingsForSplit(
+  segment: TranscriptSegment,
+  offset: number,
+  splitSeconds: number
+): { left: TranscriptWordTiming[] | undefined; right: TranscriptWordTiming[] | undefined } {
+  const wordTimings = segment.wordTimings;
+  if (!wordTimings || wordTimings.length === 0) {
+    return { left: undefined, right: undefined };
+  }
+
+  const ranges = mapWordTimingsToTextRanges(segment.text, wordTimings);
+  const left: TranscriptWordTiming[] = [];
+  const right: TranscriptWordTiming[] = [];
+
+  wordTimings.forEach((word, index) => {
+    const range = ranges[index];
+    const assignLeft = range
+      ? range.start < offset && range.end <= offset
+      : word.endSeconds <= splitSeconds;
+
+    if (assignLeft) {
+      left.push(word);
+      return;
+    }
+
+    right.push(word);
+  });
+
+  return {
+    left: left.length > 0 ? left : undefined,
+    right: right.length > 0 ? right : undefined
+  };
+}
+
+function splitAlignmentStatus(
+  currentStatus: TranscriptAlignmentStatus | undefined,
+  wordTimings: TranscriptWordTiming[] | undefined
+): TranscriptAlignmentStatus {
+  if (!wordTimings || wordTimings.length === 0) {
+    return 'none';
+  }
+
+  return currentStatus === 'stale' ? 'stale' : currentStatus === 'partial' ? 'partial' : 'aligned';
+}
+
+function mergeWordTimings(first: TranscriptSegment, second: TranscriptSegment): TranscriptWordTiming[] | undefined {
+  const merged = [...(first.wordTimings ?? []), ...(second.wordTimings ?? [])].sort(
+    (left, right) => left.startSeconds - right.startSeconds
+  );
+  return merged.length > 0 ? merged : undefined;
+}
+
+function mergeAlignmentStatus(
+  first: TranscriptSegment,
+  second: TranscriptSegment,
+  mergedWordTimings: TranscriptWordTiming[] | undefined
+): TranscriptAlignmentStatus {
+  if (!mergedWordTimings || mergedWordTimings.length === 0) {
+    return 'none';
+  }
+
+  const statuses = [first.alignmentStatus ?? defaultAlignmentStatus(first.wordTimings), second.alignmentStatus ?? defaultAlignmentStatus(second.wordTimings)];
+  if (statuses.every((status) => status === 'aligned')) {
+    return 'aligned';
+  }
+
+  if (statuses.every((status) => status === 'stale' || status === 'none')) {
+    return 'stale';
+  }
+
+  return 'partial';
+}
+
+function mapWordTimingsToTextRanges(
+  text: string,
+  wordTimings: TranscriptWordTiming[]
+): Array<{ start: number; end: number } | null> {
+  const lowerText = text.toLowerCase();
+  let cursor = 0;
+  return wordTimings.map((word) => {
+    const searchText = normalizeWordText(word.text);
+    if (!searchText) {
+      return null;
+    }
+
+    const index = lowerText.indexOf(searchText.toLowerCase(), cursor);
+    if (index < 0) {
+      return null;
+    }
+
+    cursor = index + searchText.length;
+    return { start: index, end: cursor };
+  });
+}
+
+function normalizeWords(value: string): string[] {
+  return value
+    .toLowerCase()
+    .match(/[\p{L}\p{N}']+/gu) ?? [];
+}
+
+function normalizeWordText(value: string): string {
+  return value.trim().replace(/^[^\p{L}\p{N}']+|[^\p{L}\p{N}']+$/gu, '');
 }
 
 function mergeConfidence(first: number | null, second: number | null): number | null {

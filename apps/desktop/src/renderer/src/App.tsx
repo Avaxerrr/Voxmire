@@ -1502,6 +1502,7 @@ function TranscriptView({
                         onUpdateTiming={updateSegmentTiming}
                         onUpdateSegment={updateSegment}
                         activeSearchSegmentId={activeFindSegment?.id ?? null}
+                        playbackTime={playbackTime}
                         searchQuery={findQuery}
                         segments={segments}
                       />
@@ -1518,6 +1519,7 @@ function TranscriptView({
                     onUpdateTiming={updateSegmentTiming}
                     onUpdateSegment={updateSegment}
                     activeSearchSegmentId={activeFindSegment?.id ?? null}
+                    playbackTime={playbackTime}
                     searchQuery={findQuery}
                     segments={segments}
                   />
@@ -2151,6 +2153,7 @@ type VirtualizedSegmentListProps = {
   onUpdateTiming: (segmentId: string, startSeconds: number, endSeconds: number) => Promise<TranscriptSegmentListResult | null>;
   onUpdateSegment: (segmentId: string, text: string) => Promise<TranscriptSegment | null>;
   activeSearchSegmentId: string | null;
+  playbackTime: number;
   searchQuery: string;
   segments: TranscriptSegment[];
 };
@@ -2163,6 +2166,7 @@ function VirtualizedSegmentList({
   onUpdateTiming,
   onUpdateSegment,
   activeSearchSegmentId,
+  playbackTime,
   searchQuery,
   segments
 }: VirtualizedSegmentListProps): ReactElement {
@@ -2382,6 +2386,7 @@ function VirtualizedSegmentList({
           const saveError = segment.id === saveErrorSegmentId;
           const searchMatch = searchQuery.trim() ? segment.text.toLowerCase().includes(searchQuery.trim().toLowerCase()) : false;
           const activeSearchMatch = segment.id === activeSearchSegmentId;
+          const playbackWordRange = active ? currentPlaybackWordRange(segment, playbackTime) : null;
 
           return (
             <div
@@ -2416,6 +2421,7 @@ function VirtualizedSegmentList({
                 saveError={saveError}
                 saving={saving}
                 savingTiming={savingTiming}
+                playbackWordRange={playbackWordRange}
                 searchQuery={searchQuery}
                 segment={segment}
               />
@@ -2449,6 +2455,7 @@ type EditableSegmentRowProps = {
   onSaveTiming: (startSeconds: number, endSeconds: number) => Promise<boolean>;
   onSelectSegment: () => void;
   onSplit: (offset: number) => Promise<void>;
+  playbackWordRange: TextRange | null;
   saveError: boolean;
   saving: boolean;
   savingTiming: boolean;
@@ -2478,6 +2485,7 @@ function EditableSegmentRow({
   onSaveTiming,
   onSelectSegment,
   onSplit,
+  playbackWordRange,
   saveError,
   saving,
   savingTiming,
@@ -2730,7 +2738,7 @@ function EditableSegmentRow({
             onClick={onFocus}
             type="button"
           >
-            <HighlightedTranscriptText query={searchQuery} text={segment.text} />
+            <HighlightedTranscriptText playbackRange={playbackWordRange} query={searchQuery} text={segment.text} />
           </button>
         )}
         <div className={`segment-save-state ${saving ? 'saving' : ''} ${saveError ? 'error' : ''}`} role="status">
@@ -2741,25 +2749,154 @@ function EditableSegmentRow({
   );
 }
 
-function HighlightedTranscriptText({ query, text }: { query: string; text: string }): ReactElement {
+type TextRange = {
+  start: number;
+  end: number;
+};
+
+function HighlightedTranscriptText({ playbackRange, query, text }: { playbackRange: TextRange | null; query: string; text: string }): ReactElement {
   const normalizedQuery = query.trim();
-  if (!normalizedQuery) {
+  if (!normalizedQuery && !playbackRange) {
     return <>{text}</>;
   }
 
-  const matcher = new RegExp(`(${escapeRegExp(normalizedQuery)})`, 'gi');
-  const parts = text.split(matcher);
-  const lowerQuery = normalizedQuery.toLowerCase();
+  const slices = buildHighlightedTextSlices(text, normalizedQuery, playbackRange);
 
   return (
     <>
-      {parts.map((part, index) => (
-        part.toLowerCase() === lowerQuery
-          ? <mark className="segment-search-hit" key={`${part}-${index}`}>{part}</mark>
-          : part
-      ))}
+      {slices.map((slice) => {
+        if (!slice.search && !slice.playback) {
+          return slice.text;
+        }
+
+        return (
+          <mark
+            className={`segment-text-highlight ${slice.search ? 'segment-search-hit' : ''} ${slice.playback ? 'segment-playback-word' : ''}`}
+            key={`${slice.start}-${slice.end}`}
+          >
+            {slice.text}
+          </mark>
+        );
+      })}
     </>
   );
+}
+
+function currentPlaybackWordRange(segment: TranscriptSegment, playbackTime: number): TextRange | null {
+  if (!wordAlignmentUsable(segment) || !Number.isFinite(playbackTime)) {
+    return null;
+  }
+
+  const wordTimings = segment.wordTimings ?? [];
+  const activeWordIndex = wordTimings.findIndex(
+    (word) =>
+      word.startSeconds <= playbackTime &&
+      playbackTime < word.endSeconds &&
+      word.startSeconds >= segment.startSeconds &&
+      word.endSeconds <= segment.endSeconds
+  );
+
+  if (activeWordIndex < 0) {
+    return null;
+  }
+
+  const ranges = mapWordTimingsToTextRanges(segment.text, wordTimings);
+  return ranges[activeWordIndex] ?? null;
+}
+
+function wordAlignmentUsable(segment: TranscriptSegment): boolean {
+  const status = segment.alignmentStatus ?? (segment.wordTimings && segment.wordTimings.length > 0 ? 'aligned' : 'none');
+  return (
+    (status === 'aligned' || status === 'partial') &&
+    Array.isArray(segment.wordTimings) &&
+    segment.wordTimings.length > 0
+  );
+}
+
+function mapWordTimingsToTextRanges(text: string, wordTimings: NonNullable<TranscriptSegment['wordTimings']>): Array<TextRange | null> {
+  const lowerText = text.toLowerCase();
+  let cursor = 0;
+
+  return wordTimings.map((word) => {
+    const searchText = normalizedWordText(word.text);
+    if (!searchText) {
+      return null;
+    }
+
+    const index = lowerText.indexOf(searchText.toLowerCase(), cursor);
+    if (index < 0) {
+      return null;
+    }
+
+    cursor = index + searchText.length;
+    return { start: index, end: cursor };
+  });
+}
+
+function buildHighlightedTextSlices(text: string, query: string, playbackRange: TextRange | null): Array<TextRange & { text: string; search: boolean; playback: boolean }> {
+  const ranges = [
+    ...findSearchRanges(text, query).map((range) => ({ ...range, kind: 'search' as const })),
+    ...(playbackRange ? [{ ...playbackRange, kind: 'playback' as const }] : [])
+  ]
+    .filter((range) => range.start >= 0 && range.end > range.start && range.start < text.length)
+    .map((range) => ({ ...range, end: Math.min(range.end, text.length) }));
+
+  if (ranges.length === 0) {
+    return [{ start: 0, end: text.length, text, search: false, playback: false }];
+  }
+
+  const boundaries = new Set([0, text.length]);
+  ranges.forEach((range) => {
+    boundaries.add(range.start);
+    boundaries.add(range.end);
+  });
+
+  const orderedBoundaries = [...boundaries].sort((left, right) => left - right);
+  const slices: Array<TextRange & { text: string; search: boolean; playback: boolean }> = [];
+  for (let index = 0; index < orderedBoundaries.length - 1; index += 1) {
+    const start = orderedBoundaries[index] ?? 0;
+    const end = orderedBoundaries[index + 1] ?? start;
+    if (end <= start) {
+      continue;
+    }
+
+    slices.push({
+      start,
+      end,
+      text: text.slice(start, end),
+      search: ranges.some((range) => range.kind === 'search' && range.start <= start && end <= range.end),
+      playback: ranges.some((range) => range.kind === 'playback' && range.start <= start && end <= range.end)
+    });
+  }
+
+  return slices;
+}
+
+function findSearchRanges(text: string, query: string): TextRange[] {
+  if (!query) {
+    return [];
+  }
+
+  const ranges: TextRange[] = [];
+  const lowerText = text.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  let cursor = 0;
+
+  while (cursor < text.length) {
+    const index = lowerText.indexOf(lowerQuery, cursor);
+    if (index < 0) {
+      break;
+    }
+
+    ranges.push({ start: index, end: index + lowerQuery.length });
+    cursor = index + Math.max(1, lowerQuery.length);
+  }
+
+  return ranges;
+}
+
+function normalizedWordText(value: string): string {
+  return value.trim().replace(/^[^\p{L}\p{N}']+|[^\p{L}\p{N}']+$/gu, '');
 }
 
 type VideoPreviewProps = {

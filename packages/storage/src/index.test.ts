@@ -191,6 +191,104 @@ describe('storage repositories', () => {
     db.close();
   });
 
+  it('preserves word timing metadata across split and merge edits', () => {
+    const db = openVoxmireDatabase(':memory:');
+    const created = createJobRecord(db, {
+      modelId: 'large-v3-turbo',
+      sourceFile: {
+        id: 'src_1',
+        path: 'C:/audio/example.wav',
+        name: 'example.wav',
+        extension: 'wav',
+        sizeBytes: 100,
+        durationSeconds: 10,
+        createdAt: '2026-04-23T00:00:00.000Z'
+      }
+    });
+
+    saveTranscriptSegment(db, {
+      id: 'seg_1',
+      jobId: created.job.id,
+      index: 0,
+      startSeconds: 0,
+      endSeconds: 5,
+      text: 'Hello world again',
+      wordTimings: [
+        { text: 'Hello', startSeconds: 0.2, endSeconds: 0.7 },
+        { text: 'world', startSeconds: 1.1, endSeconds: 1.7 },
+        { text: 'again', startSeconds: 2.2, endSeconds: 2.9 }
+      ],
+      alignmentStatus: 'aligned',
+      confidence: 0.8,
+      createdAt: '2026-04-23T00:00:00.000Z'
+    });
+
+    const splitSegments = splitTranscriptSegment(db, created.job.id, 'seg_1', 5);
+
+    expect(splitSegments.map((segment) => segment.text)).toEqual(['Hello', 'world again']);
+    expect(splitSegments[0]?.wordTimings).toEqual([
+      { text: 'Hello', startSeconds: 0.2, endSeconds: 0.7 }
+    ]);
+    expect(splitSegments[1]?.wordTimings).toEqual([
+      { text: 'world', startSeconds: 1.1, endSeconds: 1.7 },
+      { text: 'again', startSeconds: 2.2, endSeconds: 2.9 }
+    ]);
+    expect(splitSegments[0]?.alignmentStatus).toBe('aligned');
+    expect(splitSegments[1]?.alignmentStatus).toBe('aligned');
+
+    const mergedSegments = mergeTranscriptSegment(db, created.job.id, splitSegments[1]?.id ?? '', 'previous');
+
+    expect(mergedSegments).toHaveLength(1);
+    expect(mergedSegments[0]?.text).toBe('Hello world again');
+    expect(mergedSegments[0]?.alignmentStatus).toBe('aligned');
+    expect(mergedSegments[0]?.wordTimings?.map((word) => word.text)).toEqual(['Hello', 'world', 'again']);
+    db.close();
+  });
+
+  it('marks word alignment stale after text rewrites and partial after timestamp narrowing', () => {
+    const db = openVoxmireDatabase(':memory:');
+    const created = createJobRecord(db, {
+      modelId: 'large-v3-turbo',
+      sourceFile: {
+        id: 'src_1',
+        path: 'C:/audio/example.wav',
+        name: 'example.wav',
+        extension: 'wav',
+        sizeBytes: 100,
+        durationSeconds: 10,
+        createdAt: '2026-04-23T00:00:00.000Z'
+      }
+    });
+
+    saveTranscriptSegment(db, {
+      id: 'seg_1',
+      jobId: created.job.id,
+      index: 0,
+      startSeconds: 0,
+      endSeconds: 5,
+      text: 'Hello world again',
+      wordTimings: [
+        { text: 'Hello', startSeconds: 0.2, endSeconds: 0.7 },
+        { text: 'world', startSeconds: 1.1, endSeconds: 1.7 },
+        { text: 'again', startSeconds: 2.2, endSeconds: 2.9 }
+      ],
+      alignmentStatus: 'aligned',
+      confidence: 0.8,
+      createdAt: '2026-04-23T00:00:00.000Z'
+    });
+
+    const narrowed = updateTranscriptSegmentTiming(db, created.job.id, 'seg_1', 1, 2);
+
+    expect(narrowed.error).toBeNull();
+    expect(narrowed.segments[0]?.alignmentStatus).toBe('partial');
+
+    const edited = updateTranscriptSegmentText(db, created.job.id, 'seg_1', 'Completely different text.');
+
+    expect(edited?.alignmentStatus).toBe('stale');
+    expect(edited?.wordTimings?.map((word) => word.text)).toEqual(['Hello', 'world', 'again']);
+    db.close();
+  });
+
   it('merges adjacent transcript segments and closes the index gap', () => {
     const db = openVoxmireDatabase(':memory:');
     const created = createJobRecord(db, {

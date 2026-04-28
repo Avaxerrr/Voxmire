@@ -750,7 +750,12 @@ function offsetSegment(segment: TranscriptSegment, chunk: TranscriptionChunk, in
     id: createId('seg'),
     index,
     startSeconds: chunk.startSeconds + segment.startSeconds,
-    endSeconds: chunk.startSeconds + segment.endSeconds
+    endSeconds: chunk.startSeconds + segment.endSeconds,
+    wordTimings: segment.wordTimings?.map((word) => ({
+      ...word,
+      startSeconds: chunk.startSeconds + word.startSeconds,
+      endSeconds: chunk.startSeconds + word.endSeconds
+    }))
   };
 }
 
