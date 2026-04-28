@@ -1172,13 +1172,11 @@ textarea,
   gap: 4px;
   min-width: 0;
 }
-.segment-text-input {
+.segment-text-input,
+.segment-text-display {
   width: 100%;
   max-width: 1180px;
   min-height: 36px;
-  max-height: 280px;
-  resize: none;
-  overflow: hidden;
   padding: 2px 6px;
   color: #f4f4f5;
   background: transparent;
@@ -1189,15 +1187,46 @@ textarea,
   font-weight: 500;
   line-height: 1.48;
 }
-.segment-text-input:hover {
+.segment-text-input {
+  max-height: 280px;
+  resize: none;
+  overflow: hidden;
+}
+.segment-text-display {
+  display: block;
+  overflow-wrap: anywhere;
+  cursor: text;
+  text-align: left;
+  white-space: pre-wrap;
+}
+.segment-text-input:hover,
+.segment-text-display:hover {
   border-color: rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.02);
+}
+.segment-text-display:focus-visible {
+  outline: none;
+  border-color: rgba(168, 85, 247, 0.5);
+  background: rgba(168, 85, 247, 0.055);
+  box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.12);
 }
 .segment-text-input:focus {
   outline: none;
   border-color: rgba(168, 85, 247, 0.5);
   background: rgba(168, 85, 247, 0.055);
   box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.12);
+}
+.segment-search-hit {
+  padding: 0 2px;
+  border-radius: 4px;
+  color: #ffffff;
+  background: rgba(34, 211, 238, 0.32);
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.3);
+}
+.segment-row.search-current .segment-search-hit {
+  color: #fff7ed;
+  background: rgba(245, 158, 11, 0.42);
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.36);
 }
 .segment-save-state {
   min-height: 13px;

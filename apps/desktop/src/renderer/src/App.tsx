@@ -2416,6 +2416,7 @@ function VirtualizedSegmentList({
                 saveError={saveError}
                 saving={saving}
                 savingTiming={savingTiming}
+                searchQuery={searchQuery}
                 segment={segment}
               />
             </div>
@@ -2451,6 +2452,7 @@ type EditableSegmentRowProps = {
   saveError: boolean;
   saving: boolean;
   savingTiming: boolean;
+  searchQuery: string;
   segment: TranscriptSegment;
 };
 
@@ -2479,6 +2481,7 @@ function EditableSegmentRow({
   saveError,
   saving,
   savingTiming,
+  searchQuery,
   segment
 }: EditableSegmentRowProps): ReactElement {
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -2702,28 +2705,60 @@ function EditableSegmentRow({
         </div>
       </div>
       <div className="segment-edit-stack">
-        <textarea
-          aria-label="Transcript segment text"
-          className="segment-text-input"
-          onBlur={handleEditBlur}
-          onChange={(event) => {
-            onDraftChange(event.target.value);
-            onCursorOffsetChange(event.target.selectionStart);
-          }}
-          onClick={syncCursorOffset}
-          onFocus={onFocus}
-          onKeyDown={handleEditKeyDown}
-          onKeyUp={syncCursorOffset}
-          onSelect={syncCursorOffset}
-          ref={textAreaRef}
-          spellCheck
-          value={activeText}
-        />
+        {editing ? (
+          <textarea
+            aria-label="Transcript segment text"
+            className="segment-text-input"
+            onBlur={handleEditBlur}
+            onChange={(event) => {
+              onDraftChange(event.target.value);
+              onCursorOffsetChange(event.target.selectionStart);
+            }}
+            onClick={syncCursorOffset}
+            onFocus={onFocus}
+            onKeyDown={handleEditKeyDown}
+            onKeyUp={syncCursorOffset}
+            onSelect={syncCursorOffset}
+            ref={textAreaRef}
+            spellCheck
+            value={activeText}
+          />
+        ) : (
+          <button
+            aria-label="Edit transcript segment text"
+            className="segment-text-display"
+            onClick={onFocus}
+            type="button"
+          >
+            <HighlightedTranscriptText query={searchQuery} text={segment.text} />
+          </button>
+        )}
         <div className={`segment-save-state ${saving ? 'saving' : ''} ${saveError ? 'error' : ''}`} role="status">
           {saveError ? 'Not saved' : saving ? 'Saving' : segment.editedAt ? 'Edited' : ''}
         </div>
       </div>
     </div>
+  );
+}
+
+function HighlightedTranscriptText({ query, text }: { query: string; text: string }): ReactElement {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) {
+    return <>{text}</>;
+  }
+
+  const matcher = new RegExp(`(${escapeRegExp(normalizedQuery)})`, 'gi');
+  const parts = text.split(matcher);
+  const lowerQuery = normalizedQuery.toLowerCase();
+
+  return (
+    <>
+      {parts.map((part, index) => (
+        part.toLowerCase() === lowerQuery
+          ? <mark className="segment-search-hit" key={`${part}-${index}`}>{part}</mark>
+          : part
+      ))}
+    </>
   );
 }
 
