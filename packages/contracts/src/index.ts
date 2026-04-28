@@ -11,6 +11,7 @@ export const jobStatusSchema = z.enum([
 ]);
 
 export const exportFormatSchema = z.enum(['txt', 'json', 'srt', 'vtt']);
+export const exportTextModeSchema = z.enum(['plain', 'timestamps']);
 
 export const engineKindSchema = z.enum(['whisper.cpp']);
 
@@ -215,12 +216,14 @@ export const mergeTranscriptSegmentResultSchema = z.object({
 
 export const exportTranscriptInputSchema = z.object({
   jobId: z.string().min(1),
-  format: exportFormatSchema
+  format: exportFormatSchema,
+  textMode: exportTextModeSchema.default('plain')
 });
 
 export const exportTranscriptResultSchema = z.object({
   path: z.string().min(1),
-  format: exportFormatSchema
+  format: exportFormatSchema,
+  textMode: exportTextModeSchema.default('plain')
 });
 
 
@@ -240,6 +243,7 @@ export type ResourceKind = z.infer<typeof resourceKindSchema>;
 export type ResourceStatus = z.infer<typeof resourceStatusSchema>;
 export type JobStatus = z.infer<typeof jobStatusSchema>;
 export type ExportFormat = z.infer<typeof exportFormatSchema>;
+export type ExportTextMode = z.infer<typeof exportTextModeSchema>;
 export type EngineKind = z.infer<typeof engineKindSchema>;
 export type EngineBackend = z.infer<typeof engineBackendSchema>;
 export type ModelId = z.infer<typeof modelIdSchema>;

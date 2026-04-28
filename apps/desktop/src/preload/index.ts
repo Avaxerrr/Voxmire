@@ -4,6 +4,7 @@ import type {
   EngineAvailability,
   EngineBackend,
   ExportFormat,
+  ExportTextMode,
   ExportTranscriptResult,
   JobWithSource,
   MachineProfile,
@@ -76,8 +77,11 @@ const api = {
       ipcRenderer.invoke('media:get-waveform', jobId)
   },
   exports: {
-    create: (jobId: string, format: ExportFormat): Promise<ExportTranscriptResult> =>
-      ipcRenderer.invoke('exports:create', { jobId, format })
+    chooseDirectory: (): Promise<string | null> => ipcRenderer.invoke('exports:choose-directory'),
+    create: (jobId: string, format: ExportFormat, textMode: ExportTextMode = 'plain'): Promise<ExportTranscriptResult | null> =>
+      ipcRenderer.invoke('exports:create', { jobId, format, textMode }),
+    getDirectory: (): Promise<string> => ipcRenderer.invoke('exports:get-directory'),
+    resetDirectory: (): Promise<string> => ipcRenderer.invoke('exports:reset-directory')
   }
 };
 

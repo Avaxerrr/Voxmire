@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { resolveTranscriptionPreset } from '@voxmire/core';
-import type { EngineBackend, ExportFormat, JobWithSource, MachineProfile, ModelId, ResourceStatus, TranscriptSegment, TranscriptionJob, TranscriptionPresetId } from '@voxmire/contracts';
+import type { EngineBackend, ExportFormat, ExportTextMode, JobWithSource, MachineProfile, ModelId, ResourceStatus, TranscriptSegment, TranscriptionJob, TranscriptionPresetId } from '@voxmire/contracts';
 import { getMachineProfile, getResourceStatus, type ResourcePaths } from '@voxmire/engine';
 import {
   createJsonlRuntimeLogger,
@@ -164,8 +164,8 @@ export class VoxmireAgentApi {
     return this.runtime.resumeJob(jobId);
   }
 
-  exportTranscript(jobId: string, format: ExportFormat): { path: string; format: ExportFormat } {
-    return this.runtime.exportTranscript(jobId, format);
+  exportTranscript(jobId: string, format: ExportFormat, options: { textMode?: ExportTextMode } = {}): { path: string; format: ExportFormat; textMode: ExportTextMode } {
+    return this.runtime.exportTranscript(jobId, format, options);
   }
 
   readLogs(options: ReadLogsOptions = {}): VoxmireRuntimeLogEvent[] {

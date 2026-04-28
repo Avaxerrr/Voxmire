@@ -3,6 +3,7 @@ import { basename, dirname, extname, join } from 'node:path';
 import type {
   EngineBackend,
   ExportFormat,
+  ExportTextMode,
   JobStatus,
   JobWithSource,
   ModelId,
@@ -86,6 +87,12 @@ export type CreateTranscriptionJobInput = {
   modelId: ModelId;
   engineBackend?: EngineBackend;
   startImmediately?: boolean;
+};
+
+export type ExportTranscriptOptions = {
+  outputDirectory?: string;
+  outputPath?: string;
+  textMode?: ExportTextMode;
 };
 
 export type RecoverInterruptedJobsOptions = {
@@ -405,20 +412,21 @@ export class VoxmireRuntime {
     return getJobWithSource(this.options.db, jobId);
   }
 
-  exportTranscript(jobId: string, format: ExportFormat): { path: string; format: ExportFormat } {
+  exportTranscript(jobId: string, format: ExportFormat, options: ExportTranscriptOptions = {}): { path: string; format: ExportFormat; textMode: ExportTextMode } {
     const jobWithSource = getJobWithSource(this.options.db, jobId);
 
     if (!jobWithSource) {
       throw new Error(`Job not found: ${jobId}`);
     }
 
+    const textMode = options.textMode ?? 'plain';
     const segments = getTranscriptSegments(this.options.db, jobId);
-    const rendered = renderTranscriptExport(format, segments);
-    const exportDirectory = ensureDirectory(this.options.directories.exportDirectory);
-    const outputPath = join(
-      exportDirectory,
-      `${sanitizeFileName(jobWithSource.sourceFile.name)}-${jobId}.${exportFileExtension(format)}`
+    const rendered = renderTranscriptExport(format, segments, { textMode });
+    const outputPath = options.outputPath ?? join(
+      ensureDirectory(options.outputDirectory ?? this.options.directories.exportDirectory),
+      defaultExportFileName(jobWithSource.sourceFile.name, jobId, format, textMode)
     );
+    ensureDirectory(dirname(outputPath));
 
     writeFileSync(outputPath, rendered, 'utf8');
     this.log({
@@ -427,9 +435,9 @@ export class VoxmireRuntime {
       jobId,
       chunkId: null,
       message: `Created ${format.toUpperCase()} export.`,
-      details: { path: outputPath, format }
+      details: { path: outputPath, format, textMode }
     });
-    return { path: outputPath, format };
+    return { path: outputPath, format, textMode };
   }
 
   async runTranscriptionJob(jobId: string, modelId: ModelId): Promise<void> {
@@ -702,6 +710,10 @@ export class VoxmireRuntime {
   private log(event: VoxmireRuntimeLogInput): void {
     this.options.logger?.log(event);
   }
+}
+
+function defaultExportFileName(sourceFileName: string, jobId: string, format: ExportFormat, textMode: ExportTextMode): string {
+  return `${sanitizeFileName(sourceFileName)}-${jobId}${format === 'txt' && textMode === 'timestamps' ? '-timestamps' : ''}.${exportFileExtension(format)}`;
 }
 
 export function createVoxmireRuntime(options: VoxmireRuntimeOptions): VoxmireRuntime {

@@ -1,9 +1,13 @@
-import type { ExportFormat, TranscriptSegment } from '@voxmire/contracts';
+import type { ExportFormat, ExportTextMode, TranscriptSegment } from '@voxmire/contracts';
 
-export function renderTranscriptExport(format: ExportFormat, segments: readonly TranscriptSegment[]): string {
+export type RenderTranscriptExportOptions = {
+  textMode?: ExportTextMode;
+};
+
+export function renderTranscriptExport(format: ExportFormat, segments: readonly TranscriptSegment[], options: RenderTranscriptExportOptions = {}): string {
   switch (format) {
     case 'txt':
-      return renderTxt(segments);
+      return renderTxt(segments, options.textMode ?? 'plain');
     case 'json':
       return `${JSON.stringify({ segments }, null, 2)}\n`;
     case 'srt':
@@ -17,7 +21,17 @@ export function exportFileExtension(format: ExportFormat): string {
   return format;
 }
 
-function renderTxt(segments: readonly TranscriptSegment[]): string {
+function renderTxt(segments: readonly TranscriptSegment[], textMode: ExportTextMode): string {
+  if (textMode === 'timestamps') {
+    return `${segments
+      .map((segment) => {
+        const text = segment.text.trim();
+        return text ? `[${formatReadableTimestamp(segment.startSeconds)} - ${formatReadableTimestamp(segment.endSeconds)}] ${text}` : '';
+      })
+      .filter(Boolean)
+      .join('\n\n')}\n`;
+  }
+
   return `${segments.map((segment) => segment.text.trim()).filter(Boolean).join('\n\n')}\n`;
 }
 
@@ -57,4 +71,17 @@ function formatTimestamp(seconds: number, millisecondSeparator: ',' | '.'): stri
 
 function pad(value: number): string {
   return value.toString().padStart(2, '0');
+}
+
+function formatReadableTimestamp(seconds: number): string {
+  const totalSeconds = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const wholeSeconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${pad(minutes)}:${pad(wholeSeconds)}`;
+  }
+
+  return `${minutes}:${pad(wholeSeconds)}`;
 }

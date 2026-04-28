@@ -52,6 +52,7 @@ import type {
   EngineAvailability,
   EngineBackend,
   ExportFormat,
+  ExportTextMode,
   JobStatus,
   JobWithSource,
   MachineProfile,
@@ -87,7 +88,19 @@ type MediaInfo = {
   kind: MediaKind;
 };
 
-const exportFormats: ExportFormat[] = ['txt', 'srt', 'vtt', 'json'];
+type ExportOption = {
+  format: ExportFormat;
+  label: string;
+  textMode?: ExportTextMode;
+};
+
+const exportOptions: ExportOption[] = [
+  { format: 'txt', label: 'Text only', textMode: 'plain' },
+  { format: 'txt', label: 'Text with timestamps', textMode: 'timestamps' },
+  { format: 'srt', label: 'SubRip captions' },
+  { format: 'vtt', label: 'WebVTT captions' },
+  { format: 'json', label: 'JSON data' }
+];
 const activeStatuses: JobStatus[] = ['queued', 'preparing', 'transcribing'];
 const waveformScaleModes: WaveformScaleMode[] = ['actual', 'boost', 'db'];
 const playbackSpeeds = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
@@ -183,6 +196,7 @@ export function App(): ReactElement {
   const [deleteTarget, setDeleteTarget] = useState<JobWithSource | null>(null);
   const [projectBusy, setProjectBusy] = useState(false);
   const [playing, setPlaying] = useState(false);
+  const [exportDirectory, setExportDirectory] = useState<string | null>(null);
   const progressRefreshSequence = useRef(0);
   const selectedJobIdRef = useRef<string | null>(null);
   const api = window.voxmire;
@@ -301,13 +315,14 @@ export function App(): ReactElement {
       return;
     }
 
-    const [info, engineAvailability, modelProfiles, resourceStatus, detectedMachineProfile, jobList] = await Promise.all([
+    const [info, engineAvailability, modelProfiles, resourceStatus, detectedMachineProfile, jobList, resolvedExportDirectory] = await Promise.all([
       api.app.getInfo(),
       api.system.getEngineAvailability(),
       api.models.list(),
       api.system.getResourceStatus(),
       api.system.getMachineProfile(),
-      api.jobs.list()
+      api.jobs.list(),
+      api.exports.getDirectory()
     ]);
 
     setAppInfo(info);
@@ -318,6 +333,7 @@ export function App(): ReactElement {
     setSelectedPresetId(selectUsablePreset(detectedMachineProfile.recommendedModelId, resourceStatus));
     setJobs(jobList);
     setSelectedJobId(jobList[0]?.job.id ?? null);
+    setExportDirectory(resolvedExportDirectory);
   }
 
   async function handleProgress(event: TranscriptionProgressEvent): Promise<void> {
@@ -404,7 +420,7 @@ export function App(): ReactElement {
     setMessage('Job resumed.');
   }
 
-  async function exportTranscript(format: ExportFormat): Promise<void> {
+  async function exportTranscript(format: ExportFormat, textMode: ExportTextMode = 'plain'): Promise<void> {
     if (!selectedJob) {
       return;
     }
@@ -415,11 +431,41 @@ export function App(): ReactElement {
         return;
       }
 
-      const result = await api.exports.create(selectedJob.job.id, format);
-      setMessage(`Exported ${format.toUpperCase()} to ${result.path}`);
+      const result = await api.exports.create(selectedJob.job.id, format, textMode);
+      if (!result) {
+        setMessage('Export canceled.');
+        return;
+      }
+
+      setExportDirectory(extractDirectoryPath(result.path));
+      setMessage(`Exported ${exportResultLabel(result.format, result.textMode)} to ${result.path}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : `Failed to export ${format}.`);
     }
+  }
+
+  async function chooseExportDirectory(): Promise<void> {
+    if (!api) {
+      setMessage('Desktop bridge unavailable.');
+      return;
+    }
+
+    const selectedDirectory = await api.exports.chooseDirectory();
+    if (selectedDirectory) {
+      setExportDirectory(selectedDirectory);
+      setMessage(`Default export folder set to ${selectedDirectory}`);
+    }
+  }
+
+  async function resetExportDirectory(): Promise<void> {
+    if (!api) {
+      setMessage('Desktop bridge unavailable.');
+      return;
+    }
+
+    const defaultDirectory = await api.exports.resetDirectory();
+    setExportDirectory(defaultDirectory);
+    setMessage(`Default export folder reset to ${defaultDirectory}`);
   }
 
   async function updateTranscriptSegment(segmentId: string, text: string): Promise<TranscriptSegment | null> {
@@ -680,8 +726,11 @@ export function App(): ReactElement {
           <SettingsView
             appInfo={appInfo}
             engines={engines}
+            exportDirectory={exportDirectory}
             machineProfile={machineProfile}
             models={models}
+            onChooseExportDirectory={() => void chooseExportDirectory()}
+            onResetExportDirectory={() => void resetExportDirectory()}
             resources={resources}
             selectedPresetId={selectedPresetId}
             selectedPresetResolution={selectedPresetResolution}
@@ -897,7 +946,7 @@ function DashboardView({
 }
 type TranscriptViewProps = {
   busy: boolean;
-  exportTranscript: (format: ExportFormat) => Promise<void>;
+  exportTranscript: (format: ExportFormat, textMode?: ExportTextMode) => Promise<void>;
   jobs: JobWithSource[];
   onCancel: (jobId: string) => Promise<void>;
   onBrowseLibrary: () => void;
@@ -1222,18 +1271,18 @@ function TranscriptView({
             </button>
             {exportMenuOpen ? (
               <div className="export-menu-popover" role="menu">
-                {exportFormats.map((format) => (
+                {exportOptions.map((option) => (
                   <button
-                    key={format}
+                    key={`${option.format}-${option.textMode ?? 'default'}`}
                     onClick={() => {
                       setExportMenuOpen(false);
-                      void exportTranscript(format);
+                      void exportTranscript(option.format, option.textMode ?? 'plain');
                     }}
                     role="menuitem"
                     type="button"
                   >
                     <Download size={14} />
-                    <span>{exportFormatLabel(format)}</span>
+                    <span>{option.label}</span>
                   </button>
                 ))}
               </div>
@@ -1657,15 +1706,18 @@ function TuningSlider({ label, value }: { label: string; value: string }): React
 type SettingsViewProps = {
   appInfo: AppInfo | null;
   engines: EngineAvailability[];
+  exportDirectory: string | null;
   machineProfile: MachineProfile | null;
   models: ModelProfile[];
+  onChooseExportDirectory: () => void;
+  onResetExportDirectory: () => void;
   resources: ResourceStatus[];
   selectedPresetId: TranscriptionPresetId;
   selectedPresetResolution: ResolvedTranscriptionPreset;
   setSelectedPresetId: (presetId: TranscriptionPresetId) => void;
 };
 
-function SettingsView({ appInfo, engines, machineProfile, models, resources, selectedPresetId, selectedPresetResolution, setSelectedPresetId }: SettingsViewProps): ReactElement {
+function SettingsView({ appInfo, engines, exportDirectory, machineProfile, models, onChooseExportDirectory, onResetExportDirectory, resources, selectedPresetId, selectedPresetResolution, setSelectedPresetId }: SettingsViewProps): ReactElement {
   const readyResources = resources.filter((resource) => resource.available).length;
   const selectablePresets = visiblePresetOptions(resources);
   const installedModels = models.filter((model) => modelInstalled(resources, model.id));
@@ -1751,6 +1803,23 @@ function SettingsView({ appInfo, engines, machineProfile, models, resources, sel
                 <span>{shortcut.action}</span>
               </div>
             ))}
+          </div>
+        </section>
+
+        <section className="settings-panel panel-glow">
+          <div className="settings-panel-heading">
+            <FolderOpen size={18} />
+            <div>
+              <h3>Export folder</h3>
+              <p>Choose the folder used as the starting location for export Save dialogs.</p>
+            </div>
+          </div>
+          <div className="export-folder-setting">
+            <p>{exportDirectory ?? 'Default export folder unavailable.'}</p>
+            <div>
+              <button className="secondary-action" onClick={onChooseExportDirectory} type="button">Change folder</button>
+              <button className="secondary-action" onClick={onResetExportDirectory} type="button">Reset</button>
+            </div>
           </div>
         </section>
 
@@ -3543,19 +3612,18 @@ function mediaKindFromExtension(extension: string): MediaKind {
   }
 }
 
-function exportFormatLabel(format: ExportFormat): string {
-  switch (format) {
-    case 'txt':
-      return 'Text (.txt)';
-    case 'srt':
-      return 'SubRip subtitles (.srt)';
-    case 'vtt':
-      return 'WebVTT (.vtt)';
-    case 'json':
-      return 'JSON (.json)';
-    default:
-      return String(format).toUpperCase();
+function exportResultLabel(format: ExportFormat, textMode: ExportTextMode): string {
+  if (format === 'txt') {
+    return textMode === 'timestamps' ? 'timestamped TXT' : 'plain TXT';
   }
+
+  return format.toUpperCase();
+}
+
+function extractDirectoryPath(filePath: string): string {
+  const normalized = filePath.replaceAll('\\', '/');
+  const separatorIndex = normalized.lastIndexOf('/');
+  return separatorIndex >= 0 ? filePath.slice(0, separatorIndex) : filePath;
 }
 
 function formatTime(seconds: number): string {

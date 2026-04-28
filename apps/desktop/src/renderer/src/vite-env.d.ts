@@ -6,6 +6,7 @@ import type {
   EngineBackend,
   ExportFormat,
   ExportTranscriptResult,
+  ExportTextMode,
   JobWithSource,
   MachineProfile,
   ModelProfile,
@@ -81,7 +82,10 @@ declare global {
         getWaveform: (jobId: string) => Promise<{ durationSeconds: number | null; peaks: number[] } | null>;
       };
       exports: {
-        create: (jobId: string, format: ExportFormat) => Promise<ExportTranscriptResult>;
+        chooseDirectory: () => Promise<string | null>;
+        create: (jobId: string, format: ExportFormat, textMode?: ExportTextMode) => Promise<ExportTranscriptResult | null>;
+        getDirectory: () => Promise<string>;
+        resetDirectory: () => Promise<string>;
       };
     };
   }

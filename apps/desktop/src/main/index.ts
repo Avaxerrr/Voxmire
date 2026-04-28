@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, protocol, screen, shell } from 'electron';
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, extname, join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { Readable } from 'node:stream';
 import { modelProfiles, resolveTranscriptionPreset } from '@voxmire/core';
@@ -17,12 +17,14 @@ import {
 } from '@voxmire/contracts';
 import { detectWhisperEngines, getMachineProfile, getResourceStatus, resolveFfmpegExecutable, resolveFfprobeExecutable, type ResourcePaths } from '@voxmire/engine';
 import { createJsonlRuntimeLogger, createVoxmireRuntime, type VoxmireRuntime } from '@voxmire/runtime';
+import { exportFileExtension } from '@voxmire/exporters';
 import { openVoxmireDatabase, type VoxmireDatabase } from '@voxmire/storage';
 
 const isDev = !app.isPackaged;
 let db: VoxmireDatabase;
 let resources: ResourcePaths;
 let runtime: VoxmireRuntime;
+let desktopSettings: DesktopSettings = {};
 const waveformCache = new Map<string, Promise<MediaWaveformResult | null>>();
 const mediaInfoCache = new Map<string, Promise<MediaInfoResult>>();
 const minimumWindowWidth = 1024;
@@ -55,6 +57,10 @@ type WindowBounds = {
 
 type WindowState = WindowBounds & {
   isMaximized: boolean;
+};
+
+type DesktopSettings = {
+  exportDirectory?: string;
 };
 
 protocol.registerSchemesAsPrivileged([
@@ -214,9 +220,56 @@ function registerIpcHandlers(): void {
   ipcMain.handle('jobs:pause', (_event, jobId: string) => runtime.pauseJob(jobId));
   ipcMain.handle('jobs:resume', (_event, jobId: string) => runtime.resumeJob(jobId));
 
-  ipcMain.handle('exports:create', (_event, rawInput: unknown) => {
+  ipcMain.handle('exports:create', async (_event, rawInput: unknown) => {
     const input = exportTranscriptInputSchema.parse(rawInput);
-    return runtime.exportTranscript(input.jobId, input.format);
+    const job = runtime.getJob(input.jobId);
+    if (!job) {
+      throw new Error(`Job not found: ${input.jobId}`);
+    }
+
+    const defaultPath = join(resolveExportDirectory(), defaultExportFileName(job.sourceFile.name, input.jobId, input.format, input.textMode));
+    const result = await dialog.showSaveDialog({
+      title: 'Export transcript',
+      defaultPath,
+      filters: exportSaveDialogFilters(input.format)
+    });
+
+    if (result.canceled || !result.filePath) {
+      return null;
+    }
+
+    desktopSettings = { ...desktopSettings, exportDirectory: dirname(result.filePath) };
+    saveDesktopSettings(desktopSettings);
+    return runtime.exportTranscript(input.jobId, input.format, {
+      outputPath: result.filePath,
+      textMode: input.textMode
+    });
+  });
+
+  ipcMain.handle('exports:get-directory', () => resolveExportDirectory());
+
+  ipcMain.handle('exports:choose-directory', async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Choose default export folder',
+      defaultPath: resolveExportDirectory(),
+      properties: ['openDirectory', 'createDirectory']
+    });
+
+    const [selectedDirectory] = result.filePaths;
+    if (result.canceled || !selectedDirectory) {
+      return null;
+    }
+
+    desktopSettings = { ...desktopSettings, exportDirectory: selectedDirectory };
+    saveDesktopSettings(desktopSettings);
+    return resolveExportDirectory();
+  });
+
+  ipcMain.handle('exports:reset-directory', () => {
+    desktopSettings = { ...desktopSettings };
+    delete desktopSettings.exportDirectory;
+    saveDesktopSettings(desktopSettings);
+    return resolveExportDirectory();
   });
 
   ipcMain.handle('window:minimize', (event) => {
@@ -365,6 +418,60 @@ function rectanglesIntersect(first: Required<WindowBounds>, second: Electron.Rec
 
 function windowStatePath(): string {
   return join(app.getPath('userData'), 'window-state.json');
+}
+
+function defaultExportDirectory(): string {
+  return join(app.getPath('documents'), 'Voxmire Exports');
+}
+
+function resolveExportDirectory(): string {
+  return desktopSettings.exportDirectory ?? defaultExportDirectory();
+}
+
+function defaultExportFileName(sourceFileName: string, jobId: string, format: 'txt' | 'json' | 'srt' | 'vtt', textMode: 'plain' | 'timestamps'): string {
+  const suffix = format === 'txt' && textMode === 'timestamps' ? '-timestamps' : '';
+  return `${sanitizeExportFileName(sourceFileName)}-${jobId}${suffix}.${exportFileExtension(format)}`;
+}
+
+function sanitizeExportFileName(value: string): string {
+  const withoutExtension = value.replace(extname(value), '');
+  return withoutExtension.replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'transcript';
+}
+
+function exportSaveDialogFilters(format: 'txt' | 'json' | 'srt' | 'vtt'): Electron.FileFilter[] {
+  switch (format) {
+    case 'txt':
+      return [{ name: 'Text files', extensions: ['txt'] }];
+    case 'srt':
+      return [{ name: 'SubRip subtitles', extensions: ['srt'] }];
+    case 'vtt':
+      return [{ name: 'WebVTT subtitles', extensions: ['vtt'] }];
+    case 'json':
+      return [{ name: 'JSON files', extensions: ['json'] }];
+  }
+}
+
+function desktopSettingsPath(): string {
+  return join(app.getPath('userData'), 'settings.json');
+}
+
+function loadDesktopSettings(): DesktopSettings {
+  try {
+    const parsed = JSON.parse(readFileSync(desktopSettingsPath(), 'utf8')) as Partial<DesktopSettings>;
+    return typeof parsed.exportDirectory === 'string' && parsed.exportDirectory.trim().length > 0
+      ? { exportDirectory: parsed.exportDirectory }
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveDesktopSettings(settings: DesktopSettings): void {
+  try {
+    writeFileSync(desktopSettingsPath(), JSON.stringify(settings, null, 2), 'utf8');
+  } catch {
+    // Desktop settings are best-effort UI preferences.
+  }
 }
 
 
@@ -681,13 +788,14 @@ function getProjectRoot(): string {
 
 void app.whenReady().then(() => {
   resources = { projectRoot: getProjectRoot() };
+  desktopSettings = loadDesktopSettings();
   db = openVoxmireDatabase(join(app.getPath('userData'), 'voxmire.sqlite'));
   runtime = createVoxmireRuntime({
     db,
     resources,
     directories: {
       engineOutputDirectory: ensureAppDirectory('engine-output'),
-      exportDirectory: ensureAppDirectory('exports')
+      exportDirectory: resolveExportDirectory()
     },
     logger: createJsonlRuntimeLogger(join(ensureAppDirectory('logs'), 'voxmire.jsonl')),
     onProgress: broadcastProgress
