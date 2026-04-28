@@ -995,6 +995,7 @@ function TranscriptView({
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [findPanelOpen, setFindPanelOpen] = useState(false);
   const [findQuery, setFindQuery] = useState('');
+  const [replacePanelOpen, setReplacePanelOpen] = useState(false);
   const [replaceQuery, setReplaceQuery] = useState('');
   const [activeFindIndex, setActiveFindIndex] = useState(0);
   const [replacingText, setReplacingText] = useState(false);
@@ -1050,6 +1051,7 @@ function TranscriptView({
         setSwitcherOpen(false);
         setExportMenuOpen(false);
         setFindPanelOpen(false);
+        setReplacePanelOpen(false);
       }
     }
 
@@ -1190,6 +1192,14 @@ function TranscriptView({
     }
   }
 
+  function toggleFindPanel(): void {
+    if (findPanelOpen) {
+      setReplacePanelOpen(false);
+    }
+
+    setFindPanelOpen((open) => !open);
+  }
+
   async function replaceAllTranscriptMatches(): Promise<void> {
     const query = findQuery.trim();
     if (!query || replacingText) {
@@ -1256,7 +1266,7 @@ function TranscriptView({
             aria-expanded={findPanelOpen}
             aria-label="Find and replace transcript"
             className={`icon-button ${findPanelOpen ? 'active' : ''}`}
-            onClick={() => setFindPanelOpen((open) => !open)}
+            onClick={toggleFindPanel}
             title="Find and replace"
             type="button"
           >
@@ -1390,23 +1400,36 @@ function TranscriptView({
                 <SkipForward size={14} />
               </button>
             </div>
-            <input
-              aria-label="Replace transcript text"
-              className="replace-field"
-              onChange={(event) => setReplaceQuery(event.target.value)}
-              placeholder="Replace"
-              type="text"
-              value={replaceQuery}
-            />
             <span className="find-count">{findQuery.trim() ? `${findMatchIndexes.length === 0 ? 0 : activeFindIndex + 1}/${findMatchCount}` : 'Find text'}</span>
             <button
-              className="secondary-action"
-              disabled={!findQuery.trim() || findMatchCount === 0 || replacingText}
-              onClick={() => void replaceAllTranscriptMatches()}
+              aria-expanded={replacePanelOpen}
+              className={`secondary-action replace-toggle ${replacePanelOpen ? 'active' : ''}`}
+              onClick={() => setReplacePanelOpen((open) => !open)}
               type="button"
             >
-              Replace all
+              <Pencil size={14} />
+              Replace
             </button>
+            {replacePanelOpen ? (
+              <>
+                <input
+                  aria-label="Replace transcript text"
+                  className="replace-field"
+                  onChange={(event) => setReplaceQuery(event.target.value)}
+                  placeholder="Replace"
+                  type="text"
+                  value={replaceQuery}
+                />
+                <button
+                  className="secondary-action"
+                  disabled={!findQuery.trim() || findMatchCount === 0 || replacingText}
+                  onClick={() => void replaceAllTranscriptMatches()}
+                  type="button"
+                >
+                  Replace all
+                </button>
+              </>
+            ) : null}
           </div>
         ) : null}
 

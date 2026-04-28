@@ -593,6 +593,10 @@ textarea,
   background: rgba(255, 255, 255, 0.04);
   font-size: 13px;
 }
+.replace-toggle {
+  gap: 7px;
+  white-space: nowrap;
+}
 .find-count {
   min-width: 76px;
   color: var(--muted);
