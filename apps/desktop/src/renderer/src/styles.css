@@ -1384,7 +1384,7 @@ textarea,
 .status-toast span { min-width: 0; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 
 .status-bar {
-  position: fixed;
+  position: absolute;
   right: 0;
   bottom: 0;
   left: 0;
