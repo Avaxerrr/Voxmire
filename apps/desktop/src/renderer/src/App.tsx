@@ -954,6 +954,7 @@ function TranscriptView({
   const [playbackTime, setPlaybackTime] = useState(0);
   const [playbackDuration, setPlaybackDuration] = useState<number | null>(null);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [externalSeekSignal, setExternalSeekSignal] = useState(0);
   const [videoPreviewHidden, setVideoPreviewHidden] = useState(() => loadVideoPreviewPreference().hidden);
   const [videoPreviewDock, setVideoPreviewDock] = useState<VideoPreviewDock>(() => loadVideoPreviewPreference().dock);
   const [videoPreviewWidth, setVideoPreviewWidth] = useState(() => loadVideoPreviewPreference().width);
@@ -1117,6 +1118,7 @@ function TranscriptView({
     const audio = audioRef.current;
 
     setPlaybackTime(nextTime);
+    setExternalSeekSignal((value) => value + 1);
     if (audio) {
       applyMediaSeek(audio, nextTime, false);
     }
@@ -1468,6 +1470,7 @@ function TranscriptView({
             currentTime={playbackTime}
             disabled={!selectedJob}
             duration={resolvedPlaybackDuration}
+            externalSeekSignal={externalSeekSignal}
             mediaError={mediaError}
             mediaKind={selectedMediaKind}
             mediaUrl={mediaUrl}
@@ -2103,6 +2106,7 @@ function VirtualizedSegmentList({
     setEditingSegmentId(segment.id);
     setDraftText(segment.text);
     setCursorOffset(segment.text.length);
+    onSeek(segment);
   }
 
   function cancelEditing(): void {
@@ -2155,6 +2159,7 @@ function VirtualizedSegmentList({
     setEditingSegmentId(nextSegment.id);
     setDraftText(nextSegment.text);
     setCursorOffset(nextSegment.text.length);
+    onSeek(nextSegment);
     rowVirtualizer.scrollToIndex(currentIndex + 1, { align: 'center' });
     return true;
   }
@@ -2173,6 +2178,7 @@ function VirtualizedSegmentList({
     setEditingSegmentId(previousSegment.id);
     setDraftText(previousSegment.text);
     setCursorOffset(previousSegment.text.length);
+    onSeek(previousSegment);
     rowVirtualizer.scrollToIndex(currentIndex - 1, { align: 'center' });
     return true;
   }
@@ -2196,6 +2202,7 @@ function VirtualizedSegmentList({
       setEditingSegmentId(nextSegment.id);
       setDraftText(nextSegment.text);
       setCursorOffset(0);
+      onSeek(nextSegment);
       rowVirtualizer.scrollToIndex(Math.min(currentIndex + 1, updatedSegments.length - 1), { align: 'center' });
     }
   }
@@ -2219,6 +2226,7 @@ function VirtualizedSegmentList({
       setEditingSegmentId(mergedSegment.id);
       setDraftText(mergedSegment.text);
       setCursorOffset(mergedSegment.text.length);
+      onSeek(mergedSegment);
       rowVirtualizer.scrollToIndex(nextIndex, { align: 'center' });
     }
   }
@@ -2306,7 +2314,7 @@ function VirtualizedSegmentList({
                 onSaveAndMoveNext={(nextText) => saveAndMoveToNext(segment, nextText, virtualRow.index)}
                 onSaveAndMovePrevious={(nextText) => saveAndMoveToPrevious(segment, nextText, virtualRow.index)}
                 onSaveTiming={(startSeconds, endSeconds) => saveSegmentTiming(segment, startSeconds, endSeconds)}
-                onSeek={() => onSeek(segment)}
+                onSelectSegment={() => onSeek(segment)}
                 onSplit={(offset) => splitSegment(segment, offset, virtualRow.index)}
                 saveError={saveError}
                 saving={saving}
@@ -2341,7 +2349,7 @@ type EditableSegmentRowProps = {
   onSaveAndMoveNext: (nextText: string) => Promise<boolean>;
   onSaveAndMovePrevious: (nextText: string) => Promise<boolean>;
   onSaveTiming: (startSeconds: number, endSeconds: number) => Promise<boolean>;
-  onSeek: () => void;
+  onSelectSegment: () => void;
   onSplit: (offset: number) => Promise<void>;
   saveError: boolean;
   saving: boolean;
@@ -2369,7 +2377,7 @@ function EditableSegmentRow({
   onSaveAndMoveNext,
   onSaveAndMovePrevious,
   onSaveTiming,
-  onSeek,
+  onSelectSegment,
   onSplit,
   saveError,
   saving,
@@ -2515,6 +2523,19 @@ function EditableSegmentRow({
     event.preventDefault();
   }
 
+  function handleSegmentPointerDown(event: ReactPointerEvent<HTMLDivElement>): void {
+    if (event.button !== 0 || event.defaultPrevented) {
+      return;
+    }
+
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest('.segment-structure-tools')) {
+      return;
+    }
+
+    onSelectSegment();
+  }
+
   function runStructureTool(action: () => Promise<void>): void {
     skipBlurSaveRef.current = true;
     void action().finally(() => {
@@ -2525,12 +2546,13 @@ function EditableSegmentRow({
   const canSplit = editing && activeText.trim().length > 1 && cursorOffset > 0 && cursorOffset < activeText.length;
 
   return (
-    <div className={`segment-row ${active ? 'active' : ''} ${editing ? 'editing' : ''} ${searchMatch ? 'search-match' : ''} ${activeSearchMatch ? 'search-current' : ''} ${segment.editedAt ? 'edited' : ''}`}>
+    <div className={`segment-row ${active ? 'active' : ''} ${editing ? 'editing' : ''} ${searchMatch ? 'search-match' : ''} ${activeSearchMatch ? 'search-current' : ''} ${segment.editedAt ? 'edited' : ''}`} onPointerDown={handleSegmentPointerDown}>
       <div className="segment-gutter">
-        <button aria-label={`Seek to ${formatTime(segment.startSeconds)}`} className="segment-seek-target" onClick={onSeek} title="Seek to segment" type="button">
-          <Clock3 size={13} />
-        </button>
-        <div className="segment-time-editors" aria-label="Segment timestamps">
+        <div
+          className="segment-time-editors"
+          aria-label="Segment timestamps"
+          title={`Seek to ${formatTime(segment.startSeconds)}`}
+        >
           <input
             aria-label="Segment start time"
             disabled={savingTiming}
@@ -2793,6 +2815,7 @@ type AudioDeckProps = {
   currentTime: number;
   disabled: boolean;
   duration: number | null;
+  externalSeekSignal: number;
   mediaError: string | null;
   mediaKind: MediaKind;
   mediaUrl: string | null;
@@ -2812,6 +2835,7 @@ function AudioDeck({
   currentTime,
   disabled,
   duration,
+  externalSeekSignal,
   mediaError,
   mediaKind,
   mediaUrl,
@@ -2886,10 +2910,17 @@ function AudioDeck({
   }, [audioRef, mediaUrl, playbackSpeed]);
 
   useEffect(() => {
-    if (!playing) {
+    const externalJumpThresholdSeconds = 0.3;
+    if (draftSeekTime === null && (!playing || Math.abs(currentTime - visualTime) > externalJumpThresholdSeconds)) {
       setVisualTime(currentTime);
     }
-  }, [currentTime, playing]);
+  }, [currentTime, draftSeekTime, playing, visualTime]);
+
+  useEffect(() => {
+    if (draftSeekTime === null) {
+      setVisualTime(currentTime);
+    }
+  }, [currentTime, draftSeekTime, externalSeekSignal]);
 
   useEffect(() => {
     if (!playing || !canPlay) {

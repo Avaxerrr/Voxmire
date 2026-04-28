@@ -144,7 +144,6 @@ textarea,
 .voice-card,
 .ghost-button,
 .segment-row,
-.segment-seek-target,
 .segment-time-editors,
 .segment-time-editors input,
 .segment-structure-tools,
@@ -1056,26 +1055,6 @@ textarea,
   gap: 7px;
   min-width: 0;
 }
-.segment-seek-target {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  min-width: 0;
-  height: 28px;
-  padding: 0;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 6px;
-  color: var(--muted);
-  background: rgba(255, 255, 255, 0.045);
-  cursor: pointer;
-}
-.segment-seek-target:hover,
-.segment-seek-target:focus-visible {
-  color: var(--cyan);
-  border-color: rgba(34, 211, 238, 0.34);
-  background: rgba(34, 211, 238, 0.1);
-}
 .segment-time-editors {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -1085,6 +1064,7 @@ textarea,
   color: var(--faint);
   font-family: "Fira Code", Consolas, monospace;
   font-size: 10px;
+  cursor: pointer;
 }
 .segment-time-editors input {
   min-width: 0;
@@ -1095,6 +1075,12 @@ textarea,
   color: var(--muted);
   background: rgba(255, 255, 255, 0.035);
   font: inherit;
+  cursor: text;
+}
+.segment-time-editors:hover input {
+  color: var(--text);
+  border-color: rgba(34, 211, 238, 0.24);
+  background: rgba(34, 211, 238, 0.06);
 }
 .segment-time-editors input:focus {
   outline: none;
