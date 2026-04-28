@@ -105,7 +105,10 @@ const exportOptions: ExportOption[] = [
 const activeStatuses: JobStatus[] = ['queued', 'preparing', 'transcribing'];
 const waveformScaleModes: WaveformScaleMode[] = ['actual', 'boost', 'db'];
 const playbackSpeeds = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
-const playbackSyncIntervalMs = 250;
+const playbackSyncIntervalMs = 80;
+const segmentActivationLeadSeconds = 0.24;
+const wordHighlightHoldSeconds = 0.12;
+const wordTimingBoundaryToleranceSeconds = 0.025;
 const audioSeekThrottleMs = 50;
 const videoSeekThrottleMs = 140;
 const videoPreviewPreferenceKey = 'voxmire:videoPreviewPreference';
@@ -1022,7 +1025,8 @@ function TranscriptView({
   const isWorking = selectedJob ? activeStatuses.includes(selectedJob.job.status) : false;
   const selectedMediaKind = selectedJob ? mediaInfo?.kind ?? mediaKindFromExtension(selectedJob.sourceFile.extension) : 'audio';
   const selectedSubtitle = selectedJob ? transcriptSubtitle(selectedJob, progress, selectedMediaKind) : 'Choose a project from Library or import a recording.';
-  const activeSegmentIndex = useMemo(() => findActiveSegmentIndex(segments, playbackTime), [playbackTime, segments]);
+  const activeSegmentIndex = useMemo(() => findActiveSegmentIndex(segments, playbackTime + segmentActivationLeadSeconds), [playbackTime, segments]);
+  const playbackWordSegmentIndex = useMemo(() => findPlaybackWordSegmentIndex(segments, playbackTime), [playbackTime, segments]);
   const resolvedPlaybackDuration = playbackDuration ?? selectedJob?.sourceFile.durationSeconds ?? null;
   const visibleJobs = useMemo(() => {
     const query = switcherQuery.trim().toLowerCase();
@@ -1503,6 +1507,7 @@ function TranscriptView({
                         onUpdateSegment={updateSegment}
                         activeSearchSegmentId={activeFindSegment?.id ?? null}
                         playbackTime={playbackTime}
+                        playbackWordSegmentIndex={playbackWordSegmentIndex}
                         searchQuery={findQuery}
                         segments={segments}
                       />
@@ -1520,6 +1525,7 @@ function TranscriptView({
                     onUpdateSegment={updateSegment}
                     activeSearchSegmentId={activeFindSegment?.id ?? null}
                     playbackTime={playbackTime}
+                    playbackWordSegmentIndex={playbackWordSegmentIndex}
                     searchQuery={findQuery}
                     segments={segments}
                   />
@@ -2154,6 +2160,7 @@ type VirtualizedSegmentListProps = {
   onUpdateSegment: (segmentId: string, text: string) => Promise<TranscriptSegment | null>;
   activeSearchSegmentId: string | null;
   playbackTime: number;
+  playbackWordSegmentIndex: number;
   searchQuery: string;
   segments: TranscriptSegment[];
 };
@@ -2167,6 +2174,7 @@ function VirtualizedSegmentList({
   onUpdateSegment,
   activeSearchSegmentId,
   playbackTime,
+  playbackWordSegmentIndex,
   searchQuery,
   segments
 }: VirtualizedSegmentListProps): ReactElement {
@@ -2177,6 +2185,7 @@ function VirtualizedSegmentList({
   const [saveErrorSegmentId, setSaveErrorSegmentId] = useState<string | null>(null);
   const [cursorOffset, setCursorOffset] = useState(0);
   const scrollParentRef = useRef<HTMLDivElement | null>(null);
+  const lastWordDiagnosticKeyRef = useRef('');
   const rowVirtualizer = useVirtualizer({
     count: segments.length,
     estimateSize: () => 108,
@@ -2201,6 +2210,34 @@ function VirtualizedSegmentList({
       rowVirtualizer.scrollToIndex(index, { align: 'center' });
     }
   }, [activeSearchSegmentId, segments]);
+
+  useEffect(() => {
+    if (!playbackDiagnosticsEnabled()) {
+      return;
+    }
+
+    const segment = segments[playbackWordSegmentIndex];
+    const wordState = segment ? getPlaybackWordState(segment, playbackTime) : null;
+    const diagnosticKey = [
+      activeSegmentIndex,
+      playbackWordSegmentIndex,
+      wordState?.reason ?? 'no-playback-segment',
+      wordState?.wordIndex ?? -1
+    ].join(':');
+
+    if (diagnosticKey === lastWordDiagnosticKeyRef.current) {
+      return;
+    }
+
+    lastWordDiagnosticKeyRef.current = diagnosticKey;
+    logWordTimingDiagnostic({
+      activeSegmentIndex,
+      playbackTime,
+      playbackWordSegmentIndex,
+      segment,
+      wordState
+    });
+  }, [activeSegmentIndex, playbackTime, playbackWordSegmentIndex, segments]);
 
   function startEditing(segment: TranscriptSegment): void {
     setSaveErrorSegmentId(null);
@@ -2386,7 +2423,7 @@ function VirtualizedSegmentList({
           const saveError = segment.id === saveErrorSegmentId;
           const searchMatch = searchQuery.trim() ? segment.text.toLowerCase().includes(searchQuery.trim().toLowerCase()) : false;
           const activeSearchMatch = segment.id === activeSearchSegmentId;
-          const playbackWordRange = active ? currentPlaybackWordRange(segment, playbackTime) : null;
+          const playbackWordRange = virtualRow.index === playbackWordSegmentIndex ? currentPlaybackWordRange(segment, playbackTime) : null;
 
           return (
             <div
@@ -2754,6 +2791,36 @@ type TextRange = {
   end: number;
 };
 
+type PlaybackWordState = {
+  alignmentStatus: TranscriptSegment['alignmentStatus'] | 'none';
+  nextWord: WordTimingSnapshot | null;
+  previousWord: WordTimingSnapshot | null;
+  range: TextRange | null;
+  reason:
+    | 'active'
+    | 'between-words'
+    | 'invalid-time'
+    | 'missing-word-timings'
+    | 'outside-segment-window'
+    | 'recently-ended'
+    | 'text-range-missing'
+    | 'unusable-alignment';
+  segmentEndSeconds: number;
+  segmentStartSeconds: number;
+  wordCount: number;
+  wordEndSeconds: number | null;
+  wordIndex: number;
+  wordStartSeconds: number | null;
+  wordText: string | null;
+};
+
+type WordTimingSnapshot = {
+  endSeconds: number;
+  index: number;
+  startSeconds: number;
+  text: string;
+};
+
 function HighlightedTranscriptText({ playbackRange, query, text }: { playbackRange: TextRange | null; query: string; text: string }): ReactElement {
   const normalizedQuery = query.trim();
   if (!normalizedQuery && !playbackRange) {
@@ -2783,25 +2850,116 @@ function HighlightedTranscriptText({ playbackRange, query, text }: { playbackRan
 }
 
 function currentPlaybackWordRange(segment: TranscriptSegment, playbackTime: number): TextRange | null {
-  if (!wordAlignmentUsable(segment) || !Number.isFinite(playbackTime)) {
-    return null;
+  return getPlaybackWordState(segment, playbackTime).range;
+}
+
+function getPlaybackWordState(segment: TranscriptSegment, playbackTime: number): PlaybackWordState {
+  const wordTimings = segment.wordTimings ?? [];
+  const alignmentStatus = segment.alignmentStatus ?? (wordTimings.length > 0 ? 'aligned' : 'none');
+  const baseState: Omit<PlaybackWordState, 'nextWord' | 'previousWord' | 'range' | 'reason' | 'wordEndSeconds' | 'wordIndex' | 'wordStartSeconds' | 'wordText'> = {
+    alignmentStatus,
+    segmentEndSeconds: segment.endSeconds,
+    segmentStartSeconds: segment.startSeconds,
+    wordCount: wordTimings.length
+  };
+
+  if (!Number.isFinite(playbackTime)) {
+    return playbackWordState(baseState, 'invalid-time');
   }
 
-  const wordTimings = segment.wordTimings ?? [];
-  const activeWordIndex = wordTimings.findIndex(
-    (word) =>
-      word.startSeconds <= playbackTime &&
-      playbackTime < word.endSeconds &&
-      word.startSeconds >= segment.startSeconds &&
-      word.endSeconds <= segment.endSeconds
-  );
+  if (!wordTimings.length) {
+    return playbackWordState(baseState, 'missing-word-timings');
+  }
 
-  if (activeWordIndex < 0) {
-    return null;
+  if (!wordAlignmentUsable(segment)) {
+    return playbackWordState(baseState, 'unusable-alignment');
+  }
+
+  if (
+    playbackTime < segment.startSeconds - wordTimingBoundaryToleranceSeconds ||
+    playbackTime > segment.endSeconds + wordHighlightHoldSeconds
+  ) {
+    return playbackWordState(baseState, 'outside-segment-window');
   }
 
   const ranges = mapWordTimingsToTextRanges(segment.text, wordTimings);
-  return ranges[activeWordIndex] ?? null;
+  let activeWordIndex = -1;
+  let previousWordIndex = -1;
+  let nextWordIndex = -1;
+
+  for (let index = 0; index < wordTimings.length; index += 1) {
+    const word = wordTimings[index];
+    if (!word || !wordTimingWithinSegment(word, segment)) {
+      continue;
+    }
+
+    if (
+      word.startSeconds - wordTimingBoundaryToleranceSeconds <= playbackTime &&
+      playbackTime < word.endSeconds + wordTimingBoundaryToleranceSeconds
+    ) {
+      activeWordIndex = index;
+      break;
+    }
+
+    if (word.endSeconds <= playbackTime) {
+      previousWordIndex = index;
+    } else if (nextWordIndex < 0 && word.startSeconds > playbackTime) {
+      nextWordIndex = index;
+    }
+  }
+
+  if (activeWordIndex >= 0) {
+    const range = ranges[activeWordIndex] ?? null;
+    return playbackWordState(
+      baseState,
+      range ? 'active' : 'text-range-missing',
+      wordTimingSnapshot(wordTimings, activeWordIndex),
+      range,
+      wordTimingSnapshot(wordTimings, previousWordIndex),
+      wordTimingSnapshot(wordTimings, nextWordIndex)
+    );
+  }
+
+  const previousWord = wordTimingSnapshot(wordTimings, previousWordIndex);
+  const nextWord = wordTimingSnapshot(wordTimings, nextWordIndex);
+  if (
+    previousWord &&
+    playbackTime - previousWord.endSeconds <= wordHighlightHoldSeconds &&
+    (!nextWord || playbackTime < nextWord.startSeconds - wordTimingBoundaryToleranceSeconds)
+  ) {
+    const range = ranges[previousWord.index] ?? null;
+    return playbackWordState(
+      baseState,
+      range ? 'recently-ended' : 'text-range-missing',
+      previousWord,
+      range,
+      previousWord,
+      nextWord
+    );
+  }
+
+  return playbackWordState(baseState, 'between-words', null, null, previousWord, nextWord);
+}
+
+function playbackWordState(
+  baseState: Omit<PlaybackWordState, 'nextWord' | 'previousWord' | 'range' | 'reason' | 'wordEndSeconds' | 'wordIndex' | 'wordStartSeconds' | 'wordText'>,
+  reason: PlaybackWordState['reason'],
+  word: WordTimingSnapshot | null = null,
+  range: TextRange | null = null,
+  previousWord: WordTimingSnapshot | null = null,
+  nextWord: WordTimingSnapshot | null = null
+): PlaybackWordState {
+  return {
+    ...baseState,
+    nextWord,
+    previousWord,
+    range,
+    reason,
+    wordEndSeconds: word?.endSeconds ?? null,
+    wordIndex: word?.index ?? -1,
+    wordStartSeconds: word?.startSeconds ?? null,
+    wordText: word?.text ?? null
+  };
 }
 
 function wordAlignmentUsable(segment: TranscriptSegment): boolean {
@@ -2811,6 +2969,27 @@ function wordAlignmentUsable(segment: TranscriptSegment): boolean {
     Array.isArray(segment.wordTimings) &&
     segment.wordTimings.length > 0
   );
+}
+
+function wordTimingWithinSegment(word: NonNullable<TranscriptSegment['wordTimings']>[number], segment: TranscriptSegment): boolean {
+  return (
+    word.startSeconds >= segment.startSeconds - wordTimingBoundaryToleranceSeconds &&
+    word.endSeconds <= segment.endSeconds + wordTimingBoundaryToleranceSeconds
+  );
+}
+
+function wordTimingSnapshot(wordTimings: NonNullable<TranscriptSegment['wordTimings']>, index: number): WordTimingSnapshot | null {
+  const word = wordTimings[index];
+  if (!word) {
+    return null;
+  }
+
+  return {
+    endSeconds: word.endSeconds,
+    index,
+    startSeconds: word.startSeconds,
+    text: word.text
+  };
 }
 
 function mapWordTimingsToTextRanges(text: string, wordTimings: NonNullable<TranscriptSegment['wordTimings']>): Array<TextRange | null> {
@@ -3644,6 +3823,43 @@ function findActiveSegmentIndex(segments: TranscriptSegment[], time: number): nu
   return candidate;
 }
 
+function findPlaybackWordSegmentIndex(segments: TranscriptSegment[], time: number): number {
+  if (segments.length === 0 || !Number.isFinite(time)) {
+    return -1;
+  }
+
+  const candidate = findActiveSegmentIndex(segments, time);
+  const candidateIndexes = [candidate, candidate - 1, candidate + 1].filter(
+    (index, position, indexes) => index >= 0 && index < segments.length && indexes.indexOf(index) === position
+  );
+  const candidateStates = candidateIndexes.map((index) => {
+    const segment = segments[index];
+    return {
+      index,
+      state: segment ? getPlaybackWordState(segment, time) : null
+    };
+  });
+  const currentCandidateState = candidateStates.find((entry) => entry.index === candidate)?.state ?? null;
+  const previousCandidateState = candidateStates.find((entry) => entry.index === candidate - 1)?.state ?? null;
+
+  if (
+    previousCandidateState?.reason === 'recently-ended' &&
+    previousCandidateState.wordIndex === previousCandidateState.wordCount - 1 &&
+    currentCandidateState?.reason === 'active' &&
+    currentCandidateState.wordIndex === 0
+  ) {
+    return candidate - 1;
+  }
+
+  for (const { index, state } of candidateStates) {
+    if (state?.range) {
+      return index;
+    }
+  }
+
+  return candidate;
+}
+
 function scaleWaveformPeak(peak: number, mode: WaveformScaleMode): number {
   const clampedPeak = Math.max(0, Math.min(1, peak));
 
@@ -3757,8 +3973,20 @@ function applyMediaSeek(media: HTMLMediaElement, seconds: number, approximate: b
   media.currentTime = seconds;
 }
 
+function playbackDiagnosticsEnabled(): boolean {
+  if (!import.meta.env.DEV) {
+    return false;
+  }
+
+  try {
+    return window.localStorage.getItem('voxmire:playbackDiagnostics') === '1';
+  } catch {
+    return false;
+  }
+}
+
 function logPlaybackDiagnostic(eventName: string, media: HTMLMediaElement): void {
-  if (!import.meta.env.DEV || window.localStorage.getItem('voxmire:playbackDiagnostics') !== '1') {
+  if (!playbackDiagnosticsEnabled()) {
     return;
   }
 
@@ -3768,6 +3996,42 @@ function logPlaybackDiagnostic(eventName: string, media: HTMLMediaElement): void
     readyState: media.readyState,
     seekable: timeRangesToTuples(media.seekable),
     seeking: media.seeking
+  });
+}
+
+function logWordTimingDiagnostic({
+  activeSegmentIndex,
+  playbackTime,
+  playbackWordSegmentIndex,
+  segment,
+  wordState
+}: {
+  activeSegmentIndex: number;
+  playbackTime: number;
+  playbackWordSegmentIndex: number;
+  segment: TranscriptSegment | undefined;
+  wordState: PlaybackWordState | null;
+}): void {
+  if (!playbackDiagnosticsEnabled()) {
+    return;
+  }
+
+  console.debug('[voxmire:word-timing]', wordState?.reason ?? 'no-playback-segment', {
+    activeSegmentIndex,
+    alignmentStatus: wordState?.alignmentStatus ?? null,
+    nextWord: wordState?.nextWord ?? null,
+    playbackTime,
+    playbackWordSegmentIndex,
+    previousWord: wordState?.previousWord ?? null,
+    range: wordState?.range ?? null,
+    segmentEndSeconds: segment?.endSeconds ?? null,
+    segmentId: segment?.id ?? null,
+    segmentStartSeconds: segment?.startSeconds ?? null,
+    wordCount: wordState?.wordCount ?? 0,
+    wordEndSeconds: wordState?.wordEndSeconds ?? null,
+    wordIndex: wordState?.wordIndex ?? -1,
+    wordStartSeconds: wordState?.wordStartSeconds ?? null,
+    wordText: wordState?.wordText ?? null
   });
 }
 
