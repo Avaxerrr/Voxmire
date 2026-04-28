@@ -3,6 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   AlertTriangle,
   AudioWaveform,
+  ChevronDown,
   CheckCircle2,
   PanelLeftClose,
   PanelLeftOpen,
@@ -1224,17 +1225,28 @@ function TranscriptView({
         <div className="title-stack">
           <p className="eyebrow">Transcript</p>
           <div className="transcript-title-row">
-            <h2>{selectedJob?.sourceFile.name ?? 'No transcript selected'}</h2>
-            <button
-              aria-expanded={switcherOpen}
-              aria-label="Switch transcript"
-              className={`icon-button transcript-switch-button ${switcherOpen ? 'active' : ''}`}
-              onClick={() => setSwitcherOpen((open) => !open)}
-              title="Switch transcript"
-              type="button"
-            >
-              <FolderOpen size={15} />
-            </button>
+            <h2 className="transcript-title-heading">
+              <button
+                aria-expanded={switcherOpen}
+                aria-haspopup="dialog"
+                aria-label="Switch transcript"
+                className={`transcript-title-switcher ${switcherOpen ? 'active' : ''}`}
+                disabled={jobs.length === 0}
+                onClick={() => setSwitcherOpen((open) => !open)}
+                title="Switch transcript"
+                type="button"
+              >
+                <span className="transcript-title-text">{selectedJob?.sourceFile.name ?? 'No transcript selected'}</span>
+                <ChevronDown size={16} />
+              </button>
+            </h2>
+            {selectedJob ? (
+              <ProjectActionsMenu
+                onDelete={() => onDeleteProject(selectedJob)}
+                onDetails={() => onDetailsProject(selectedJob.job.id)}
+                onRename={() => onRenameProject(selectedJob)}
+              />
+            ) : null}
           </div>
           <span>{selectedSubtitle}</span>
         </div>
@@ -1250,13 +1262,6 @@ function TranscriptView({
           >
             <Search size={17} />
           </button>
-          {selectedJob ? (
-            <ProjectActionsMenu
-              onDelete={() => onDeleteProject(selectedJob)}
-              onDetails={() => onDetailsProject(selectedJob.job.id)}
-              onRename={() => onRenameProject(selectedJob)}
-            />
-          ) : null}
           <div className="export-menu" ref={exportMenuRef}>
             <button
               aria-expanded={exportMenuOpen}

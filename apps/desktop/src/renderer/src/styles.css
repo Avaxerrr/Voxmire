@@ -781,12 +781,49 @@ textarea,
 }
 .title-stack { flex: 1 1 auto; min-width: 0; }
 .transcript-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 2px; }
-.transcript-title-row h2 { flex: 0 1 auto; min-width: 0; }
-.transcript-switch-button { flex: 0 0 auto; width: 32px; height: 32px; }
+.transcript-title-heading { flex: 0 1 auto; min-width: 0; }
 .title-stack h2 { max-width: min(720px, 100%); overflow: hidden; color: var(--text); font-family: "Space Grotesk", Inter, sans-serif; font-size: 22px; text-overflow: ellipsis; white-space: nowrap; }
 
 .title-stack span,
 .voice-header span { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
+.transcript-title-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+  text-align: left;
+}
+.transcript-title-switcher:hover:not(:disabled),
+.transcript-title-switcher.active {
+  border-color: rgba(34, 211, 238, 0.26);
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.04);
+}
+.transcript-title-switcher:disabled { cursor: default; opacity: 1; }
+.transcript-title-switcher svg { flex: 0 0 auto; color: #9ca3af; transition: transform 140ms ease, color 140ms ease; }
+.transcript-title-switcher:hover:not(:disabled) svg,
+.transcript-title-switcher.active svg { color: var(--cyan); }
+.transcript-title-switcher.active svg { transform: rotate(180deg); }
+.transcript-title-switcher .transcript-title-text {
+  display: block;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: inherit;
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .job-select { width: min(520px, 52vw); height: 34px; margin-top: 4px; color: var(--text); font-family: "Space Grotesk", Inter, sans-serif; font-size: 20px; font-weight: 600; background: transparent; border-color: transparent; padding: 0 26px 0 0; }
 .job-select:focus { border-color: var(--line-strong); }
 .transcript-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
