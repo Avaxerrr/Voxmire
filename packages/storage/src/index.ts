@@ -33,6 +33,9 @@ export type TranscriptSegmentListUpdate = {
   error: string | null;
 };
 
+const minimumSegmentDurationSeconds = 0.05;
+const linkedTimingBoundaryToleranceSeconds = 0.05;
+
 export function openVoxmireDatabase(databasePath: string): VoxmireDatabase {
   const db = new DatabaseSync(databasePath);
   db.exec('PRAGMA journal_mode = WAL');
@@ -381,22 +384,64 @@ export function updateTranscriptSegmentTiming(
     return { segments, error: validationError };
   }
 
+  const previous = segments[currentIndex - 1];
+  const next = segments[currentIndex + 1];
+  const linkPreviousBoundary = Boolean(previous && shouldLinkTimingBoundary(previous.endSeconds, current.startSeconds));
+  const linkNextBoundary = Boolean(next && shouldLinkTimingBoundary(current.endSeconds, next.startSeconds));
+  const now = new Date().toISOString();
   const nextAlignmentStatus = alignmentStatusForTiming(current, startSeconds, endSeconds);
-  db.prepare(
-    `UPDATE transcript_segments
-     SET start_seconds = @startSeconds,
-         end_seconds = @endSeconds,
-         alignment_status = @alignmentStatus,
-         edited_at = @editedAt
-     WHERE id = @segmentId
-       AND job_id = @jobId`
-  ).run({
-    jobId,
-    segmentId,
-    startSeconds,
-    endSeconds,
-    alignmentStatus: nextAlignmentStatus,
-    editedAt: new Date().toISOString()
+
+  runTransaction(db, () => {
+    db.prepare(
+      `UPDATE transcript_segments
+       SET start_seconds = @startSeconds,
+           end_seconds = @endSeconds,
+           alignment_status = @alignmentStatus,
+           edited_at = @editedAt
+       WHERE id = @segmentId
+         AND job_id = @jobId`
+    ).run({
+      jobId,
+      segmentId,
+      startSeconds,
+      endSeconds,
+      alignmentStatus: nextAlignmentStatus,
+      editedAt: now
+    });
+
+    if (previous && linkPreviousBoundary && previous.endSeconds !== startSeconds) {
+      db.prepare(
+        `UPDATE transcript_segments
+         SET end_seconds = @endSeconds,
+             alignment_status = @alignmentStatus,
+             edited_at = @editedAt
+         WHERE id = @segmentId
+           AND job_id = @jobId`
+      ).run({
+        jobId,
+        segmentId: previous.id,
+        endSeconds: startSeconds,
+        alignmentStatus: alignmentStatusForTiming(previous, previous.startSeconds, startSeconds),
+        editedAt: now
+      });
+    }
+
+    if (next && linkNextBoundary && next.startSeconds !== endSeconds) {
+      db.prepare(
+        `UPDATE transcript_segments
+         SET start_seconds = @startSeconds,
+             alignment_status = @alignmentStatus,
+             edited_at = @editedAt
+         WHERE id = @segmentId
+           AND job_id = @jobId`
+      ).run({
+        jobId,
+        segmentId: next.id,
+        startSeconds: endSeconds,
+        alignmentStatus: alignmentStatusForTiming(next, endSeconds, next.endSeconds),
+        editedAt: now
+      });
+    }
   });
 
   return { segments: getTranscriptSegments(db, jobId), error: null };
@@ -1134,6 +1179,10 @@ function mergeConfidence(first: number | null, second: number | null): number | 
   return (first + second) / 2;
 }
 
+function shouldLinkTimingBoundary(leftEndSeconds: number, rightStartSeconds: number): boolean {
+  return Math.abs(leftEndSeconds - rightStartSeconds) <= linkedTimingBoundaryToleranceSeconds;
+}
+
 function validateSegmentTiming(
   segments: TranscriptSegment[],
   currentIndex: number,
@@ -1152,18 +1201,33 @@ function validateSegmentTiming(
     return 'End time must be after start time.';
   }
 
-  if (endSeconds - startSeconds < 0.05) {
+  if (endSeconds - startSeconds < minimumSegmentDurationSeconds) {
     return 'Segment duration must be at least 0.05 seconds.';
   }
 
+  const current = segments[currentIndex];
   const previous = segments[currentIndex - 1];
-  if (previous && startSeconds < previous.endSeconds) {
-    return 'Start time cannot overlap the previous segment.';
+  const linkPreviousBoundary = Boolean(previous && current && shouldLinkTimingBoundary(previous.endSeconds, current.startSeconds));
+  if (previous) {
+    if (linkPreviousBoundary) {
+      if (startSeconds - previous.startSeconds < minimumSegmentDurationSeconds) {
+        return 'Start time would make the previous segment shorter than 0.05 seconds.';
+      }
+    } else if (startSeconds < previous.endSeconds) {
+      return 'Start time cannot overlap the previous segment.';
+    }
   }
 
   const next = segments[currentIndex + 1];
-  if (next && endSeconds > next.startSeconds) {
-    return 'End time cannot overlap the next segment.';
+  const linkNextBoundary = Boolean(next && current && shouldLinkTimingBoundary(current.endSeconds, next.startSeconds));
+  if (next) {
+    if (linkNextBoundary) {
+      if (next.endSeconds - endSeconds < minimumSegmentDurationSeconds) {
+        return 'End time would make the next segment shorter than 0.05 seconds.';
+      }
+    } else if (endSeconds > next.startSeconds) {
+      return 'End time cannot overlap the next segment.';
+    }
   }
 
   return null;

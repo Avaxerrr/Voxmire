@@ -616,7 +616,7 @@ describe('storage repositories', () => {
     db.close();
   });
 
-  it('updates transcript segment timing and rejects overlaps', () => {
+  it('updates transcript segment timing and linked adjacent boundaries', () => {
     const db = openVoxmireDatabase(':memory:');
     const created = createJobRecord(db, {
       modelId: 'large-v3-turbo',
@@ -665,16 +665,85 @@ describe('storage repositories', () => {
     const updated = updateTranscriptSegmentTiming(db, created.job.id, 'seg_2', 3.25, 5.75);
 
     expect(updated.error).toBeNull();
-    expect(updated.segments[1]).toMatchObject({
-      startSeconds: 3.25,
-      endSeconds: 5.75
-    });
+    expect(updated.segments[0]).toMatchObject({ startSeconds: 0, endSeconds: 3.25 });
+    expect(updated.segments[1]).toMatchObject({ startSeconds: 3.25, endSeconds: 5.75 });
+    expect(updated.segments[2]).toMatchObject({ startSeconds: 5.75, endSeconds: 9 });
+    expect(updated.segments[0]?.editedAt).toEqual(expect.any(String));
     expect(updated.segments[1]?.editedAt).toEqual(expect.any(String));
+    expect(updated.segments[2]?.editedAt).toEqual(expect.any(String));
 
-    const rejected = updateTranscriptSegmentTiming(db, created.job.id, 'seg_2', 2.5, 5.75);
+    const rejectedPrevious = updateTranscriptSegmentTiming(db, created.job.id, 'seg_2', 0.02, 5.75);
+    expect(rejectedPrevious.error).toBe('Start time would make the previous segment shorter than 0.05 seconds.');
+    expect(rejectedPrevious.segments[0]?.endSeconds).toBe(3.25);
+    expect(rejectedPrevious.segments[1]?.startSeconds).toBe(3.25);
 
-    expect(rejected.error).toBe('Start time cannot overlap the previous segment.');
-    expect(rejected.segments[1]?.startSeconds).toBe(3.25);
+    const rejectedNext = updateTranscriptSegmentTiming(db, created.job.id, 'seg_2', 3.25, 8.98);
+    expect(rejectedNext.error).toBe('End time would make the next segment shorter than 0.05 seconds.');
+    expect(rejectedNext.segments[1]?.endSeconds).toBe(5.75);
+    expect(rejectedNext.segments[2]?.startSeconds).toBe(5.75);
+    db.close();
+  });
+
+  it('preserves deliberate timing gaps during segment timing edits', () => {
+    const db = openVoxmireDatabase(':memory:');
+    const created = createJobRecord(db, {
+      modelId: 'large-v3-turbo',
+      sourceFile: {
+        id: 'src_1',
+        path: 'C:/audio/example.wav',
+        name: 'example.wav',
+        extension: 'wav',
+        sizeBytes: 100,
+        durationSeconds: 10,
+        createdAt: '2026-04-23T00:00:00.000Z'
+      }
+    });
+
+    saveTranscriptSegment(db, {
+      id: 'seg_1',
+      jobId: created.job.id,
+      index: 0,
+      startSeconds: 0,
+      endSeconds: 2,
+      text: 'Before',
+      confidence: null,
+      createdAt: '2026-04-23T00:00:00.000Z'
+    });
+    saveTranscriptSegment(db, {
+      id: 'seg_2',
+      jobId: created.job.id,
+      index: 1,
+      startSeconds: 3,
+      endSeconds: 5,
+      text: 'Middle',
+      confidence: null,
+      createdAt: '2026-04-23T00:00:00.000Z'
+    });
+    saveTranscriptSegment(db, {
+      id: 'seg_3',
+      jobId: created.job.id,
+      index: 2,
+      startSeconds: 6,
+      endSeconds: 8,
+      text: 'After',
+      confidence: null,
+      createdAt: '2026-04-23T00:00:00.000Z'
+    });
+
+    const updated = updateTranscriptSegmentTiming(db, created.job.id, 'seg_2', 3.25, 4.75);
+
+    expect(updated.error).toBeNull();
+    expect(updated.segments[0]).toMatchObject({ startSeconds: 0, endSeconds: 2 });
+    expect(updated.segments[1]).toMatchObject({ startSeconds: 3.25, endSeconds: 4.75 });
+    expect(updated.segments[2]).toMatchObject({ startSeconds: 6, endSeconds: 8 });
+
+    const rejectedPrevious = updateTranscriptSegmentTiming(db, created.job.id, 'seg_2', 1.5, 4.75);
+    expect(rejectedPrevious.error).toBe('Start time cannot overlap the previous segment.');
+    expect(rejectedPrevious.segments[1]?.startSeconds).toBe(3.25);
+
+    const rejectedNext = updateTranscriptSegmentTiming(db, created.job.id, 'seg_2', 3.25, 6.25);
+    expect(rejectedNext.error).toBe('End time cannot overlap the next segment.');
+    expect(rejectedNext.segments[1]?.endSeconds).toBe(4.75);
     db.close();
   });
 
