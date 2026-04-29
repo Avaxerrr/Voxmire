@@ -111,6 +111,10 @@ const playbackDiagnosticClockDriftWarningSeconds = 0.08;
 const playbackDiagnosticLongGapWarningSeconds = 0.12;
 const playbackTraceLimit = 600;
 const wordTimingBoundaryToleranceSeconds = 0.025;
+const segmentScrollLeadMaxSeconds = 1;
+const segmentScrollLeadDurationRatio = 0.3;
+const segmentScrollManualPauseMs = 1600;
+const segmentScrollComfortPaddingPx = 36;
 const audioSeekThrottleMs = 50;
 const videoSeekThrottleMs = 140;
 const videoPreviewPreferenceKey = 'voxmire:videoPreviewPreference';
@@ -119,6 +123,11 @@ const minVideoPreviewWidth = 180;
 const maxTopVideoPreviewWidth = 420;
 const maxSideVideoPreviewWidth = 360;
 const sidePreviewBreakpoint = 1180;
+
+function currentTimeMs(): number {
+  return typeof performance === 'undefined' ? Date.now() : performance.now();
+}
+
 const transcriptShortcuts = [
   { keys: 'Enter', action: 'Split segment at the cursor' },
   { keys: 'Shift+Enter', action: 'Insert a line break inside the segment' },
@@ -1523,6 +1532,7 @@ function TranscriptView({
                         onUpdateSegment={updateSegment}
                         activeSearchSegmentId={activeFindSegment?.id ?? null}
                         playbackTime={playbackTime}
+                        playing={playing}
                         searchQuery={findQuery}
                         segments={segments}
                       />
@@ -1540,6 +1550,7 @@ function TranscriptView({
                     onUpdateSegment={updateSegment}
                     activeSearchSegmentId={activeFindSegment?.id ?? null}
                     playbackTime={playbackTime}
+                    playing={playing}
                     searchQuery={findQuery}
                     segments={segments}
                   />
@@ -2176,6 +2187,7 @@ type VirtualizedSegmentListProps = {
   onUpdateSegment: (segmentId: string, text: string) => Promise<TranscriptSegment | null>;
   activeSearchSegmentId: string | null;
   playbackTime: number;
+  playing: boolean;
   searchQuery: string;
   segments: TranscriptSegment[];
 };
@@ -2189,6 +2201,7 @@ function VirtualizedSegmentList({
   onUpdateSegment,
   activeSearchSegmentId,
   playbackTime,
+  playing,
   searchQuery,
   segments
 }: VirtualizedSegmentListProps): ReactElement {
@@ -2200,6 +2213,8 @@ function VirtualizedSegmentList({
   const [cursorOffset, setCursorOffset] = useState(0);
   const scrollParentRef = useRef<HTMLDivElement | null>(null);
   const lastWordDiagnosticKeyRef = useRef('');
+  const lastManualScrollAtRef = useRef(0);
+  const anticipatedSegmentIndexRef = useRef<number | null>(null);
   const rowVirtualizer = useVirtualizer({
     count: segments.length,
     estimateSize: () => 108,
@@ -2208,11 +2223,70 @@ function VirtualizedSegmentList({
     overscan: 8
   });
 
+  function markManualTranscriptScroll(): void {
+    lastManualScrollAtRef.current = currentTimeMs();
+    anticipatedSegmentIndexRef.current = null;
+  }
+
+  function segmentIsComfortablyVisible(index: number): boolean {
+    const scrollElement = scrollParentRef.current;
+    if (!scrollElement) {
+      return false;
+    }
+
+    const item = rowVirtualizer.getVirtualItems().find((virtualItem) => virtualItem.index === index);
+    if (!item) {
+      return false;
+    }
+
+    const visibleStart = scrollElement.scrollTop + segmentScrollComfortPaddingPx;
+    const visibleEnd = scrollElement.scrollTop + scrollElement.clientHeight - segmentScrollComfortPaddingPx;
+    const visibleHeight = Math.max(0, visibleEnd - visibleStart);
+    const itemHeight = item.end - item.start;
+
+    if (itemHeight > visibleHeight) {
+      return item.start <= visibleStart && item.end >= visibleEnd;
+    }
+
+    return item.start >= visibleStart && item.end <= visibleEnd;
+  }
+
   useEffect(() => {
-    if (activeSegmentIndex >= 0 && !editingSegmentId) {
+    if (activeSegmentIndex >= 0 && !editingSegmentId && !segmentIsComfortablyVisible(activeSegmentIndex)) {
       rowVirtualizer.scrollToIndex(activeSegmentIndex, { align: 'center' });
     }
   }, [activeSegmentIndex, editingSegmentId]);
+
+  useEffect(() => {
+    if (!playing || editingSegmentId || activeSearchSegmentId || searchQuery.trim() || activeSegmentIndex < 0) {
+      return;
+    }
+
+    const segment = segments[activeSegmentIndex];
+    const nextSegmentIndex = activeSegmentIndex + 1;
+    if (!segment || nextSegmentIndex >= segments.length) {
+      return;
+    }
+
+    if (currentTimeMs() - lastManualScrollAtRef.current < segmentScrollManualPauseMs) {
+      return;
+    }
+
+    const segmentDurationSeconds = Math.max(0, segment.endSeconds - segment.startSeconds);
+    const leadSeconds = Math.min(segmentScrollLeadMaxSeconds, segmentDurationSeconds * segmentScrollLeadDurationRatio);
+    if (leadSeconds <= 0 || playbackTime < segment.endSeconds - leadSeconds || playbackTime >= segment.endSeconds) {
+      return;
+    }
+
+    if (anticipatedSegmentIndexRef.current === nextSegmentIndex) {
+      return;
+    }
+
+    anticipatedSegmentIndexRef.current = nextSegmentIndex;
+    if (!segmentIsComfortablyVisible(nextSegmentIndex)) {
+      rowVirtualizer.scrollToIndex(nextSegmentIndex, { align: 'end' });
+    }
+  }, [activeSearchSegmentId, activeSegmentIndex, editingSegmentId, playbackTime, playing, searchQuery, segments]);
 
   useEffect(() => {
     if (!activeSearchSegmentId) {
@@ -2420,7 +2494,12 @@ function VirtualizedSegmentList({
   }, [draftText, editingSegmentId, savingSegmentId, segments]);
 
   return (
-    <div className="segment-list virtualized" ref={scrollParentRef}>
+    <div
+      className="segment-list virtualized"
+      onTouchStart={markManualTranscriptScroll}
+      onWheel={markManualTranscriptScroll}
+      ref={scrollParentRef}
+    >
       <div className="segment-list-inner" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
         {rowVirtualizer.getVirtualItems().map((virtualRow) => {
           const segment = segments[virtualRow.index];
