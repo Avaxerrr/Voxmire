@@ -1,74 +1,14 @@
-import { type MutableRefObject, type ReactElement, memo, useEffect, useMemo, useRef, useState } from 'react';
+import { type MutableRefObject, type ReactElement, useEffect, useState } from 'react';
 import { Pause, Play, SkipBack, SkipForward, SlidersHorizontal, Volume2, VolumeX, Zap } from 'lucide-react';
 import { formatPreciseDuration, formatPreciseTime } from '../../lib/format';
 import { type MediaKind } from '../../lib/media-kind';
-import { formatPlaybackSpeed, scaleWaveformPeak, waveformScaleDescription, waveformScaleLabel, waveformScaleModes, type WaveformScaleMode } from '../../lib/waveform';
-import { applyMediaSeek } from './media-seek';
-import { audioSeekThrottleMs, playbackSpeeds, playbackSyncIntervalMs, videoSeekThrottleMs } from './playback-constants';
+import { formatPlaybackSpeed, waveformScaleDescription, waveformScaleLabel, waveformScaleModes, type WaveformScaleMode } from '../../lib/waveform';
+import { AudioMediaElement } from './audio-media-element';
+import { playbackSpeeds } from './playback-constants';
+import { type PlaybackClockSample, usePlaybackClock } from './playback-clock';
+import { WaveformGraph } from './waveform-graph';
 
-const waveformBars = Array.from({ length: 104 }, (_, index) => {
-  const wave = Math.abs(Math.sin(index * 0.44)) * 42;
-  const chatter = (index * 19) % 31;
-  const pause = index % 21 < 5 ? 13 : 0;
-  return Math.max(12, Math.min(92, Math.round(18 + wave + chatter - pause)));
-});
-
-export type PlaybackClockSample = {
-  mediaTime: number;
-  playbackRate: number;
-  readyState: number;
-  sampleTimeMs: number;
-  seeking: boolean;
-  statePlaybackTime: number;
-};
-
-function createPlaybackClockSample(media: HTMLMediaElement, mediaTime: number, statePlaybackTime: number, sampleTimeMs: number): PlaybackClockSample {
-  return {
-    mediaTime,
-    playbackRate: media.playbackRate,
-    readyState: media.readyState,
-    sampleTimeMs,
-    seeking: media.seeking,
-    statePlaybackTime
-  };
-}
-
-type WaveformGraphProps = {
-  loading: boolean;
-  peaks: number[];
-  scaleMode: WaveformScaleMode;
-};
-
-const WaveformGraph = memo(function WaveformGraph({ loading, peaks, scaleMode }: WaveformGraphProps): ReactElement {
-  const width = 1200;
-  const height = 96;
-  const bars = useMemo(() => {
-    const rawPeaks = peaks.length > 0 ? peaks : waveformBars.map((barHeight) => barHeight / 100);
-    const displayPeaks = rawPeaks.map((peak) => scaleWaveformPeak(peak, scaleMode));
-    const barWidth = Math.max(1, width / displayPeaks.length);
-
-    return displayPeaks.map((peak, index) => {
-      const normalizedHeight = Math.max(3, peak * height);
-      return {
-        height: normalizedHeight,
-        key: `${index}-${peak.toFixed(3)}`,
-        width: Math.max(1, barWidth * 0.72),
-        x: index * barWidth,
-        y: (height - normalizedHeight) / 2
-      };
-    });
-  }, [peaks, scaleMode]);
-
-  return (
-    <svg className={`waveform ${loading ? 'loading' : ''}`} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
-      <g>
-        {bars.map((bar) => (
-          <rect height={bar.height} key={bar.key} rx={1.5} width={bar.width} x={bar.x} y={bar.y} />
-        ))}
-      </g>
-    </svg>
-  );
-});
+export type { PlaybackClockSample } from './playback-clock';
 
 type AudioDeckProps = {
   audioRef: MutableRefObject<HTMLMediaElement | null>;
@@ -128,22 +68,21 @@ export function AudioDeck({
   const [volumeOpen, setVolumeOpen] = useState(false);
   const [speedOpen, setSpeedOpen] = useState(false);
   const [scaleOpen, setScaleOpen] = useState(false);
-  const [visualTime, setVisualTime] = useState(currentTime);
-  const [draftSeekTime, setDraftSeekTime] = useState<number | null>(null);
   const [waveformScaleMode, setWaveformScaleMode] = useState<WaveformScaleMode>('actual');
-  const lastPlaybackSyncRef = useRef(0);
-  const lastPreviewSeekRef = useRef(0);
-  const syncedPlaybackTimeRef = useRef(currentTime);
-  const resolvedDuration = duration && Number.isFinite(duration) && duration > 0 ? duration : null;
-  const mediaTime = resolvedDuration ? Math.min(visualTime, resolvedDuration) : visualTime;
-  const displayTime = draftSeekTime ?? mediaTime;
-  const currentProgress = resolvedDuration ? Math.min(1, Math.max(0, displayTime / resolvedDuration)) : 0;
   const canPlay = !disabled && Boolean(mediaUrl) && !mediaError;
   const volumePercent = Math.round((muted ? 0 : volume) * 100);
-
-  useEffect(() => {
-    syncedPlaybackTimeRef.current = currentTime;
-  }, [currentTime]);
+  const playbackClock = usePlaybackClock({
+    audioRef,
+    canPlay,
+    currentTime,
+    diagnosticsEnabled,
+    duration,
+    externalSeekSignal,
+    mediaKind,
+    onClockSample,
+    onTimeChange,
+    playing
+  });
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -188,150 +127,22 @@ export function AudioDeck({
     audio.playbackRate = playbackSpeed;
   }, [audioRef, mediaUrl, playbackSpeed]);
 
-  useEffect(() => {
-    const externalJumpThresholdSeconds = 0.3;
-    if (draftSeekTime === null && (!playing || Math.abs(currentTime - visualTime) > externalJumpThresholdSeconds)) {
-      setVisualTime(currentTime);
-    }
-  }, [currentTime, draftSeekTime, playing, visualTime]);
-
-  useEffect(() => {
-    if (draftSeekTime === null) {
-      setVisualTime(currentTime);
-    }
-  }, [currentTime, draftSeekTime, externalSeekSignal]);
-
-  useEffect(() => {
-    if (!playing || !canPlay) {
-      return;
-    }
-
-    let animationFrame = 0;
-    let lastUpdate = 0;
-
-    const updateVisualTime = (timestamp: number): void => {
-      const audio = audioRef.current;
-      if (audio && draftSeekTime === null && timestamp - lastUpdate >= 33) {
-        const nextTime = audio.currentTime;
-        setVisualTime(nextTime);
-        if (diagnosticsEnabled) {
-          onClockSample(createPlaybackClockSample(audio, nextTime, syncedPlaybackTimeRef.current, timestamp));
-        }
-        syncPlaybackSample(nextTime);
-        lastUpdate = timestamp;
-      }
-      animationFrame = window.requestAnimationFrame(updateVisualTime);
-    };
-
-    animationFrame = window.requestAnimationFrame(updateVisualTime);
-
-    return () => window.cancelAnimationFrame(animationFrame);
-  }, [audioRef, canPlay, diagnosticsEnabled, draftSeekTime, onClockSample, onTimeChange, playing]);
-
-
-  function syncPlaybackSample(time: number, force = false): void {
-    const now = performance.now();
-    if (!force && now - lastPlaybackSyncRef.current < playbackSyncIntervalMs) {
-      return;
-    }
-
-    lastPlaybackSyncRef.current = now;
-    onTimeChange(time);
-  }
-
-  function recordSeekSample(media: HTMLMediaElement, time: number): void {
-    if (diagnosticsEnabled) {
-      onClockSample(createPlaybackClockSample(media, time, syncedPlaybackTimeRef.current, performance.now()));
-    }
-  }
-
-  function previewSeek(seconds: number): void {
-    if (!resolvedDuration) {
-      return;
-    }
-
-    const audio = audioRef.current;
-    const nextTime = Math.min(resolvedDuration, Math.max(0, seconds));
-    setDraftSeekTime(nextTime);
-    setVisualTime(nextTime);
-    if (audio) {
-      recordSeekSample(audio, nextTime);
-    }
-    syncPlaybackSample(nextTime, true);
-
-    if (!audio || !canPlay) {
-      return;
-    }
-
-    const now = performance.now();
-    const seekThrottle = mediaKind === 'video' ? videoSeekThrottleMs : audioSeekThrottleMs;
-    if (now - lastPreviewSeekRef.current < seekThrottle) {
-      return;
-    }
-
-    applyMediaSeek(audio, nextTime, mediaKind === 'video');
-    lastPreviewSeekRef.current = now;
-  }
-
-  function seekTo(seconds: number): void {
-    const audio = audioRef.current;
-    if (!audio || !canPlay || !resolvedDuration) {
-      setDraftSeekTime(null);
-      return;
-    }
-
-    const nextTime = Math.min(resolvedDuration, Math.max(0, seconds));
-    applyMediaSeek(audio, nextTime, false);
-    setDraftSeekTime(null);
-    setVisualTime(nextTime);
-    recordSeekSample(audio, nextTime);
-    syncPlaybackSample(nextTime, true);
-  }
-
   return (
     <section className="audio-deck panel-glow" aria-label="Media controls">
-      {mediaKind === 'audio' ? (
-        <audio
-          className="playback-media"
-          onDurationChange={(event) => {
-            const nextDuration = event.currentTarget.duration;
-            onDurationChange(Number.isFinite(nextDuration) ? nextDuration : null);
-          }}
-          onEnded={(event) => {
-            const nextTime = Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : event.currentTarget.currentTime;
-            setVisualTime(nextTime);
-            onTimeChange(nextTime);
-            setPlaying(false);
-          }}
-          onError={() => {
-            setPlaying(false);
-            onError('Media source could not be loaded.');
-          }}
-          onLoadedMetadata={(event) => {
-            const nextDuration = event.currentTarget.duration;
-            event.currentTarget.playbackRate = playbackSpeed;
-            setVisualTime(event.currentTarget.currentTime);
-            onDurationChange(Number.isFinite(nextDuration) ? nextDuration : null);
-            onTimeChange(event.currentTarget.currentTime);
-          }}
-          onPause={() => setPlaying(false)}
-          onPlay={() => setPlaying(true)}
-          onSeeked={(event) => {
-            setVisualTime(event.currentTarget.currentTime);
-            recordSeekSample(event.currentTarget, event.currentTarget.currentTime);
-            syncPlaybackSample(event.currentTarget.currentTime, true);
-            onMediaDiagnostic('audio:seeked', event.currentTarget);
-          }}
-          onSeeking={(event) => onMediaDiagnostic('audio:seeking', event.currentTarget)}
-          onStalled={(event) => onMediaDiagnostic('audio:stalled', event.currentTarget)}
-          onWaiting={(event) => onMediaDiagnostic('audio:waiting', event.currentTarget)}
-          preload="metadata"
-          ref={(element) => {
-            audioRef.current = element;
-          }}
-          src={mediaUrl ?? undefined}
-        />
-      ) : null}
+      <AudioMediaElement
+        audioRef={audioRef}
+        mediaKind={mediaKind}
+        mediaUrl={mediaUrl}
+        onDurationChange={onDurationChange}
+        onError={onError}
+        onMediaDiagnostic={onMediaDiagnostic}
+        onTimeChange={onTimeChange}
+        playbackSpeed={playbackSpeed}
+        recordSeekSample={playbackClock.recordSeekSample}
+        setPlaying={setPlaying}
+        setVisualTime={playbackClock.setVisualTime}
+        syncPlaybackSample={playbackClock.syncPlaybackSample}
+      />
       {mediaError ? (
         <div className="deck-error">
           <Zap size={15} />
@@ -347,38 +158,38 @@ export function AudioDeck({
             <button className="icon-button" disabled={!canPlay || !canGoNextSegment} onClick={onNextSegment} title="Next segment" type="button"><SkipForward size={18} /></button>
           </div>
           <div className="deck-time-group" aria-label="Playback time">
-            <span className="deck-time current">{formatPreciseTime(displayTime)}</span>
+            <span className="deck-time current">{formatPreciseTime(playbackClock.displayTime)}</span>
             <span className="deck-time-divider">/</span>
-            <span className="deck-time">{formatPreciseDuration(resolvedDuration)}</span>
+            <span className="deck-time">{formatPreciseDuration(playbackClock.resolvedDuration)}</span>
           </div>
           <div className="waveform-wrap">
             <div className="waveform-control">
               <WaveformGraph loading={waveformLoading} peaks={waveformPeaks} scaleMode={waveformScaleMode} />
-              <div className="waveform-progress-overlay" style={{ transform: `scaleX(${currentProgress})` }} />
-              <div className="waveform-playhead" style={{ left: `${currentProgress * 100}%` }} />
+              <div className="waveform-progress-overlay" style={{ transform: `scaleX(${playbackClock.currentProgress})` }} />
+              <div className="waveform-playhead" style={{ left: `${playbackClock.currentProgress * 100}%` }} />
               <input
                 aria-label="Seek media"
                 className="audio-seek"
-                disabled={!canPlay || !resolvedDuration}
-                max={resolvedDuration ?? 0}
+                disabled={!canPlay || !playbackClock.resolvedDuration}
+                max={playbackClock.resolvedDuration ?? 0}
                 min={0}
                 onBlur={(event) => {
-                  if (draftSeekTime !== null) {
-                    seekTo(Number(event.currentTarget.value));
+                  if (playbackClock.draftSeekTime !== null) {
+                    playbackClock.seekTo(Number(event.currentTarget.value));
                   }
                 }}
-                onChange={(event) => previewSeek(Number(event.target.value))}
+                onChange={(event) => playbackClock.previewSeek(Number(event.target.value))}
                 onKeyUp={(event) => {
                   if (['ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) {
-                    seekTo(Number(event.currentTarget.value));
+                    playbackClock.seekTo(Number(event.currentTarget.value));
                   }
                 }}
-                onPointerCancel={() => setDraftSeekTime(null)}
-                onPointerDown={() => setDraftSeekTime(displayTime)}
-                onPointerUp={(event) => seekTo(Number(event.currentTarget.value))}
+                onPointerCancel={playbackClock.clearDraftSeek}
+                onPointerDown={playbackClock.startDraftSeek}
+                onPointerUp={(event) => playbackClock.seekTo(Number(event.currentTarget.value))}
                 step={0.001}
                 type="range"
-                value={resolvedDuration ? Math.min(displayTime, resolvedDuration) : 0}
+                value={playbackClock.resolvedDuration ? Math.min(playbackClock.displayTime, playbackClock.resolvedDuration) : 0}
               />
             </div>
           </div>
