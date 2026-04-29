@@ -15,7 +15,7 @@ import {
   createId,
   createJobRecord,
   openVoxmireDatabase,
-  saveTranscriptSegment,
+  saveTranscriptSegments,
   updateJobStatus,
   type VoxmireDatabase
 } from '@voxmire/storage';
@@ -202,28 +202,23 @@ export class VoxmireAgentApi {
       modelId: 'large-v3-turbo'
     });
 
-    this.db.exec('BEGIN');
-    try {
-      for (let index = 0; index < segmentCount; index += 1) {
-        const startSeconds = index * 4;
-        saveTranscriptSegment(this.db, {
-          id: createId('seg'),
-          jobId: created.job.id,
-          index,
-          startSeconds,
-          endSeconds: startSeconds + 3.4,
-          text: buildSeedSegmentText(index, wordsPerSegment),
-          confidence: null,
-          createdAt: now
-        });
-      }
-
-      updateJobStatus(this.db, created.job.id, 'completed', { progress: 1 });
-      this.db.exec('COMMIT');
-    } catch (error) {
-      this.db.exec('ROLLBACK');
-      throw error;
+    const segments: TranscriptSegment[] = [];
+    for (let index = 0; index < segmentCount; index += 1) {
+      const startSeconds = index * 4;
+      segments.push({
+        id: createId('seg'),
+        jobId: created.job.id,
+        index,
+        startSeconds,
+        endSeconds: startSeconds + 3.4,
+        text: buildSeedSegmentText(index, wordsPerSegment),
+        confidence: null,
+        createdAt: now
+      });
     }
+
+    saveTranscriptSegments(this.db, segments);
+    updateJobStatus(this.db, created.job.id, 'completed', { progress: 1 });
 
     return {
       job: this.runtime.getJob(created.job.id) ?? created,

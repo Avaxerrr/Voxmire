@@ -284,10 +284,24 @@ export function getJob(db: VoxmireDatabase, jobId: string): TranscriptionJob | n
 
 export function saveTranscriptSegment(db: VoxmireDatabase, segment: TranscriptSegment): TranscriptSegment {
   const parsedSegment = transcriptSegmentSchema.parse(segment);
-  const segmentRow = toSegmentRow(parsedSegment);
+  saveTranscriptSegmentRows(db, [toSegmentRow(parsedSegment)]);
+
+  return parsedSegment;
+}
+
+export function saveTranscriptSegments(db: VoxmireDatabase, segments: readonly TranscriptSegment[]): TranscriptSegment[] {
+  const parsedSegments = segments.map((segment) => transcriptSegmentSchema.parse(segment));
+  saveTranscriptSegmentRows(db, parsedSegments.map(toSegmentRow));
+  return parsedSegments;
+}
+
+function saveTranscriptSegmentRows(db: VoxmireDatabase, segmentRows: Array<Record<string, SQLInputValue>>): void {
+  if (segmentRows.length === 0) {
+    return;
+  }
 
   runTransaction(db, () => {
-    db.prepare(
+    const transcriptStatement = db.prepare(
       `INSERT INTO transcript_segments (
          id, job_id, segment_index, start_seconds, end_seconds, text, original_text, word_timings, alignment_status, confidence, created_at, edited_at
        )
@@ -314,9 +328,9 @@ export function saveTranscriptSegment(db: VoxmireDatabase, segment: TranscriptSe
            ELSE transcript_segments.alignment_status
          END,
          confidence = excluded.confidence`
-    ).run(segmentRow);
+    );
 
-    db.prepare(
+    const originalStatement = db.prepare(
       `INSERT INTO original_transcript_segments (
          id, job_id, segment_index, start_seconds, end_seconds, text, original_text, word_timings, alignment_status, confidence, created_at, edited_at
        )
@@ -324,10 +338,13 @@ export function saveTranscriptSegment(db: VoxmireDatabase, segment: TranscriptSe
          @id, @jobId, @index, @startSeconds, @endSeconds, @text, @originalText, @wordTimings, @alignmentStatus, @confidence, @createdAt, @editedAt
        )
        ON CONFLICT(job_id, segment_index) DO NOTHING`
-    ).run(segmentRow);
-  });
+    );
 
-  return parsedSegment;
+    for (const segmentRow of segmentRows) {
+      transcriptStatement.run(segmentRow);
+      originalStatement.run(segmentRow);
+    }
+  });
 }
 
 export function updateTranscriptSegmentText(
