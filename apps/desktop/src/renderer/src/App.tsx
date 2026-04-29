@@ -1426,6 +1426,16 @@ function TranscriptView({
     seekToTime(segment.startSeconds);
   }
 
+  function seekToAdjacentSegment(direction: 'previous' | 'next'): void {
+    const nextIndex = transcriptActiveSegmentIndex < 0
+      ? (direction === 'next' ? 0 : -1)
+      : transcriptActiveSegmentIndex + (direction === 'next' ? 1 : -1);
+    const segment = segments[nextIndex];
+    if (segment) {
+      seekToSegment(segment);
+    }
+  }
+
   function jumpToFindMatch(direction: 'previous' | 'next'): void {
     if (findMatchIndexes.length === 0) {
       return;
@@ -1850,12 +1860,16 @@ function TranscriptView({
             onClockSample={setPlaybackClockSample}
             onDurationChange={setPlaybackDuration}
             onError={setMediaError}
+            onNextSegment={() => seekToAdjacentSegment('next')}
+            onPreviousSegment={() => seekToAdjacentSegment('previous')}
             onTimeChange={setPlaybackTime}
             playbackSpeed={playbackSpeed}
             playing={playing}
             setPlaybackSpeed={setPlaybackSpeed}
             waveformLoading={waveformLoading}
             waveformPeaks={waveformPeaks}
+            canGoNextSegment={segments.length > 0 && transcriptActiveSegmentIndex < segments.length - 1}
+            canGoPreviousSegment={transcriptActiveSegmentIndex > 0}
             setPlaying={setPlaying}
           />
         </div>
@@ -3600,9 +3614,13 @@ type AudioDeckProps = {
   mediaError: string | null;
   mediaKind: MediaKind;
   mediaUrl: string | null;
+  canGoNextSegment: boolean;
+  canGoPreviousSegment: boolean;
   onClockSample: (sample: PlaybackClockSample | null) => void;
   onDurationChange: (duration: number | null) => void;
   onError: (message: string | null) => void;
+  onNextSegment: () => void;
+  onPreviousSegment: () => void;
   onTimeChange: (time: number) => void;
   playbackSpeed: number;
   playing: boolean;
@@ -3622,9 +3640,13 @@ function AudioDeck({
   mediaError,
   mediaKind,
   mediaUrl,
+  canGoNextSegment,
+  canGoPreviousSegment,
   onClockSample,
   onDurationChange,
   onError,
+  onNextSegment,
+  onPreviousSegment,
   onTimeChange,
   playbackSpeed,
   playing,
@@ -3738,19 +3760,6 @@ function AudioDeck({
     return () => window.cancelAnimationFrame(animationFrame);
   }, [audioRef, canPlay, diagnosticsEnabled, draftSeekTime, onClockSample, onTimeChange, playing]);
 
-  function skipBy(seconds: number): void {
-    const audio = audioRef.current;
-    if (!audio || !canPlay) {
-      return;
-    }
-
-    const unclamped = audio.currentTime + seconds;
-    const nextTime = resolvedDuration ? Math.min(resolvedDuration, Math.max(0, unclamped)) : Math.max(0, unclamped);
-    applyMediaSeek(audio, nextTime, false);
-    setVisualTime(nextTime);
-    recordSeekSample(audio, nextTime);
-    syncPlaybackSample(nextTime, true);
-  }
 
   function syncPlaybackSample(time: number, force = false): void {
     const now = performance.now();
@@ -3863,11 +3872,11 @@ function AudioDeck({
       ) : (
         <>
           <div className="deck-controls">
-            <button className="icon-button" disabled={!canPlay} onClick={() => skipBy(-10)} title="Skip back 10 seconds" type="button"><SkipBack size={18} /></button>
+            <button className="icon-button" disabled={!canPlay || !canGoPreviousSegment} onClick={onPreviousSegment} title="Previous segment" type="button"><SkipBack size={18} /></button>
             <button className="play-button" disabled={!canPlay} onClick={() => setPlaying(!playing)} title={playing ? 'Pause' : 'Play'} type="button">
               {playing ? <Pause size={22} /> : <Play size={22} />}
             </button>
-            <button className="icon-button" disabled={!canPlay} onClick={() => skipBy(10)} title="Skip forward 10 seconds" type="button"><SkipForward size={18} /></button>
+            <button className="icon-button" disabled={!canPlay || !canGoNextSegment} onClick={onNextSegment} title="Next segment" type="button"><SkipForward size={18} /></button>
           </div>
           <div className="deck-time-group" aria-label="Playback time">
             <span className="deck-time current">{formatTime(displayTime)}</span>
