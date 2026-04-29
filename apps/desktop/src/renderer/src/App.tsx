@@ -2,11 +2,11 @@ import { type CSSProperties, type FocusEvent as ReactFocusEvent, type KeyboardEv
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   AlertTriangle,
+  ArrowDownToLine,
+  ArrowUpToLine,
   AudioWaveform,
   ChevronDown,
   CheckCircle2,
-  CornerUpLeft,
-  CornerUpRight,
   PanelLeftClose,
   PanelLeftOpen,
   Clock3,
@@ -2775,7 +2775,7 @@ function EditableSegmentRow({
             title="Merge with previous"
             type="button"
           >
-            <CornerUpLeft size={13} />
+            <ArrowUpToLine size={13} />
           </button>
           <button
             aria-label="Split segment at cursor"
@@ -2795,7 +2795,7 @@ function EditableSegmentRow({
             title="Merge with next"
             type="button"
           >
-            <CornerUpRight size={13} />
+            <ArrowDownToLine size={13} />
           </button>
         </div>
       </div>
