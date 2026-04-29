@@ -514,10 +514,17 @@ export function mergeTranscriptSegment(
 
     db.prepare(
       `UPDATE transcript_segments
-       SET segment_index = segment_index - 1
+       SET segment_index = -(segment_index + 1)
        WHERE job_id = @jobId
          AND segment_index > @removedIndex`
     ).run({ jobId, removedIndex: second.index });
+
+    db.prepare(
+      `UPDATE transcript_segments
+       SET segment_index = -segment_index - 2
+       WHERE job_id = @jobId
+         AND segment_index < 0`
+    ).run({ jobId });
   });
 
   return getTranscriptSegments(db, jobId);

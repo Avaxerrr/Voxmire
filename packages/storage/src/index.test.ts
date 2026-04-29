@@ -192,6 +192,46 @@ describe('storage repositories', () => {
     db.close();
   });
 
+  it('renumbers later transcript segments without unique index collisions after merge', () => {
+    const db = openVoxmireDatabase(':memory:');
+    const created = createJobRecord(db, {
+      modelId: 'large-v3-turbo',
+      sourceFile: {
+        id: 'src_1',
+        path: 'C:/audio/example.wav',
+        name: 'example.wav',
+        extension: 'wav',
+        sizeBytes: 100,
+        durationSeconds: 10,
+        createdAt: '2026-04-23T00:00:00.000Z'
+      }
+    });
+
+    [4, 3, 2, 1, 0].forEach((index) => {
+      saveTranscriptSegment(db, {
+        id: `seg_${index}`,
+        jobId: created.job.id,
+        index,
+        startSeconds: index,
+        endSeconds: index + 1,
+        text: `Segment ${index}`,
+        confidence: 0.8,
+        createdAt: '2026-04-23T00:00:00.000Z'
+      });
+    });
+
+    const mergedSegments = mergeTranscriptSegment(db, created.job.id, 'seg_1', 'next');
+
+    expect(mergedSegments.map((segment) => segment.index)).toEqual([0, 1, 2, 3]);
+    expect(mergedSegments.map((segment) => segment.text)).toEqual([
+      'Segment 0',
+      'Segment 1 Segment 2',
+      'Segment 3',
+      'Segment 4'
+    ]);
+    db.close();
+  });
+
   it('preserves word timing metadata across split and merge edits', () => {
     const db = openVoxmireDatabase(':memory:');
     const created = createJobRecord(db, {
