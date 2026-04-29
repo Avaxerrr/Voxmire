@@ -1,0 +1,28 @@
+@media (max-width: 1180px) {
+  .transcript-content-with-preview.side { display: flex; }
+  .transcript-content-with-preview.side .video-preview-panel { position: static; margin: 0 auto 34px; }
+  .transcript-content-with-preview.side .segment-list { grid-column: auto; }
+  .transcript-content-with-preview.side .video-preview-panel { width: min(var(--preview-width, 320px), calc(100vw - 120px)); }
+  .view { padding: var(--workspace-top-padding) var(--workspace-gutter) 28px; }
+  .transcript-view,
+  .voice-view { padding: 0; }
+  .transcript-topbar { align-items: flex-start; flex-direction: column; }
+  .transcript-actions { justify-content: flex-start; width: 100%; }
+  .title-stack,
+  .transcript-title-row { width: 100%; }
+
+  .quick-actions,
+  .voice-layout,
+  .diagnostic-grid { grid-template-columns: 1fr; }
+  .library-toolbar { align-items: flex-start; flex-direction: column; }
+  .library-controls { width: 100%; flex-wrap: wrap; }
+  .search-field { flex: 1 1 260px; }
+  .switcher-search { flex: 0 0 auto; width: 100%; }
+  .transcript-switcher-drawer { width: min(368px, calc(100vw - 92px)); }
+}
+
+@media (max-width: 760px) {
+  .transcript-stage { padding-right: 18px; padding-left: 18px; }
+  .video-preview-panel,
+  .transcript-content-with-preview.side .video-preview-panel { width: min(var(--preview-width, 320px), calc(100vw - 72px)); }
+}
