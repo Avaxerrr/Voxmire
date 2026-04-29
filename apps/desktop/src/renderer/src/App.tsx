@@ -1,15 +1,5 @@
 import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  AudioWaveform,
-  PanelLeftClose,
-  PanelLeftOpen,
-  FileText,
-  Home,
-  MicVocal,
-  Settings,
-  X,
-  Zap
-} from 'lucide-react';
+import { X } from 'lucide-react';
 import type {
   EngineAvailability,
   ExportFormat,
@@ -25,14 +15,15 @@ import type {
   TranscriptionProgressEvent
 } from '@voxmire/contracts';
 import { DeleteProjectModal, ImportModal, ProjectDetailsDrawer, RenameProjectModal, ResetTranscriptModal } from './components/project-dialogs';
-import { NavButton } from './components/nav-button';
+import { AppSidebar } from './components/app-sidebar';
+import { StatusBar } from './components/status-bar';
 import { WindowFrameControls } from './components/window-frame-controls';
 import { VoiceStudioView } from './views/voice-studio-view';
 import { DashboardView } from './views/dashboard-view';
 import { SettingsView } from './views/settings-view';
 import { TranscriptView } from './views/transcript-view';
 import { exportResultLabel, extractDirectoryPath } from './lib/format';
-import { activeStatuses, statusLabel } from './lib/job-status';
+import { activeStatuses } from './lib/job-status';
 import { fallbackModels, resolvePresetSelection, selectUsablePreset } from './lib/presets';
 
 type AppInfo = {
@@ -563,28 +554,12 @@ export function App(): ReactElement {
     <main className={`app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       <div className="window-drag-strip" aria-hidden="true" />
       <WindowFrameControls />
-      <aside className="sidebar" aria-label="Workspace navigation">
-
-        <div className="brand-block">
-          <div className="brand-mark"><AudioWaveform size={18} /></div>
-          <div className="brand-copy">
-            <h1>VOXMIRE</h1>
-            <p>Local transcription studio</p>
-          </div>
-          <button className="collapse-button" onClick={() => setSidebarCollapsed((collapsed) => !collapsed)} type="button" title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
-            {sidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
-          </button>
-        </div>
-
-        <nav className="nav-list" aria-label="Primary">
-          <NavButton active={view === 'dashboard'} collapsed={sidebarCollapsed} icon={<Home size={18} />} label="Library" onClick={() => setView('dashboard')} />
-          <NavButton active={view === 'transcript'} collapsed={sidebarCollapsed} icon={<FileText size={18} />} label="Transcript" onClick={() => setView('transcript')} />
-
-          <NavButton active={view === 'voice'} collapsed={sidebarCollapsed} icon={<MicVocal size={18} />} label="Voice Studio" onClick={() => setView('voice')} badge="Soon" />
-          <NavButton active={view === 'settings'} collapsed={sidebarCollapsed} icon={<Settings size={18} />} label="Settings" onClick={() => setView('settings')} />
-        </nav>
-
-      </aside>
+      <AppSidebar
+        activeView={view}
+        collapsed={sidebarCollapsed}
+        onSelectView={setView}
+        onToggleCollapsed={() => setSidebarCollapsed((collapsed) => !collapsed)}
+      />
 
       <section className="workspace">
         {message ? (
@@ -699,19 +674,3 @@ export function App(): ReactElement {
     </main>
   );
 }
-
-function StatusBar({ activeJob, appInfo, status }: { activeJob: JobWithSource | null; appInfo: AppInfo | null; status: { tone: StatusTone; text: string } }): ReactElement {
-  const isLive = activeJob !== null;
-
-  return (
-    <footer className={`status-bar ${isLive ? 'live' : ''}`}>
-      <span className={`status-light ${status.tone}`} />
-      <strong>{status.text}</strong>
-      {activeJob ? <span>{statusLabel(activeJob.job.status)}</span> : null}
-      <span className="status-spacer" />
-      <span>Local workspace</span>
-      {appInfo ? <span>{appInfo.platform}</span> : null}
-    </footer>
-  );
-}
-
