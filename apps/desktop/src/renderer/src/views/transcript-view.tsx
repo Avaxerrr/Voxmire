@@ -1,10 +1,10 @@
 import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ChevronDown, Download, FileText, FolderOpen, Pause, Play, Plus, Search, Square, Redo2, RotateCcw, Undo2, Video } from 'lucide-react';
+import { AlertTriangle, FileText, FolderOpen, Pause, Play, Plus, Square, Video } from 'lucide-react';
 import type { ExportFormat, ExportTextMode, JobWithSource, TranscriptSegment, TranscriptSegmentListResult } from '@voxmire/contracts';
 import { EmptyState } from '../components/empty-state';
 import { FindReplacePanel } from '../features/transcript/find-replace-panel';
+import { TranscriptHeader } from '../features/transcript/transcript-header';
 import { TranscriptSwitcherDrawer } from '../features/transcript/transcript-switcher-drawer';
-import { ProjectActionsMenu } from '../components/project-actions-menu';
 import { ResetTranscriptModal } from '../components/project-dialogs';
 import { applyMediaSeek } from '../features/media/media-seek';
 import { AudioDeck, type PlaybackClockSample } from '../features/media/playback-controls';
@@ -32,19 +32,6 @@ type PreferredActiveSegment = {
   timeSeconds: number;
 };
 
-type ExportOption = {
-  format: ExportFormat;
-  label: string;
-  textMode?: ExportTextMode;
-};
-
-const exportOptions: ExportOption[] = [
-  { format: 'txt', label: 'Text only', textMode: 'plain' },
-  { format: 'txt', label: 'Text with timestamps', textMode: 'timestamps' },
-  { format: 'srt', label: 'SubRip captions' },
-  { format: 'vtt', label: 'WebVTT captions' },
-  { format: 'json', label: 'JSON data' }
-];
 const playbackDiagnosticClockDriftWarningSeconds = 0.08;
 const playbackDiagnosticLongGapWarningSeconds = 0.12;
 const playbackTraceLimit = 600;
@@ -556,113 +543,35 @@ export function TranscriptView({
 
   return (
     <div className="view workspace-page transcript-view">
-      <header className="workspace-header transcript-topbar glass-bar">
-        <div className="title-stack">
-          <p className="eyebrow">Transcript</p>
-          <div className="transcript-title-row">
-            <h2 className="transcript-title-heading">
-              <button
-                aria-expanded={switcherOpen}
-                aria-haspopup="dialog"
-                aria-label="Switch transcript"
-                className={`transcript-title-switcher ${switcherOpen ? 'active' : ''}`}
-                disabled={jobs.length === 0}
-                onClick={() => setSwitcherOpen((open) => !open)}
-                title="Switch transcript"
-                type="button"
-              >
-                <span className="transcript-title-text">{selectedJob?.sourceFile.name ?? 'No transcript selected'}</span>
-                <ChevronDown size={16} />
-              </button>
-            </h2>
-            {selectedJob ? (
-              <ProjectActionsMenu
-                onDelete={() => onDeleteProject(selectedJob)}
-                onDetails={() => onDetailsProject(selectedJob.job.id)}
-                onRename={() => onRenameProject(selectedJob)}
-              />
-            ) : null}
-          </div>
-          <span>{selectedSubtitle}</span>
-        </div>
-
-        <div className="transcript-actions">
-          <button
-            aria-label="Undo transcript edit"
-            className="icon-button"
-            disabled={!selectedJob || historyBusy || undoStack.length === 0}
-            onClick={() => void applyTranscriptHistory('undo')}
-            title={undoStack.length > 0 ? `Undo ${undoStack[undoStack.length - 1]?.label ?? 'edit'}` : 'Undo'}
-            type="button"
-          >
-            <Undo2 size={17} />
-          </button>
-          <button
-            aria-label="Redo transcript edit"
-            className="icon-button"
-            disabled={!selectedJob || historyBusy || redoStack.length === 0}
-            onClick={() => void applyTranscriptHistory('redo')}
-            title={redoStack.length > 0 ? `Redo ${redoStack[redoStack.length - 1]?.label ?? 'edit'}` : 'Redo'}
-            type="button"
-          >
-            <Redo2 size={17} />
-          </button>
-          <button
-            aria-label="Reset transcript"
-            className="icon-button danger-icon-button"
-            disabled={!selectedJob || historyBusy || resettingTranscript || segments.length === 0}
-            onClick={() => setResetTranscriptOpen(true)}
-            title="Reset transcript"
-            type="button"
-          >
-            <RotateCcw size={16} />
-          </button>
-          <button
-            aria-expanded={findPanelOpen}
-            aria-label="Find and replace transcript"
-            className={`icon-button ${findPanelOpen ? 'active' : ''}`}
-            onClick={toggleFindPanel}
-            title="Find and replace"
-            type="button"
-          >
-            <Search size={17} />
-          </button>
-          <div className="export-menu" ref={exportMenuRef}>
-            <button
-              aria-expanded={exportMenuOpen}
-              aria-label="Export transcript"
-              className={`icon-button export-trigger ${exportMenuOpen ? 'active' : ''}`}
-              disabled={!selectedJob || segments.length === 0}
-              onClick={() => setExportMenuOpen((open) => !open)}
-              title="Export transcript"
-              type="button"
-            >
-              <Download size={16} />
-            </button>
-            {exportMenuOpen ? (
-              <div className="export-menu-popover" role="menu">
-                {exportOptions.map((option) => (
-                  <button
-                    key={`${option.format}-${option.textMode ?? 'default'}`}
-                    onClick={() => {
-                      setExportMenuOpen(false);
-                      void exportTranscript(option.format, option.textMode ?? 'plain');
-                    }}
-                    role="menuitem"
-                    type="button"
-                  >
-                    <Download size={14} />
-                    <span>{option.label}</span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-          <button aria-label="Import transcript" className="primary-action icon-action" disabled={busy} onClick={onImport} title="Import transcript" type="button">
-            <Plus size={17} />
-          </button>
-        </div>
-      </header>
+      <TranscriptHeader
+        busy={busy}
+        exportMenuOpen={exportMenuOpen}
+        exportMenuRef={exportMenuRef}
+        findPanelOpen={findPanelOpen}
+        hasSegments={segments.length > 0}
+        historyBusy={historyBusy}
+        jobCount={jobs.length}
+        onDeleteProject={() => selectedJob ? onDeleteProject(selectedJob) : undefined}
+        onDetailsProject={() => selectedJob ? onDetailsProject(selectedJob.job.id) : undefined}
+        onImport={onImport}
+        onRedo={() => void applyTranscriptHistory('redo')}
+        onRenameProject={() => selectedJob ? onRenameProject(selectedJob) : undefined}
+        onResetTranscript={() => setResetTranscriptOpen(true)}
+        onSelectExportOption={(format, textMode) => {
+          setExportMenuOpen(false);
+          void exportTranscript(format, textMode);
+        }}
+        onToggleExportMenu={() => setExportMenuOpen((open) => !open)}
+        onToggleFindPanel={toggleFindPanel}
+        onToggleSwitcher={() => setSwitcherOpen((open) => !open)}
+        onUndo={() => void applyTranscriptHistory('undo')}
+        redoLabel={redoStack[redoStack.length - 1]?.label ?? null}
+        resettingTranscript={resettingTranscript}
+        selectedJob={selectedJob}
+        selectedSubtitle={selectedSubtitle}
+        switcherOpen={switcherOpen}
+        undoLabel={undoStack[undoStack.length - 1]?.label ?? null}
+      />
 
       <section className="transcript-layout">
         {switcherOpen ? (
