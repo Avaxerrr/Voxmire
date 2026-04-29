@@ -2227,6 +2227,32 @@ function VirtualizedSegmentList({
     anticipatedSegmentIndexRef.current = null;
   }
 
+  function anticipatedPlaybackSegmentIndex(): number | null {
+    if (!playing || editingSegmentId || activeSearchSegmentId || searchQuery.trim() || activeSegmentIndex < 0) {
+      return null;
+    }
+
+    const segment = segments[activeSegmentIndex];
+    const nextSegmentIndex = activeSegmentIndex + 1;
+    if (!segment || nextSegmentIndex >= segments.length) {
+      return null;
+    }
+
+    if (currentTimeMs() - lastManualScrollAtRef.current < segmentScrollManualPauseMs) {
+      return null;
+    }
+
+    const segmentDurationSeconds = Math.max(0, segment.endSeconds - segment.startSeconds);
+    const leadSeconds = Math.min(segmentScrollLeadMaxSeconds, segmentDurationSeconds * segmentScrollLeadDurationRatio);
+    if (leadSeconds <= 0 || playbackTime < segment.endSeconds - leadSeconds || playbackTime >= segment.endSeconds) {
+      return null;
+    }
+
+    return nextSegmentIndex;
+  }
+
+  const visualActiveSegmentIndex = anticipatedPlaybackSegmentIndex() ?? activeSegmentIndex;
+
   useEffect(() => {
     if (activeSegmentIndex < 0 || editingSegmentId) {
       return;
@@ -2241,27 +2267,8 @@ function VirtualizedSegmentList({
   }, [activeSegmentIndex, editingSegmentId]);
 
   useEffect(() => {
-    if (!playing || editingSegmentId || activeSearchSegmentId || searchQuery.trim() || activeSegmentIndex < 0) {
-      return;
-    }
-
-    const segment = segments[activeSegmentIndex];
-    const nextSegmentIndex = activeSegmentIndex + 1;
-    if (!segment || nextSegmentIndex >= segments.length) {
-      return;
-    }
-
-    if (currentTimeMs() - lastManualScrollAtRef.current < segmentScrollManualPauseMs) {
-      return;
-    }
-
-    const segmentDurationSeconds = Math.max(0, segment.endSeconds - segment.startSeconds);
-    const leadSeconds = Math.min(segmentScrollLeadMaxSeconds, segmentDurationSeconds * segmentScrollLeadDurationRatio);
-    if (leadSeconds <= 0 || playbackTime < segment.endSeconds - leadSeconds || playbackTime >= segment.endSeconds) {
-      return;
-    }
-
-    if (anticipatedSegmentIndexRef.current === nextSegmentIndex) {
+    const nextSegmentIndex = anticipatedPlaybackSegmentIndex();
+    if (nextSegmentIndex === null || anticipatedSegmentIndexRef.current === nextSegmentIndex) {
       return;
     }
 
@@ -2488,7 +2495,7 @@ function VirtualizedSegmentList({
             return null;
           }
 
-          const active = virtualRow.index === activeSegmentIndex;
+          const active = virtualRow.index === visualActiveSegmentIndex;
           const editing = segment.id === editingSegmentId;
           const saving = segment.id === savingSegmentId;
           const savingTiming = segment.id === savingTimingSegmentId;
