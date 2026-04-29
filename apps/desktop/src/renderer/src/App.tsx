@@ -5,6 +5,8 @@ import {
   AudioWaveform,
   ChevronDown,
   CheckCircle2,
+  CornerUpLeft,
+  CornerUpRight,
   PanelLeftClose,
   PanelLeftOpen,
   Clock3,
@@ -33,7 +35,6 @@ import {
   SkipForward,
   SlidersHorizontal,
   Scissors,
-  Merge,
   Sparkles,
   Square,
   Trash2,
@@ -2774,7 +2775,7 @@ function EditableSegmentRow({
             title="Merge with previous"
             type="button"
           >
-            <Merge size={13} />
+            <CornerUpLeft size={13} />
           </button>
           <button
             aria-label="Split segment at cursor"
@@ -2794,7 +2795,7 @@ function EditableSegmentRow({
             title="Merge with next"
             type="button"
           >
-            <Merge size={13} />
+            <CornerUpRight size={13} />
           </button>
         </div>
       </div>
