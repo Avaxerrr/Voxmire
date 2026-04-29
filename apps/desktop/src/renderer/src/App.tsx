@@ -2435,8 +2435,6 @@ function VirtualizedSegmentList({
           const saveError = segment.id === saveErrorSegmentId;
           const searchMatch = searchQuery.trim() ? segment.text.toLowerCase().includes(searchQuery.trim().toLowerCase()) : false;
           const activeSearchMatch = segment.id === activeSearchSegmentId;
-          const playbackWordRange = active ? currentPlaybackWordRange(segment, playbackTime) : null;
-
           return (
             <div
               className="segment-virtual-row"
@@ -2470,7 +2468,6 @@ function VirtualizedSegmentList({
                 saveError={saveError}
                 saving={saving}
                 savingTiming={savingTiming}
-                playbackWordRange={playbackWordRange}
                 searchQuery={searchQuery}
                 segment={segment}
               />
@@ -2504,7 +2501,6 @@ type EditableSegmentRowProps = {
   onSaveTiming: (startSeconds: number, endSeconds: number) => Promise<boolean>;
   onSelectSegment: () => void;
   onSplit: (offset: number) => Promise<void>;
-  playbackWordRange: TextRange | null;
   saveError: boolean;
   saving: boolean;
   savingTiming: boolean;
@@ -2534,7 +2530,6 @@ function EditableSegmentRow({
   onSaveTiming,
   onSelectSegment,
   onSplit,
-  playbackWordRange,
   saveError,
   saving,
   savingTiming,
@@ -2783,11 +2778,11 @@ function EditableSegmentRow({
         ) : (
           <button
             aria-label="Edit transcript segment text"
-            className="segment-text-display"
+            className={active ? 'segment-text-display playback-active' : 'segment-text-display'}
             onClick={onFocus}
             type="button"
           >
-            <HighlightedTranscriptText playbackRange={playbackWordRange} query={searchQuery} text={segment.text} />
+            <HighlightedTranscriptText query={searchQuery} text={segment.text} />
           </button>
         )}
         <div className={`segment-save-state ${saving ? 'saving' : ''} ${saveError ? 'error' : ''}`} role="status">
@@ -2862,24 +2857,24 @@ type PlaybackTimingDiagnostic = {
   wordText: string | null;
 };
 
-function HighlightedTranscriptText({ playbackRange, query, text }: { playbackRange: TextRange | null; query: string; text: string }): ReactElement {
+function HighlightedTranscriptText({ query, text }: { query: string; text: string }): ReactElement {
   const normalizedQuery = query.trim();
-  if (!normalizedQuery && !playbackRange) {
+  if (!normalizedQuery) {
     return <>{text}</>;
   }
 
-  const slices = buildHighlightedTextSlices(text, normalizedQuery, playbackRange);
+  const slices = buildHighlightedTextSlices(text, normalizedQuery);
 
   return (
     <>
       {slices.map((slice) => {
-        if (!slice.search && !slice.playback) {
+        if (!slice.search) {
           return slice.text;
         }
 
         return (
           <mark
-            className={`segment-text-highlight ${slice.search ? 'segment-search-hit' : ''} ${slice.playback ? 'segment-playback-word' : ''}`}
+            className="segment-text-highlight segment-search-hit"
             key={`${slice.start}-${slice.end}`}
           >
             {slice.text}
@@ -2888,10 +2883,6 @@ function HighlightedTranscriptText({ playbackRange, query, text }: { playbackRan
       })}
     </>
   );
-}
-
-function currentPlaybackWordRange(segment: TranscriptSegment, playbackTime: number): TextRange | null {
-  return getPlaybackWordState(segment, playbackTime).range;
 }
 
 function getPlaybackWordState(segment: TranscriptSegment, playbackTime: number): PlaybackWordState {
@@ -3017,16 +3008,13 @@ function wordTimingSnapshot(wordTimings: NonNullable<TranscriptSegment['wordTimi
   };
 }
 
-function buildHighlightedTextSlices(text: string, query: string, playbackRange: TextRange | null): Array<TextRange & { text: string; search: boolean; playback: boolean }> {
-  const ranges = [
-    ...findSearchRanges(text, query).map((range) => ({ ...range, kind: 'search' as const })),
-    ...(playbackRange ? [{ ...playbackRange, kind: 'playback' as const }] : [])
-  ]
+function buildHighlightedTextSlices(text: string, query: string): Array<TextRange & { text: string; search: boolean }> {
+  const ranges = findSearchRanges(text, query)
     .filter((range) => range.start >= 0 && range.end > range.start && range.start < text.length)
     .map((range) => ({ ...range, end: Math.min(range.end, text.length) }));
 
   if (ranges.length === 0) {
-    return [{ start: 0, end: text.length, text, search: false, playback: false }];
+    return [{ start: 0, end: text.length, text, search: false }];
   }
 
   const boundaries = new Set([0, text.length]);
@@ -3036,7 +3024,7 @@ function buildHighlightedTextSlices(text: string, query: string, playbackRange: 
   });
 
   const orderedBoundaries = [...boundaries].sort((left, right) => left - right);
-  const slices: Array<TextRange & { text: string; search: boolean; playback: boolean }> = [];
+  const slices: Array<TextRange & { text: string; search: boolean }> = [];
   for (let index = 0; index < orderedBoundaries.length - 1; index += 1) {
     const start = orderedBoundaries[index] ?? 0;
     const end = orderedBoundaries[index + 1] ?? start;
@@ -3048,8 +3036,7 @@ function buildHighlightedTextSlices(text: string, query: string, playbackRange: 
       start,
       end,
       text: text.slice(start, end),
-      search: ranges.some((range) => range.kind === 'search' && range.start <= start && end <= range.end),
-      playback: ranges.some((range) => range.kind === 'playback' && range.start <= start && end <= range.end)
+      search: ranges.some((range) => range.start <= start && end <= range.end)
     });
   }
 
