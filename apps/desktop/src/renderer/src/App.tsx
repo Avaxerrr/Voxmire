@@ -930,16 +930,12 @@ function DashboardView({
   selectedModel
 }: DashboardViewProps): ReactElement {
   return (
-    <div className="view dashboard-view">
-      <header className="dashboard-header">
+    <div className="view workspace-page dashboard-view">
+      <header className="page-header dashboard-header">
         <div>
           <p className="eyebrow">Workspace</p>
           <h2>Good afternoon.</h2>
         </div>
-        <button className="primary-action" onClick={onImport} type="button">
-          <Plus size={18} />
-          New transcript
-        </button>
       </header>
 
       <div className="dashboard-scroll">
@@ -1100,6 +1096,7 @@ function TranscriptView({
   const isPausable = selectedJob ? activeStatuses.includes(selectedJob.job.status) : false;
   const isResumable = selectedJob?.job.status === 'paused';
   const isWorking = selectedJob ? activeStatuses.includes(selectedJob.job.status) : false;
+  const showJobProgressRow = isWorking || isResumable;
   const selectedMediaKind = selectedJob ? mediaInfo?.kind ?? mediaKindFromExtension(selectedJob.sourceFile.extension) : 'audio';
   const selectedSubtitle = selectedJob ? transcriptSubtitle(selectedJob, progress, selectedMediaKind) : 'Choose a project from Library or import a recording.';
   const activeSegmentIndex = useMemo(() => findActiveSegmentIndex(segments, playbackTime), [playbackTime, segments]);
@@ -1524,8 +1521,8 @@ function TranscriptView({
   }
 
   return (
-    <div className="view transcript-view">
-      <header className="transcript-topbar glass-bar">
+    <div className="view workspace-page transcript-view">
+      <header className="workspace-header transcript-topbar glass-bar">
         <div className="title-stack">
           <p className="eyebrow">Transcript</p>
           <div className="transcript-title-row">
@@ -1762,31 +1759,33 @@ function TranscriptView({
           <section className={'transcript-stage ' + (selectedMediaKind === 'video' && mediaUrl ? 'has-video-preview preview-' + (videoPreviewHidden ? 'hidden' : videoPreviewDock) : '')}>
             {selectedJob ? (
               <>
-                <div className="job-progress-row">
-                  <div className={`progress-track ${isWorking ? 'working' : ''}`} aria-label="Progress">
-                    <div style={{ width: `${progress}%` }} />
+                {showJobProgressRow ? (
+                  <div className="job-progress-row">
+                    <div className={`progress-track ${isWorking ? 'working' : ''}`} aria-label="Progress">
+                      <div style={{ width: `${progress}%` }} />
+                    </div>
+                    <div className="job-inline-actions" aria-label="Transcription controls">
+                      {isPausable ? (
+                        <button className="secondary-action" onClick={() => void onPause(selectedJob.job.id)} type="button">
+                          <Pause size={14} />
+                          Pause
+                        </button>
+                      ) : null}
+                      {isResumable ? (
+                        <button className="secondary-action" onClick={() => void onResume(selectedJob.job.id)} type="button">
+                          <Play size={14} />
+                          Resume
+                        </button>
+                      ) : null}
+                      {isCancelable ? (
+                        <button className="secondary-action danger" onClick={() => void onCancel(selectedJob.job.id)} type="button">
+                          <Square size={14} />
+                          Stop
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
-                  <div className="job-inline-actions" aria-label="Transcription controls">
-                    {isPausable ? (
-                      <button className="secondary-action" onClick={() => void onPause(selectedJob.job.id)} type="button">
-                        <Pause size={14} />
-                        Pause
-                      </button>
-                    ) : null}
-                    {isResumable ? (
-                      <button className="secondary-action" onClick={() => void onResume(selectedJob.job.id)} type="button">
-                        <Play size={14} />
-                        Resume
-                      </button>
-                    ) : null}
-                    {isCancelable ? (
-                      <button className="secondary-action danger" onClick={() => void onCancel(selectedJob.job.id)} type="button">
-                        <Square size={14} />
-                        Stop
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
+                ) : null}
                 {selectedJob.job.errorMessage ? <div className="error-text"><AlertTriangle size={16} /> {selectedJob.job.errorMessage}</div> : null}
                 {selectedMediaKind === 'video' && mediaUrl ? (
                   <div className={'transcript-content-with-preview ' + (videoPreviewHidden ? 'hidden' : videoPreviewDock)}>
@@ -2024,8 +2023,8 @@ function ProjectActionsMenu({ onDelete, onDetails, onRename }: ProjectActionsMen
 
 function VoiceStudioView(): ReactElement {
   return (
-    <div className="view voice-view">
-      <header className="voice-header glass-bar">
+    <div className="view workspace-page voice-view">
+      <header className="workspace-header voice-header glass-bar">
         <div>
           <p className="eyebrow">Voice Studio</p>
           <h2>Voice Generation</h2>
@@ -2097,8 +2096,8 @@ function SettingsView({ appInfo, engines, exportDirectory, machineProfile, model
   const installedModels = models.filter((model) => modelInstalled(resources, model.id));
 
   return (
-    <div className="view settings-view">
-      <header className="settings-header">
+    <div className="view workspace-page settings-view">
+      <header className="page-header settings-header">
         <p className="eyebrow">Preferences</p>
         <h2>Settings</h2>
       </header>
