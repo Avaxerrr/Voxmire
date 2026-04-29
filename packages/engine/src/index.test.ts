@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getMachineProfile, parseWhisperJsonSegmentsPayload, parseWhisperProgressLine } from './index';
+import { detectWhisperEngines, getMachineProfile, parseWhisperJsonSegmentsPayload, parseWhisperProgressLine } from './index';
 
 describe('parseWhisperProgressLine', () => {
   it('parses whisper.cpp progress output', () => {
@@ -108,5 +108,12 @@ describe('getMachineProfile', () => {
     expect(profile.totalMemoryBytes).toBeGreaterThan(0);
     expect(profile.recommendedBackend).toBe('cpu');
     expect(profile.backends.map((backend: { backend: string }) => backend.backend)).toEqual(['cpu', 'cuda', 'vulkan']);
+  });
+
+  it('reports concrete whisper runtime availability in fallback order', () => {
+    const engines = detectWhisperEngines({ projectRoot: 'C:/missing-voxmire-root' });
+
+    expect(engines.map((engine) => engine.runtimeId)).toEqual(['cuda-12.4', 'vulkan', 'cpu-blas', 'cpu']);
+    expect(engines.map((engine) => engine.backend)).toEqual(['cuda', 'vulkan', 'cpu', 'cpu']);
   });
 });

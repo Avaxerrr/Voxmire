@@ -1,24 +1,27 @@
 import { type ReactElement, useState } from 'react';
 import { AlertTriangle, FileAudio, FileVideo, Pencil, RotateCcw, Trash2, UploadCloud, X } from 'lucide-react';
-import type { JobWithSource, ModelProfile, ProjectDetails, ResourceStatus, TranscriptionPresetId } from '@voxmire/contracts';
+import type { JobWithSource, MachineProfile, ModelProfile, ProjectDetails, ResourceStatus, TranscriptionPresetId } from '@voxmire/contracts';
 import { EmptyState } from './empty-state';
 import { formatDateTime, formatDuration, formatFileSize } from '../lib/format';
 import { statusLabel } from '../lib/job-status';
 import { mediaKindFromExtension, mediaKindLabel } from '../lib/media-kind';
-import { presetModelOptionLabel, visiblePresetOptions, type ResolvedTranscriptionPreset } from '../lib/presets';
+import { backendOptions, presetModelOptionLabel, visiblePresetOptions, type BackendPreference, type ResolvedTranscriptionPreset } from '../lib/presets';
 
 type ImportModalProps = {
   busy: boolean;
   createJob: () => Promise<void>;
+  machineProfile: MachineProfile | null;
   models: ModelProfile[];
   resources: ResourceStatus[];
   onClose: () => void;
+  selectedBackendPreference: BackendPreference;
   selectedPresetId: TranscriptionPresetId;
   selectedPresetResolution: ResolvedTranscriptionPreset;
+  setSelectedBackendPreference: (preference: BackendPreference) => void;
   setSelectedPresetId: (presetId: TranscriptionPresetId) => void;
 };
 
-export function ImportModal({ busy, createJob, models, resources, onClose, selectedPresetId, selectedPresetResolution, setSelectedPresetId }: ImportModalProps): ReactElement {
+export function ImportModal({ busy, createJob, machineProfile, models, resources, onClose, selectedBackendPreference, selectedPresetId, selectedPresetResolution, setSelectedBackendPreference, setSelectedPresetId }: ImportModalProps): ReactElement {
   return (
     <div className="modal-backdrop" role="presentation">
       <section className="import-modal" aria-labelledby="import-title" role="dialog">
@@ -39,9 +42,14 @@ export function ImportModal({ busy, createJob, models, resources, onClose, selec
             </select>
           </label>
           <label>
-            <span className="field-label">Resolved backend</span>
-            <select value={selectedPresetResolution.engineBackend} disabled>
-              <option value={selectedPresetResolution.engineBackend}>{selectedPresetResolution.engineBackend.toUpperCase()}</option>
+            <span className="field-label">Backend</span>
+            <select value={selectedBackendPreference} onChange={(event) => setSelectedBackendPreference(event.target.value as BackendPreference)}>
+              <option value="auto">Auto ({selectedPresetResolution.engineBackend.toUpperCase()})</option>
+              {backendOptions(machineProfile).map((backend) => (
+                <option disabled={!backend.available} key={backend.backend} value={backend.backend}>
+                  {backend.label}{backend.available ? '' : ' unavailable'}
+                </option>
+              ))}
             </select>
           </label>
         </div>

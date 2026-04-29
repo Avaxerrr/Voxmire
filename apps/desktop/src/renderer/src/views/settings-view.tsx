@@ -8,7 +8,7 @@ import type {
   TranscriptionPresetId
 } from '@voxmire/contracts';
 import { formatBytes } from '../lib/format';
-import { modelInstalled, modelLabel, modelResource, presetModelOptionLabel, visiblePresetOptions, type ResolvedTranscriptionPreset } from '../lib/presets';
+import { backendOptions, modelInstalled, modelLabel, modelResource, presetModelOptionLabel, visiblePresetOptions, type BackendPreference, type ResolvedTranscriptionPreset } from '../lib/presets';
 
 type AppInfo = {
   name: string;
@@ -26,8 +26,10 @@ type SettingsViewProps = {
   onChooseExportDirectory: () => void;
   onResetExportDirectory: () => void;
   resources: ResourceStatus[];
+  selectedBackendPreference: BackendPreference;
   selectedPresetId: TranscriptionPresetId;
   selectedPresetResolution: ResolvedTranscriptionPreset;
+  setSelectedBackendPreference: (preference: BackendPreference) => void;
   setSelectedPresetId: (presetId: TranscriptionPresetId) => void;
 };
 
@@ -43,7 +45,7 @@ const transcriptShortcuts = [
   { keys: 'Ctrl/Cmd+S', action: 'Save the active segment' }
 ];
 
-export function SettingsView({ appInfo, engines, exportDirectory, machineProfile, models, onChooseExportDirectory, onResetExportDirectory, resources, selectedPresetId, selectedPresetResolution, setSelectedPresetId }: SettingsViewProps): ReactElement {
+export function SettingsView({ appInfo, engines, exportDirectory, machineProfile, models, onChooseExportDirectory, onResetExportDirectory, resources, selectedBackendPreference, selectedPresetId, selectedPresetResolution, setSelectedBackendPreference, setSelectedPresetId }: SettingsViewProps): ReactElement {
   const readyResources = resources.filter((resource) => resource.available).length;
   const selectablePresets = visiblePresetOptions(resources);
   const installedModels = models.filter((model) => modelInstalled(resources, model.id));
@@ -72,9 +74,14 @@ export function SettingsView({ appInfo, engines, exportDirectory, machineProfile
               </select>
             </label>
             <label>
-              <span className="field-label">Resolved backend</span>
-              <select value={selectedPresetResolution.engineBackend} disabled>
-                <option value={selectedPresetResolution.engineBackend}>{selectedPresetResolution.engineBackend.toUpperCase()}</option>
+              <span className="field-label">Backend</span>
+              <select value={selectedBackendPreference} onChange={(event) => setSelectedBackendPreference(event.target.value as BackendPreference)}>
+                <option value="auto">Auto ({selectedPresetResolution.engineBackend.toUpperCase()})</option>
+                {backendOptions(machineProfile).map((backend) => (
+                  <option disabled={!backend.available} key={backend.backend} value={backend.backend}>
+                    {backend.label}{backend.available ? '' : ' unavailable'}
+                  </option>
+                ))}
               </select>
             </label>
           </div>

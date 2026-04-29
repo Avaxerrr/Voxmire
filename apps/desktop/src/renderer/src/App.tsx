@@ -24,7 +24,7 @@ import { SettingsView } from './views/settings-view';
 import { TranscriptView } from './views/transcript-view';
 import { exportResultLabel, extractDirectoryPath } from './lib/format';
 import { activeStatuses } from './lib/job-status';
-import { fallbackModels, resolvePresetSelection, selectUsablePreset } from './lib/presets';
+import { fallbackModels, resolveBackendPreference, resolvePresetSelection, selectUsablePreset, type BackendPreference } from './lib/presets';
 
 type AppInfo = {
   name: string;
@@ -43,6 +43,7 @@ export function App(): ReactElement {
   const [resources, setResources] = useState<ResourceStatus[]>([]);
   const [machineProfile, setMachineProfile] = useState<MachineProfile | null>(null);
   const [selectedPresetId, setSelectedPresetId] = useState<TranscriptionPresetId>('balanced');
+  const [selectedBackendPreference, setSelectedBackendPreference] = useState<BackendPreference>('auto');
   const [jobs, setJobs] = useState<JobWithSource[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [segments, setSegments] = useState<TranscriptSegment[]>([]);
@@ -71,6 +72,11 @@ export function App(): ReactElement {
   const selectedPresetResolution = useMemo(
     () => resolvePresetSelection(selectedPresetId, machineProfile, resources),
     [machineProfile, resources, selectedPresetId]
+  );
+
+  const selectedEngineBackend = useMemo(
+    () => resolveBackendPreference(selectedBackendPreference, selectedPresetResolution.engineBackend, machineProfile),
+    [machineProfile, selectedBackendPreference, selectedPresetResolution.engineBackend]
   );
 
   const selectedModel = useMemo(
@@ -235,7 +241,7 @@ export function App(): ReactElement {
 
       const created = await api.jobs.create({
         modelId: selectedPresetResolution.modelId,
-        engineBackend: selectedPresetResolution.engineBackend
+        engineBackend: selectedEngineBackend
       });
       if (created) {
         const updated = await api.jobs.list();
@@ -578,7 +584,7 @@ export function App(): ReactElement {
             onOpenJob={openJob}
             onOpenVoice={() => setView('voice')}
             onRenameProject={setRenameTarget}
-            selectedBackend={selectedPresetResolution.engineBackend}
+            selectedBackend={selectedEngineBackend}
             selectedModel={selectedModel}
           />
         ) : null}
@@ -622,8 +628,10 @@ export function App(): ReactElement {
             onChooseExportDirectory={() => void chooseExportDirectory()}
             onResetExportDirectory={() => void resetExportDirectory()}
             resources={resources}
+            selectedBackendPreference={selectedBackendPreference}
             selectedPresetId={selectedPresetId}
             selectedPresetResolution={selectedPresetResolution}
+            setSelectedBackendPreference={setSelectedBackendPreference}
             setSelectedPresetId={setSelectedPresetId}
           />
         ) : null}
@@ -638,8 +646,11 @@ export function App(): ReactElement {
           models={models}
           resources={resources}
           onClose={() => setImportOpen(false)}
+          machineProfile={machineProfile}
+          selectedBackendPreference={selectedBackendPreference}
           selectedPresetId={selectedPresetId}
           selectedPresetResolution={selectedPresetResolution}
+          setSelectedBackendPreference={setSelectedBackendPreference}
           setSelectedPresetId={setSelectedPresetId}
         />
       ) : null}

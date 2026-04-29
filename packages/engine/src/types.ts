@@ -1,4 +1,4 @@
-import type { EngineAvailability, EngineBackend, TranscriptionProgressEvent } from '@voxmire/contracts';
+import type { EngineAvailability, EngineBackend, EngineRuntimeId, TranscriptionProgressEvent } from '@voxmire/contracts';
 
 export type ResourcePaths = {
   projectRoot: string;

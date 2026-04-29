@@ -11,28 +11,67 @@ resources/
     ffprobe.exe
   engines/
     win32/
-      whisper-cpu.exe
-      whisper.dll
-      ggml.dll
-      ggml-base.dll
-      ggml-cpu.dll
+      cpu/
+        whisper-cli.exe
+        whisper.dll
+        ggml.dll
+        ggml-base.dll
+        ggml-cpu.dll
   models/
     ggml-large-v3-turbo.bin
 ```
 
-The app can open without these files, but transcription will fail with a clear missing-resource message until the required files exist.
+The app can open without these files, but transcription will fail with a clear missing-resource message until at least the plain CPU runtime and required model exist.
 
-## Optional Resources
+## Optional Engine Runtimes
+
+Keep each whisper.cpp build in its own folder because the builds contain overlapping DLL names that must stay paired with their matching executable.
 
 ```txt
-resources/engines/win32/whisper-cuda.exe
-resources/engines/win32/whisper-vulkan.exe
+resources/engines/win32/cuda-12.4/
+  whisper-cli.exe
+  whisper.dll
+  ggml.dll
+  ggml-base.dll
+  ggml-cpu.dll
+  ggml-cuda.dll
+  cublas64_12.dll
+  cublasLt64_12.dll
+  cudart64_12.dll
+
+resources/engines/win32/vulkan/
+  whisper-cli.exe
+  whisper.dll
+  ggml.dll
+  ggml-base.dll
+  ggml-cpu.dll
+  ggml-vulkan.dll
+
+resources/engines/win32/cpu-blas/
+  whisper-cli.exe
+  whisper.dll
+  ggml.dll
+  ggml-base.dll
+  ggml-cpu.dll
+  ggml-blas.dll
+  libopenblas.dll
+```
+
+Runtime preference is:
+
+```txt
+CUDA 12.4 -> Vulkan -> BLAS CPU -> plain CPU
+```
+
+Plain CPU remains the final fallback. CUDA and Vulkan are optional acceleration paths; BLAS CPU is the preferred CPU path when present.
+
+## Optional Models
+
+```txt
 resources/models/ggml-large-v3.bin
 resources/models/ggml-distil-large-v3.5.bin
 resources/models/ggml-medium.bin
 ```
-
-CUDA and Vulkan are optional follow-up engines. CPU remains the mandatory fallback.
 
 ## Source Locations
 

@@ -36,7 +36,7 @@ import {
   updateTranscriptionChunkStatus
 } from '@voxmire/storage';
 import { ensureDirectory } from './directories';
-import { createWhisperEngine } from './engine-selection';
+import { createWhisperEnginePlan, promoteFallbackEngine, type WhisperEngineCandidate } from './engine-selection';
 import { writeTranscriptExport } from './exports';
 import { createSourceFile } from './source-files';
 import { calculateChunkedProgress, offsetSegment, prepareJobChunks } from './transcription-chunks';
@@ -451,13 +451,19 @@ export class VoxmireRuntime {
         details: { modelPath }
       });
 
-      const engine = createWhisperEngine({
+      const enginePlan = createWhisperEnginePlan({
         db: this.options.db,
         resources: this.options.resources,
         requestedBackend: jobWithSource.job.engineBackend,
         jobId,
         log: (event) => this.log(event)
       });
+
+      if (enginePlan.length === 0) {
+        throw new Error(`No compatible whisper.cpp engine runtime is available for ${jobWithSource.job.engineBackend}.`);
+      }
+
+      let activeEngineIndex = 0;
       let nextSegmentIndex = getTranscriptSegments(this.options.db, jobId).length;
 
       for (const chunk of chunks) {
@@ -471,72 +477,21 @@ export class VoxmireRuntime {
 
         currentChunk = chunk;
         activeJob.currentChunkId = chunk.id;
-        updateTranscriptionChunkStatus(this.options.db, chunk.id, 'transcribing');
-        this.log({
-          level: 'info',
-          event: 'chunk.transcribe.started',
+        const result = await this.transcribeChunkWithFallback({
           jobId,
-          chunkId: chunk.id,
-          message: `Transcribing chunk ${chunk.index}.`,
-          details: {
-            index: chunk.index,
-            startSeconds: chunk.startSeconds,
-            endSeconds: chunk.endSeconds,
-            filePath: chunk.filePath
-          }
-        });
-
-        for await (const event of engine.transcribe({
-          jobId,
-          sourcePath: chunk.filePath,
+          chunk,
+          chunks,
           modelPath,
           outputDirectory,
-          outputBaseName: `${jobId}-chunk-${chunk.index.toString().padStart(4, '0')}`,
-          signal: abortController.signal
-        })) {
-          if (abortController.signal.aborted) {
-            return;
-          }
-
-          const progress = calculateChunkedProgress(chunk.index, chunks.length, event.progress);
-          const segment = event.segment
-            ? saveTranscriptSegment(this.options.db, offsetSegment(event.segment, chunk, nextSegmentIndex++))
-            : null;
-          if (segment) {
-            this.log({
-              level: 'info',
-              event: 'segment.saved',
-              jobId,
-              chunkId: chunk.id,
-              message: `Saved transcript segment ${segment.index}.`,
-              details: {
-                segmentId: segment.id,
-                startSeconds: segment.startSeconds,
-                endSeconds: segment.endSeconds
-              }
-            });
-          }
-
-          updateJobProgress(this.options.db, jobId, progress);
-          this.emitProgress({
-            jobId,
-            status: 'transcribing',
-            progress,
-            message: segment ? 'Transcript segment saved.' : event.message,
-            segment
-          });
-        }
-
-        updateTranscriptionChunkStatus(this.options.db, chunk.id, 'completed');
-        activeJob.currentChunkId = null;
-        this.log({
-          level: 'info',
-          event: 'chunk.transcribe.completed',
-          jobId,
-          chunkId: chunk.id,
-          message: `Completed chunk ${chunk.index}.`,
-          details: { index: chunk.index }
+          abortController,
+          activeJob,
+          enginePlan,
+          activeEngineIndex,
+          nextSegmentIndex
         });
+        activeEngineIndex = result.activeEngineIndex;
+        nextSegmentIndex = result.nextSegmentIndex;
+        currentChunk = null;
       }
 
       this.updateAndEmit(jobId, 'completed', 1, 'Transcription completed.');
@@ -572,6 +527,130 @@ export class VoxmireRuntime {
     }
   }
 
+  private async transcribeChunkWithFallback(options: {
+    jobId: string;
+    chunk: TranscriptionChunk;
+    chunks: TranscriptionChunk[];
+    modelPath: string;
+    outputDirectory: string;
+    abortController: AbortController;
+    activeJob: ActiveJob;
+    enginePlan: WhisperEngineCandidate[];
+    activeEngineIndex: number;
+    nextSegmentIndex: number;
+  }): Promise<{ activeEngineIndex: number; nextSegmentIndex: number }> {
+    let activeEngineIndex = options.activeEngineIndex;
+    let nextSegmentIndex = options.nextSegmentIndex;
+
+    while (activeEngineIndex < options.enginePlan.length) {
+      const candidate = options.enginePlan[activeEngineIndex];
+      if (!candidate) {
+        break;
+      }
+
+      let savedSegmentCount = 0;
+      updateTranscriptionChunkStatus(this.options.db, options.chunk.id, 'transcribing');
+      this.log({
+        level: 'info',
+        event: 'chunk.transcribe.started',
+        jobId: options.jobId,
+        chunkId: options.chunk.id,
+        message: `Transcribing chunk ${options.chunk.index} with ${candidate.label}.`,
+        details: {
+          index: options.chunk.index,
+          startSeconds: options.chunk.startSeconds,
+          endSeconds: options.chunk.endSeconds,
+          filePath: options.chunk.filePath,
+          runtimeId: candidate.engine.runtimeId
+        }
+      });
+
+      try {
+        for await (const event of candidate.engine.transcribe({
+          jobId: options.jobId,
+          sourcePath: options.chunk.filePath,
+          modelPath: options.modelPath,
+          outputDirectory: options.outputDirectory,
+          outputBaseName: `${options.jobId}-chunk-${options.chunk.index.toString().padStart(4, '0')}-${candidate.engine.runtimeId}`,
+          signal: options.abortController.signal
+        })) {
+          if (options.abortController.signal.aborted) {
+            return { activeEngineIndex, nextSegmentIndex };
+          }
+
+          const progress = calculateChunkedProgress(options.chunk.index, options.chunks.length, event.progress);
+          const segment = event.segment
+            ? saveTranscriptSegment(this.options.db, offsetSegment(event.segment, options.chunk, nextSegmentIndex++))
+            : null;
+          if (segment) {
+            savedSegmentCount += 1;
+            this.log({
+              level: 'info',
+              event: 'segment.saved',
+              jobId: options.jobId,
+              chunkId: options.chunk.id,
+              message: `Saved transcript segment ${segment.index}.`,
+              details: {
+                segmentId: segment.id,
+                startSeconds: segment.startSeconds,
+                endSeconds: segment.endSeconds,
+                runtimeId: candidate.engine.runtimeId
+              }
+            });
+          }
+
+          updateJobProgress(this.options.db, options.jobId, progress);
+          this.emitProgress({
+            jobId: options.jobId,
+            status: 'transcribing',
+            progress,
+            message: segment ? 'Transcript segment saved.' : event.message,
+            segment
+          });
+        }
+
+        updateTranscriptionChunkStatus(this.options.db, options.chunk.id, 'completed');
+        options.activeJob.currentChunkId = null;
+        this.log({
+          level: 'info',
+          event: 'chunk.transcribe.completed',
+          jobId: options.jobId,
+          chunkId: options.chunk.id,
+          message: `Completed chunk ${options.chunk.index}.`,
+          details: { index: options.chunk.index, runtimeId: candidate.engine.runtimeId }
+        });
+        return { activeEngineIndex, nextSegmentIndex };
+      } catch (error) {
+        if (options.abortController.signal.aborted) {
+          return { activeEngineIndex, nextSegmentIndex };
+        }
+
+        const message = error instanceof Error ? error.message : 'Unknown transcription failure.';
+        if (savedSegmentCount > 0) {
+          throw new Error(`${candidate.label} failed after saving ${savedSegmentCount} transcript segment(s): ${message}`);
+        }
+
+        const nextCandidate = options.enginePlan[activeEngineIndex + 1];
+        if (!nextCandidate) {
+          throw error;
+        }
+
+        updateTranscriptionChunkStatus(this.options.db, options.chunk.id, 'queued', message);
+        promoteFallbackEngine({
+          db: this.options.db,
+          failed: candidate,
+          next: nextCandidate,
+          jobId: options.jobId,
+          chunkId: options.chunk.id,
+          reason: message,
+          log: (event) => this.log(event)
+        });
+        activeEngineIndex += 1;
+      }
+    }
+
+    throw new Error('No fallback whisper.cpp engine runtime could complete the transcription chunk.');
+  }
   private updateAndEmit(jobId: string, status: JobStatus, progress: number, message: string): void {
     updateJobStatus(this.options.db, jobId, status, { progress });
     this.emitProgress({ jobId, status, progress, message, segment: null });

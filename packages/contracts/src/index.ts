@@ -17,6 +17,8 @@ export const engineKindSchema = z.enum(['whisper.cpp']);
 
 export const engineBackendSchema = z.enum(['cpu', 'cuda', 'vulkan']);
 
+export const engineRuntimeIdSchema = z.enum(['cuda-12.4', 'vulkan', 'cpu-blas', 'cpu']);
+
 export const modelIdSchema = z.enum(['large-v3-turbo', 'large-v3', 'distil-large-v3.5', 'medium']);
 
 export const transcriptionPresetIdSchema = z.enum(['balanced', 'fast', 'quality', 'low-memory']);
@@ -110,6 +112,7 @@ export const transcriptionPresetProfileSchema = z.object({
 
 export const engineAvailabilitySchema = z.object({
   id: z.string().min(1),
+  runtimeId: engineRuntimeIdSchema,
   kind: engineKindSchema,
   backend: engineBackendSchema,
   label: z.string().min(1),
@@ -273,6 +276,7 @@ export type ExportFormat = z.infer<typeof exportFormatSchema>;
 export type ExportTextMode = z.infer<typeof exportTextModeSchema>;
 export type EngineKind = z.infer<typeof engineKindSchema>;
 export type EngineBackend = z.infer<typeof engineBackendSchema>;
+export type EngineRuntimeId = z.infer<typeof engineRuntimeIdSchema>;
 export type ModelId = z.infer<typeof modelIdSchema>;
 export type TranscriptionPresetId = z.infer<typeof transcriptionPresetIdSchema>;
 export type TranscriptionPresetBackendPreference = z.infer<typeof transcriptionPresetBackendPreferenceSchema>;

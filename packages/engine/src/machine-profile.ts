@@ -1,41 +1,94 @@
 import { existsSync } from 'node:fs';
 import { cpus, totalmem } from 'node:os';
-import { basename, join } from 'node:path';
-import type { EngineAvailability, EngineBackend, MachineProfile, ModelId, ResourceStatus } from '@voxmire/contracts';
+import { basename, dirname, join } from 'node:path';
+import type {
+  EngineAvailability,
+  EngineBackend,
+  EngineRuntimeId,
+  MachineProfile,
+  ModelId,
+  ResourceStatus
+} from '@voxmire/contracts';
 import { detectCommand, type CommandDetectionResult } from './process-runner';
 import {
   defaultModelPath,
-  platformResourceDirectory,
   resolveFfmpegExecutable,
   resolveFfprobeExecutable,
-  resolveWhisperExecutable
+  resolveLegacyWhisperExecutable,
+  resolveWhisperRuntimeDirectory,
+  resolveWhisperRuntimeExecutable,
+  resolveWhisperRuntimeFile,
+  whisperRuntimeDefinition,
+  whisperRuntimeDefinitions
 } from './resources';
 import type { ResourcePaths } from './types';
 
-export function detectWhisperEngine(paths: ResourcePaths, backend: EngineBackend): EngineAvailability {
-  const executablePath = resolveWhisperExecutable(paths, backend);
-  const available = existsSync(executablePath);
+export type WhisperRuntimeAvailability = EngineAvailability & {
+  runtimeId: EngineRuntimeId;
+  requiredFilePaths: readonly string[];
+  missingFilePaths: readonly string[];
+};
+
+export function detectWhisperRuntime(paths: ResourcePaths, runtimeId: EngineRuntimeId): WhisperRuntimeAvailability {
+  const definition = whisperRuntimeDefinition(runtimeId);
+  const isolatedExecutablePath = resolveWhisperRuntimeExecutable(paths, runtimeId);
+  const legacyExecutablePath = resolveLegacyWhisperExecutable(paths, runtimeId);
+  const executablePath = existsSync(isolatedExecutablePath)
+    ? isolatedExecutablePath
+    : legacyExecutablePath && existsSync(legacyExecutablePath)
+      ? legacyExecutablePath
+      : isolatedExecutablePath;
+  const runtimeDirectory = dirname(executablePath);
+  const requiredFilePaths = definition.requiredFiles.map((fileName) => join(runtimeDirectory, fileName));
+  const legacyExecutableRequiredPath = legacyExecutablePath && executablePath === legacyExecutablePath ? legacyExecutablePath : null;
+  const requiredPaths = legacyExecutableRequiredPath
+    ? requiredFilePaths.map((filePath) => filePath.endsWith(definition.requiredFiles[0] ?? '') ? legacyExecutableRequiredPath : filePath)
+    : requiredFilePaths;
+  const missingFilePaths = requiredPaths.filter((filePath) => !existsSync(filePath));
+  const available = missingFilePaths.length === 0;
 
   return {
-    id: `whisper.cpp-${backend}`,
+    id: `whisper.cpp-${runtimeId}`,
+    runtimeId,
     kind: 'whisper.cpp',
-    backend,
-    label: backend === 'cpu' ? 'whisper.cpp CPU' : `whisper.cpp ${backend.toUpperCase()}`,
+    backend: definition.backend,
+    label: definition.label,
     available,
     executablePath: available ? executablePath : null,
-    reason: available ? null : `Missing ${basename(executablePath)} in ${executablePath}`
+    reason: available ? null : missingRuntimeReason(runtimeId, executablePath, missingFilePaths),
+    requiredFilePaths: requiredPaths,
+    missingFilePaths
+  };
+}
+
+export function detectWhisperEngine(paths: ResourcePaths, backend: EngineBackend): EngineAvailability {
+  const runtimeIds: readonly EngineRuntimeId[] = backend === 'cuda' ? ['cuda-12.4'] : backend === 'vulkan' ? ['vulkan'] : ['cpu-blas', 'cpu'];
+  const runtimes = runtimeIds.map((runtimeId) => detectWhisperRuntime(paths, runtimeId));
+  const available = runtimes.find((runtime) => runtime.available);
+  if (available) {
+    return available;
+  }
+
+  const first = runtimes[0] ?? detectWhisperRuntime(paths, 'cpu');
+  return {
+    ...first,
+    id: `whisper.cpp-${backend}`,
+    backend,
+    label: backend === 'cpu' ? 'whisper.cpp CPU' : `whisper.cpp ${backend.toUpperCase()}`,
+    reason: runtimes.map((runtime) => runtime.reason).filter(Boolean).join(' ') || first.reason
   };
 }
 
 export function detectWhisperEngines(paths: ResourcePaths): EngineAvailability[] {
-  return ['cpu', 'cuda', 'vulkan'].map((backend) => detectWhisperEngine(paths, backend as EngineBackend));
+  return whisperRuntimeDefinitions().map((runtime) => detectWhisperRuntime(paths, runtime.id));
 }
 
 export async function getMachineProfile(paths: ResourcePaths): Promise<MachineProfile> {
-  const engines = detectWhisperEngines(paths);
+  const runtimes = whisperRuntimeDefinitions().map((runtime) => detectWhisperRuntime(paths, runtime.id));
+  const runtimeChecks = new Map(await Promise.all(runtimes.map((runtime) => checkWhisperRuntime(runtime))));
   const nvidiaGpu = await detectCommand('nvidia-smi', ['--query-gpu=name', '--format=csv,noheader'], 1600);
   const vulkanRuntime = await detectCommand('vulkaninfo', ['--summary'], 1600);
-  const recommendedBackend = chooseRecommendedBackend(engines, nvidiaGpu.available, vulkanRuntime.available);
+  const recommendedBackend = chooseRecommendedBackend(runtimes, runtimeChecks, nvidiaGpu.available, vulkanRuntime.available);
   const totalMemoryBytes = totalmem();
 
   return {
@@ -45,55 +98,52 @@ export async function getMachineProfile(paths: ResourcePaths): Promise<MachinePr
     totalMemoryBytes,
     recommendedBackend,
     recommendedModelId: chooseRecommendedModel(totalMemoryBytes),
-    backends: engines.map((engine) => {
-      const runtimeAvailable =
-        engine.backend === 'cpu' ||
-        (engine.backend === 'cuda' && nvidiaGpu.available) ||
-        (engine.backend === 'vulkan' && vulkanRuntime.available);
-      const runtimeOutput = engine.backend === 'cuda' ? nvidiaGpu.output : engine.backend === 'vulkan' ? vulkanRuntime.output : null;
+    backends: (['cpu', 'cuda', 'vulkan'] as const).map((backend) => {
+      const backendRuntimes = runtimes.filter((runtime) => runtime.backend === backend);
+      const executableAvailable = backendRuntimes.some((runtime) => runtime.available);
+      const runtimeAvailable = backendRuntimes.some((runtime) => runtime.available && runtimeChecks.get(runtime.runtimeId)?.available);
       return {
-        backend: engine.backend,
-        label: engine.label,
-        executableAvailable: engine.available,
+        backend,
+        label: backendLabel(backend, backendRuntimes),
+        executableAvailable,
         runtimeAvailable,
-        recommended: engine.backend === recommendedBackend,
-        reason: backendReason(engine, runtimeAvailable, runtimeOutput)
+        recommended: backend === recommendedBackend,
+        reason: backendReason(backend, backendRuntimes, runtimeChecks, nvidiaGpu, vulkanRuntime)
       };
     }),
-    notes: buildMachineProfileNotes(nvidiaGpu, vulkanRuntime)
+    notes: buildMachineProfileNotes(runtimes, runtimeChecks, nvidiaGpu, vulkanRuntime)
   };
 }
 
 export function getResourceStatus(paths: ResourcePaths): ResourceStatus[] {
   const ffmpegPath = resolveFfmpegExecutable(paths);
   const ffprobePath = resolveFfprobeExecutable(paths);
-  const engineBackends: EngineBackend[] = ['cpu', 'cuda', 'vulkan'];
   const modelIds: ModelId[] = ['large-v3-turbo', 'large-v3', 'distil-large-v3.5', 'medium'];
+  const runtimeStatuses = whisperRuntimeDefinitions().flatMap((definition) => {
+    const detected = detectWhisperRuntime(paths, definition.id);
+    const runtimeDirectory = dirname(detected.requiredFilePaths[0] ?? resolveWhisperRuntimeDirectory(paths, definition.id));
+    const runtimeRequired = definition.id === 'cpu';
+    return definition.requiredFiles.map((fileName, index) => resourceStatus(
+      `whisper-${definition.id}-${fileName}`,
+      'whisper-engine',
+      `${definition.label} ${fileName}`,
+      runtimeRequired,
+      detected.requiredFilePaths[index] ?? resolveWhisperRuntimeFile(paths, definition.id, fileName),
+      'https://github.com/ggml-org/whisper.cpp/releases'
+    )).concat(resourceStatus(
+      `whisper-${definition.id}-directory`,
+      'whisper-engine',
+      `${definition.label} folder`,
+      false,
+      runtimeDirectory,
+      'https://github.com/ggml-org/whisper.cpp/releases'
+    ));
+  });
 
   return [
     resourceStatus('ffmpeg', 'ffmpeg', 'FFmpeg', true, ffmpegPath, 'https://www.gyan.dev/ffmpeg/builds/'),
     resourceStatus('ffprobe', 'ffprobe', 'ffprobe', true, ffprobePath, 'https://www.gyan.dev/ffmpeg/builds/'),
-    ...engineBackends.map((backend) => {
-      const path = resolveWhisperExecutable(paths, backend);
-      return resourceStatus(
-        `whisper-${backend}`,
-        'whisper-engine',
-        `whisper.cpp ${backend.toUpperCase()}`,
-        backend === 'cpu',
-        path,
-        'https://github.com/ggml-org/whisper.cpp/releases'
-      );
-    }),
-    ...['whisper.dll', 'ggml.dll', 'ggml-base.dll', 'ggml-cpu.dll'].map((fileName) =>
-      resourceStatus(
-        `whisper-runtime-${fileName}`,
-        'whisper-engine',
-        fileName,
-        true,
-        join(paths.projectRoot, 'resources', 'engines', platformResourceDirectory(), fileName),
-        'https://github.com/ggml-org/whisper.cpp/releases'
-      )
-    ),
+    ...runtimeStatuses,
     ...modelIds.map((modelId) => {
       const path = defaultModelPath(paths, modelId);
       return resourceStatus(
@@ -108,21 +158,42 @@ export function getResourceStatus(paths: ResourcePaths): ResourceStatus[] {
   ];
 }
 
+function missingRuntimeReason(runtimeId: EngineRuntimeId, executablePath: string, missingFilePaths: readonly string[]): string {
+  const missing = missingFilePaths.map((filePath) => basename(filePath)).join(', ');
+  return `Missing ${missing} for ${runtimeId} runtime near ${executablePath}`;
+}
+
+async function checkWhisperRuntime(runtime: WhisperRuntimeAvailability): Promise<[EngineRuntimeId, CommandDetectionResult]> {
+  if (!runtime.available || !runtime.executablePath) {
+    return [runtime.runtimeId, { available: false, output: runtime.reason }];
+  }
+
+  return [runtime.runtimeId, await detectCommand(runtime.executablePath, ['--help'], 2500)];
+}
+
 function chooseRecommendedBackend(
-  engines: EngineAvailability[],
+  runtimes: readonly WhisperRuntimeAvailability[],
+  runtimeChecks: ReadonlyMap<EngineRuntimeId, CommandDetectionResult>,
   hasNvidiaGpu: boolean,
   hasVulkanRuntime: boolean
 ): EngineBackend {
-  const available = new Map(engines.map((engine) => [engine.backend, engine.available]));
-  if (available.get('cuda') && hasNvidiaGpu) {
+  if (runtimeReady('cuda-12.4', runtimes, runtimeChecks) && hasNvidiaGpu) {
     return 'cuda';
   }
 
-  if (available.get('vulkan') && hasVulkanRuntime) {
+  if (runtimeReady('vulkan', runtimes, runtimeChecks) && hasVulkanRuntime) {
     return 'vulkan';
   }
 
   return 'cpu';
+}
+
+function runtimeReady(
+  runtimeId: EngineRuntimeId,
+  runtimes: readonly WhisperRuntimeAvailability[],
+  runtimeChecks: ReadonlyMap<EngineRuntimeId, CommandDetectionResult>
+): boolean {
+  return Boolean(runtimes.find((runtime) => runtime.runtimeId === runtimeId)?.available && runtimeChecks.get(runtimeId)?.available);
 }
 
 function chooseRecommendedModel(totalMemoryBytes: number): ModelId {
@@ -142,39 +213,69 @@ function chooseRecommendedModel(totalMemoryBytes: number): ModelId {
   return 'medium';
 }
 
-function backendReason(engine: EngineAvailability, runtimeAvailable: boolean, runtimeOutput: string | null): string | null {
-  if (!engine.available) {
-    return engine.reason;
+function backendLabel(backend: EngineBackend, runtimes: readonly WhisperRuntimeAvailability[]): string {
+  if (backend === 'cpu') {
+    const hasBlas = runtimes.some((runtime) => runtime.runtimeId === 'cpu-blas' && runtime.available);
+    return hasBlas ? 'whisper.cpp CPU (BLAS preferred)' : 'whisper.cpp CPU';
   }
 
-  if (!runtimeAvailable) {
-    return engine.backend === 'cuda'
-      ? 'CUDA binary is present, but nvidia-smi did not report an NVIDIA GPU.'
-      : 'Vulkan binary is present, but vulkaninfo was not available.';
+  return backend === 'cuda' ? 'whisper.cpp CUDA' : 'whisper.cpp Vulkan';
+}
+
+function backendReason(
+  backend: EngineBackend,
+  runtimes: readonly WhisperRuntimeAvailability[],
+  runtimeChecks: ReadonlyMap<EngineRuntimeId, CommandDetectionResult>,
+  nvidiaGpu: CommandDetectionResult,
+  vulkanRuntime: CommandDetectionResult
+): string | null {
+  const ready = runtimes.find((runtime) => runtime.available && runtimeChecks.get(runtime.runtimeId)?.available);
+  if (ready) {
+    if (backend === 'cpu') {
+      return ready.runtimeId === 'cpu-blas' ? 'BLAS CPU runtime is ready; plain CPU remains the final fallback.' : 'Plain CPU fallback is ready.';
+    }
+
+    const output = runtimeChecks.get(ready.runtimeId)?.output;
+    return output?.split(/\r?\n/).find((line) => line.trim())?.trim() ?? `${ready.label} is ready.`;
   }
 
-  if (engine.backend === 'cpu') {
-    return 'CPU fallback is available.';
+  const missing = runtimes.map((runtime) => runtime.reason).filter(Boolean).join(' ');
+  if (missing) {
+    return missing;
   }
 
-  return runtimeOutput?.split(/\r?\n/).find(Boolean)?.trim() ?? null;
+  if (backend === 'cuda' && !nvidiaGpu.available) {
+    return 'CUDA requires a CUDA runtime and a detectable NVIDIA GPU.';
+  }
+
+  if (backend === 'vulkan' && !vulkanRuntime.available) {
+    return 'Vulkan requires a Vulkan runtime and driver-visible Vulkan device.';
+  }
+
+  return null;
 }
 
 function buildMachineProfileNotes(
+  runtimes: readonly WhisperRuntimeAvailability[],
+  runtimeChecks: ReadonlyMap<EngineRuntimeId, CommandDetectionResult>,
   nvidiaGpu: CommandDetectionResult,
   vulkanRuntime: CommandDetectionResult
 ): string[] {
-  const notes = ['CPU fallback remains available for every supported machine.'];
+  const notes = ['Plain CPU remains the final fallback for every supported machine.'];
+  if (runtimeReady('cpu-blas', runtimes, runtimeChecks)) {
+    notes.push('BLAS CPU runtime is available and will be preferred over plain CPU when GPU acceleration is not usable.');
+  }
+
   if (nvidiaGpu.available && nvidiaGpu.output) {
     notes.push(`NVIDIA GPU detected: ${nvidiaGpu.output.split(/\r?\n/)[0]?.trim() ?? 'available'}.`);
   }
 
-  if (!nvidiaGpu.available) {
-    notes.push('CUDA requires a whisper CUDA binary and a detectable NVIDIA runtime.');
+  if (!runtimeReady('cuda-12.4', runtimes, runtimeChecks)) {
+    notes.push('CUDA requires the CUDA 12.4 whisper runtime folder and a compatible NVIDIA driver.');
   }
 
-  if (!vulkanRuntime.available) {
-    notes.push('Vulkan requires a whisper Vulkan binary and a local vulkaninfo runtime check.');
+  if (!runtimeReady('vulkan', runtimes, runtimeChecks) || !vulkanRuntime.available) {
+    notes.push('Vulkan requires the Vulkan whisper runtime folder and a local Vulkan runtime.');
   }
 
   return notes;

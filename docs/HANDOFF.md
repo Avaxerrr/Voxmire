@@ -141,16 +141,18 @@ Reason:
 Recommended Windows sidecar binaries:
 
 ```txt
-resources/engines/win32/whisper-cpu.exe
-resources/engines/win32/whisper-cuda.exe
-resources/engines/win32/whisper-vulkan.exe
+resources/engines/win32/cuda-12.4/whisper-cli.exe
+resources/engines/win32/vulkan/whisper-cli.exe
+resources/engines/win32/cpu-blas/whisper-cli.exe
+resources/engines/win32/cpu/whisper-cli.exe
 ```
 
 Runtime preference:
 
-1. CUDA when NVIDIA support is available and working.
+1. CUDA 12.4 when NVIDIA support is available and working.
 2. Vulkan when available and stable.
-3. CPU fallback always.
+3. BLAS CPU when present.
+4. Plain CPU fallback always.
 
 ## faster-whisper Decision
 

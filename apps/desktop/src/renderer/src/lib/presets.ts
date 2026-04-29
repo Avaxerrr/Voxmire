@@ -17,6 +17,8 @@ export type BackendOption = {
   label: string;
 };
 
+export type BackendPreference = 'auto' | EngineBackend;
+
 export const fallbackModels: ModelProfile[] = [
   {
     id: 'large-v3-turbo',
@@ -141,6 +143,19 @@ export function selectUsableBackend(machineProfile: MachineProfile): EngineBacke
   }
 
   return 'cpu';
+}
+
+export function resolveBackendPreference(
+  preference: BackendPreference,
+  resolvedBackend: EngineBackend,
+  machineProfile: MachineProfile | null
+): EngineBackend {
+  if (preference === 'auto') {
+    return resolvedBackend;
+  }
+
+  const selected = backendOptions(machineProfile).find((option) => option.backend === preference);
+  return selected?.available ? preference : resolvedBackend;
 }
 
 export function modelLabel(models: ModelProfile[], modelId: ModelId): string {

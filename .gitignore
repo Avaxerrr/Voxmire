@@ -27,7 +27,6 @@ resources/engines/**/*
 /ffprobe.exe
 /ffplay.exe
 /ggml-*.bin
-/whisper/
 /whisper-binaries/
 /ffmpeg-*/
 /whisper-bin-*/

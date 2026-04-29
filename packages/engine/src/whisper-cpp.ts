@@ -3,27 +3,34 @@ import { join } from 'node:path';
 import type {
   EngineAvailability,
   EngineBackend,
+  EngineRuntimeId,
   TranscriptSegment,
   TranscriptionProgressEvent
 } from '@voxmire/contracts';
-import { detectWhisperEngine } from './machine-profile';
+import { detectWhisperRuntime } from './machine-profile';
 import { AsyncValueQueue, runProcess } from './process-runner';
+import { whisperRuntimeDefinition } from './resources';
 import type { ResourcePaths, TranscriptionEngine, TranscriptionInput } from './types';
 import { readWhisperJsonSegments } from './whisper-json';
 import { parseWhisperProgressLine } from './whisper-progress';
 
 export class WhisperCppEngine implements TranscriptionEngine {
   readonly id: string;
+  readonly backend: EngineBackend;
+  readonly runtimeId: EngineRuntimeId;
 
   constructor(
     private readonly paths: ResourcePaths,
-    readonly backend: EngineBackend
+    runtimeId: EngineRuntimeId = 'cpu'
   ) {
-    this.id = `whisper.cpp-${backend}`;
+    const definition = whisperRuntimeDefinition(runtimeId);
+    this.runtimeId = runtimeId;
+    this.backend = definition.backend;
+    this.id = `whisper.cpp-${runtimeId}`;
   }
 
   async detect(): Promise<EngineAvailability> {
-    return detectWhisperEngine(this.paths, this.backend);
+    return detectWhisperRuntime(this.paths, this.runtimeId);
   }
 
   async *transcribe(input: TranscriptionInput): AsyncIterable<TranscriptionProgressEvent> {
@@ -45,7 +52,8 @@ export class WhisperCppEngine implements TranscriptionEngine {
     };
 
     const outputBase = join(input.outputDirectory, input.outputBaseName ?? input.jobId);
-    const args = ['-m', input.modelPath, '-f', input.sourcePath, '-of', outputBase, '-oj', '-ojf', '-osrt', '-ovtt'];
+    const runtimeArgs = whisperRuntimeDefinition(this.runtimeId).extraArgs;
+    const args = ['-m', input.modelPath, '-f', input.sourcePath, '-of', outputBase, '-oj', '-ojf', '-osrt', '-ovtt', ...runtimeArgs];
     const progressQueue = new AsyncValueQueue<number>();
     let lastWhisperProgress = 0;
     const resultPromise = runProcess(

@@ -1,13 +1,21 @@
 export { probeMediaFile, prepareAudioChunks } from './ffmpeg';
-export { detectWhisperEngine, detectWhisperEngines, getMachineProfile, getResourceStatus } from './machine-profile';
+export { detectWhisperEngine, detectWhisperEngines, detectWhisperRuntime, getMachineProfile, getResourceStatus } from './machine-profile';
 export {
   defaultModelPath,
   resolveFfmpegExecutable,
   resolveFfprobeExecutable,
   resolveWhisperExecutable,
-  sourceExtension
+  resolveWhisperRuntimeDirectory,
+  resolveWhisperRuntimeExecutable,
+  resolveWhisperRuntimeFile,
+  sourceExtension,
+  whisperRuntimeDefinition,
+  whisperRuntimeDefinitions,
+  whisperRuntimeIdsForBackend
 } from './resources';
 export type { ProcessResult } from './process-runner';
+export type { WhisperRuntimeDefinition } from './resources';
+export type { WhisperRuntimeAvailability } from './machine-profile';
 export type {
   PreparedAudioChunk,
   PrepareAudioOptions,
