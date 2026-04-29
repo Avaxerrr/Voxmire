@@ -245,6 +245,85 @@ describe('storage repositories', () => {
     db.close();
   });
 
+  it('maps stored timestamp token suffixes back to transcript words during split', () => {
+    const db = openVoxmireDatabase(':memory:');
+    const created = createJobRecord(db, {
+      modelId: 'large-v3-turbo',
+      sourceFile: {
+        id: 'src_1',
+        path: 'C:/audio/example.wav',
+        name: 'example.wav',
+        extension: 'wav',
+        sizeBytes: 100,
+        durationSeconds: 2,
+        createdAt: '2026-04-23T00:00:00.000Z'
+      }
+    });
+
+    saveTranscriptSegment(db, {
+      id: 'seg_1',
+      jobId: created.job.id,
+      index: 0,
+      startSeconds: 0,
+      endSeconds: 2,
+      text: 'Take care',
+      wordTimings: [
+        { text: 'Take', startSeconds: 0.1, endSeconds: 0.5 },
+        { text: 'careTT_906', startSeconds: 0.5, endSeconds: 1 }
+      ],
+      alignmentStatus: 'aligned',
+      confidence: 0.8,
+      createdAt: '2026-04-23T00:00:00.000Z'
+    });
+
+    const splitSegments = splitTranscriptSegment(db, created.job.id, 'seg_1', 4);
+
+    expect(splitSegments.map((segment) => segment.text)).toEqual(['Take', 'care']);
+    expect(splitSegments[0]?.wordTimings?.map((word) => word.text)).toEqual(['Take']);
+    expect(splitSegments[1]?.wordTimings?.map((word) => word.text)).toEqual(['careTT_906']);
+    expect(splitSegments[1]?.alignmentStatus).toBe('aligned');
+    db.close();
+  });
+
+  it('partitions compact word timings when visible text contains a hyphenated compound', () => {
+    const db = openVoxmireDatabase(':memory:');
+    const created = createJobRecord(db, {
+      modelId: 'large-v3-turbo',
+      sourceFile: {
+        id: 'src_1',
+        path: 'C:/audio/example.wav',
+        name: 'example.wav',
+        extension: 'wav',
+        sizeBytes: 100,
+        durationSeconds: 2,
+        createdAt: '2026-04-23T00:00:00.000Z'
+      }
+    });
+
+    saveTranscriptSegment(db, {
+      id: 'seg_1',
+      jobId: created.job.id,
+      index: 0,
+      startSeconds: 0,
+      endSeconds: 2,
+      text: 'award-winning piano',
+      wordTimings: [
+        { text: 'awardwinning', startSeconds: 0.1, endSeconds: 1.4 },
+        { text: 'piano', startSeconds: 1.5, endSeconds: 1.9 }
+      ],
+      alignmentStatus: 'aligned',
+      confidence: 0.8,
+      createdAt: '2026-04-23T00:00:00.000Z'
+    });
+
+    const splitSegments = splitTranscriptSegment(db, created.job.id, 'seg_1', 'award-winning'.length);
+
+    expect(splitSegments.map((segment) => segment.text)).toEqual(['award-winning', 'piano']);
+    expect(splitSegments[0]?.wordTimings?.map((word) => word.text)).toEqual(['awardwinning']);
+    expect(splitSegments[1]?.wordTimings?.map((word) => word.text)).toEqual(['piano']);
+    db.close();
+  });
+
   it('marks word alignment stale after text rewrites and partial after timestamp narrowing', () => {
     const db = openVoxmireDatabase(':memory:');
     const created = createJobRecord(db, {

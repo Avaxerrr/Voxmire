@@ -185,6 +185,9 @@ importers:
       '@voxmire/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@voxmire/core':
+        specifier: workspace:*
+        version: link:../core
 
 packages:
 

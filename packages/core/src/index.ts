@@ -170,3 +170,74 @@ export function estimateChunkCount(durationSeconds: number | null): number {
 
   return Math.max(1, Math.ceil(durationSeconds / defaultChunkPolicy.targetSeconds));
 }
+
+export type TranscriptTextRange = {
+  start: number;
+  end: number;
+};
+
+type WordTextLike = {
+  text: string;
+};
+
+type FoldedText = {
+  indexMap: TranscriptTextRange[];
+  value: string;
+};
+
+export function mapTranscriptWordTimingsToTextRanges<TWord extends WordTextLike>(
+  text: string,
+  wordTimings: readonly TWord[]
+): Array<TranscriptTextRange | null> {
+  const foldedText = foldTextForWordRangeMatching(text);
+  let foldedCursor = 0;
+
+  return wordTimings.map((word) => {
+    const searchText = foldWordTextForRangeMatching(word.text);
+    if (!searchText) {
+      return null;
+    }
+
+    const index = foldedText.value.indexOf(searchText, foldedCursor);
+    if (index < 0) {
+      return null;
+    }
+
+    const firstCharacter = foldedText.indexMap[index];
+    const lastCharacter = foldedText.indexMap[index + searchText.length - 1];
+    if (!firstCharacter || !lastCharacter) {
+      return null;
+    }
+
+    foldedCursor = index + searchText.length;
+    return { start: firstCharacter.start, end: lastCharacter.end };
+  });
+}
+
+function foldWordTextForRangeMatching(value: string): string {
+  return foldTextForWordRangeMatching(value.trim().replace(/TT_\d+$/i, '')).value;
+}
+
+function foldTextForWordRangeMatching(value: string): FoldedText {
+  let folded = '';
+  const indexMap: TranscriptTextRange[] = [];
+
+  for (let index = 0; index < value.length;) {
+    const character = value[index] ?? '';
+    const codePoint = value.codePointAt(index);
+    const source = codePoint === undefined ? character : String.fromCodePoint(codePoint);
+    const nextIndex = index + source.length;
+
+    if (/[\p{L}\p{N}]/u.test(source)) {
+      const normalized = source.toLowerCase();
+      for (let foldedIndex = 0; foldedIndex < normalized.length; foldedIndex += 1) {
+        indexMap.push({ start: index, end: nextIndex });
+      }
+      folded += normalized;
+    }
+
+    index = nextIndex;
+  }
+
+  return { indexMap, value: folded };
+}

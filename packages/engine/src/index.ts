@@ -754,11 +754,14 @@ function isUsableWordTiming(word: TranscriptWordTiming): boolean {
 }
 
 function isSpecialWhisperToken(text: string): boolean {
-  return /^(\[.*\]|<\|.*\|>|_{2,}|BEG|END)$/i.test(text.trim());
+  return /^(\[.*\]|<\|.*\|>|_{2,}|BEG|END|TT_\d+)$/i.test(text.trim());
 }
 
 function normalizeWhisperWordText(value: string): string {
-  return value.trim().replace(/^[^\p{L}\p{N}']+|[^\p{L}\p{N}']+$/gu, '');
+  return value
+    .trim()
+    .replace(/TT_\d+$/i, '')
+    .replace(/^[^\p{L}\p{N}']+|[^\p{L}\p{N}']+$/gu, '');
 }
 
 function secondsFromMixedTiming(

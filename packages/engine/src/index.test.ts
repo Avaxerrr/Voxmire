@@ -60,6 +60,44 @@ describe('parseWhisperJsonSegmentsPayload', () => {
       { text: 'world', startSeconds: 0.6, endSeconds: 1.1 }
     ]);
   });
+
+  it('removes whisper.cpp timestamp token artifacts from token fallback words', () => {
+    const segments = parseWhisperJsonSegmentsPayload({
+      transcription: [
+        {
+          text: 'Take care',
+          offsets: { from: 98000, to: 99960 },
+          tokens: [
+            { text: ' Take', offsets: { from: 99000, to: 99320 } },
+            { text: ' care', offsets: { from: 99320, to: 99960 } },
+            { text: 'TT_906', offsets: { from: 99960, to: 99980 } }
+          ]
+        }
+      ]
+    }, 'job_1');
+
+    expect(segments[0]?.wordTimings).toEqual([
+      { text: 'Take', startSeconds: 99, endSeconds: 99.32 },
+      { text: 'care', startSeconds: 99.32, endSeconds: 99.96 }
+    ]);
+  });
+
+  it('removes timestamp token suffixes that were merged into a word', () => {
+    const segments = parseWhisperJsonSegmentsPayload({
+      transcription: [
+        {
+          text: 'Take care',
+          offsets: { from: 98000, to: 99960 },
+          words: [
+            { word: 'Take', offsets: { from: 99000, to: 99320 } },
+            { word: 'careTT_906', offsets: { from: 99320, to: 99960 } }
+          ]
+        }
+      ]
+    }, 'job_1');
+
+    expect(segments[0]?.wordTimings?.[1]).toEqual({ text: 'care', startSeconds: 99.32, endSeconds: 99.96 });
+  });
 });
 
 describe('getMachineProfile', () => {

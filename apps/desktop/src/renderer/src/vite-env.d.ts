@@ -37,6 +37,25 @@ type VoxmireMediaInfo = {
 
 declare global {
   interface Window {
+    __VOXMIRE_PLAYBACK_TRACE__?: Array<{
+      activeSegmentIndex: number;
+      anomaly: string | null;
+      gapSeconds: number | null;
+      mediaClockDriftSeconds: number | null;
+      mediaSegmentIndex: number;
+      mediaTime: number | null;
+      playbackTime: number;
+      reason: string;
+      segmentEndSeconds: number | null;
+      segmentId: string | null;
+      segmentStartSeconds: number | null;
+      stateSegmentOffsetSeconds: number | null;
+      wordDurationSeconds: number | null;
+      wordEndSeconds: number | null;
+      wordIndex: number;
+      wordStartSeconds: number | null;
+      wordText: string | null;
+    }>;
     voxmire: {
       app: {
         getInfo: () => Promise<VoxmireAppInfo>;

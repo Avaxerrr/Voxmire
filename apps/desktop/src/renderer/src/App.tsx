@@ -45,6 +45,7 @@ import {
   Zap
 } from 'lucide-react';
 import {
+  mapTranscriptWordTimingsToTextRanges,
   resolveTranscriptionPreset,
   transcriptionPresets,
   type ResolvedTranscriptionPreset
@@ -105,9 +106,10 @@ const exportOptions: ExportOption[] = [
 const activeStatuses: JobStatus[] = ['queued', 'preparing', 'transcribing'];
 const waveformScaleModes: WaveformScaleMode[] = ['actual', 'boost', 'db'];
 const playbackSpeeds = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
-const playbackSyncIntervalMs = 80;
-const segmentActivationLeadSeconds = 0.24;
-const wordHighlightHoldSeconds = 0.12;
+const playbackSyncIntervalMs = 50;
+const playbackDiagnosticClockDriftWarningSeconds = 0.08;
+const playbackDiagnosticLongGapWarningSeconds = 0.12;
+const playbackTraceLimit = 600;
 const wordTimingBoundaryToleranceSeconds = 0.025;
 const audioSeekThrottleMs = 50;
 const videoSeekThrottleMs = 140;
@@ -1006,6 +1008,7 @@ function TranscriptView({
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [mediaInfo, setMediaInfo] = useState<MediaInfo | null>(null);
   const [playbackTime, setPlaybackTime] = useState(0);
+  const [playbackClockSample, setPlaybackClockSample] = useState<PlaybackClockSample | null>(null);
   const [playbackDuration, setPlaybackDuration] = useState<number | null>(null);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [externalSeekSignal, setExternalSeekSignal] = useState(0);
@@ -1018,6 +1021,7 @@ function TranscriptView({
   const exportMenuRef = useRef<HTMLDivElement | null>(null);
   const audioRef = useRef<HTMLMediaElement | null>(null);
   const mediaApi = window.voxmire?.media;
+  const diagnosticsEnabled = usePlaybackDiagnosticsEnabled();
   const progress = selectedJob ? Math.round(selectedJob.job.progress * 100) : 0;
   const isCancelable = selectedJob ? activeStatuses.includes(selectedJob.job.status) || selectedJob.job.status === 'paused' : false;
   const isPausable = selectedJob ? activeStatuses.includes(selectedJob.job.status) : false;
@@ -1025,8 +1029,7 @@ function TranscriptView({
   const isWorking = selectedJob ? activeStatuses.includes(selectedJob.job.status) : false;
   const selectedMediaKind = selectedJob ? mediaInfo?.kind ?? mediaKindFromExtension(selectedJob.sourceFile.extension) : 'audio';
   const selectedSubtitle = selectedJob ? transcriptSubtitle(selectedJob, progress, selectedMediaKind) : 'Choose a project from Library or import a recording.';
-  const activeSegmentIndex = useMemo(() => findActiveSegmentIndex(segments, playbackTime + segmentActivationLeadSeconds), [playbackTime, segments]);
-  const playbackWordSegmentIndex = useMemo(() => findPlaybackWordSegmentIndex(segments, playbackTime), [playbackTime, segments]);
+  const activeSegmentIndex = useMemo(() => findActiveSegmentIndex(segments, playbackTime), [playbackTime, segments]);
   const resolvedPlaybackDuration = playbackDuration ?? selectedJob?.sourceFile.durationSeconds ?? null;
   const visibleJobs = useMemo(() => {
     const query = switcherQuery.trim().toLowerCase();
@@ -1040,10 +1043,20 @@ function TranscriptView({
   const findMatchCount = useMemo(() => countTranscriptMatches(segments, findQuery), [findQuery, segments]);
   const findMatchIndexes = useMemo(() => findTranscriptMatchIndexes(segments, findQuery), [findQuery, segments]);
   const activeFindSegment = findMatchIndexes.length > 0 ? segments[findMatchIndexes[Math.min(activeFindIndex, findMatchIndexes.length - 1)] ?? -1] ?? null : null;
+  const playbackTimingDiagnostic = useMemo(
+    () => diagnosticsEnabled ? buildPlaybackTimingDiagnostic({ activeSegmentIndex, playbackClockSample, playbackTime, segments }) : null,
+    [activeSegmentIndex, diagnosticsEnabled, playbackClockSample, playbackTime, segments]
+  );
 
   useEffect(() => {
     setActiveFindIndex(0);
   }, [findQuery]);
+
+  useEffect(() => {
+    if (playbackTimingDiagnostic) {
+      recordPlaybackTimingDiagnostic(playbackTimingDiagnostic);
+    }
+  }, [playbackTimingDiagnostic]);
 
   useEffect(() => {
     if (!switcherOpen && !exportMenuOpen && !findPanelOpen) {
@@ -1092,6 +1105,7 @@ function TranscriptView({
 
     setPlaying(false);
     setPlaybackTime(0);
+    setPlaybackClockSample(null);
     setPlaybackDuration(null);
     setMediaError(null);
     setMediaInfo(null);
@@ -1374,6 +1388,8 @@ function TranscriptView({
           </div>
         ) : null}
 
+        {diagnosticsEnabled ? <PlaybackDiagnosticsPanel diagnostic={playbackTimingDiagnostic} /> : null}
+
         {findPanelOpen ? (
           <div className="find-replace-panel">
             <label className="search-field compact-find-field">
@@ -1507,7 +1523,6 @@ function TranscriptView({
                         onUpdateSegment={updateSegment}
                         activeSearchSegmentId={activeFindSegment?.id ?? null}
                         playbackTime={playbackTime}
-                        playbackWordSegmentIndex={playbackWordSegmentIndex}
                         searchQuery={findQuery}
                         segments={segments}
                       />
@@ -1525,7 +1540,6 @@ function TranscriptView({
                     onUpdateSegment={updateSegment}
                     activeSearchSegmentId={activeFindSegment?.id ?? null}
                     playbackTime={playbackTime}
-                    playbackWordSegmentIndex={playbackWordSegmentIndex}
                     searchQuery={findQuery}
                     segments={segments}
                   />
@@ -1557,8 +1571,10 @@ function TranscriptView({
             duration={resolvedPlaybackDuration}
             externalSeekSignal={externalSeekSignal}
             mediaError={mediaError}
+            diagnosticsEnabled={diagnosticsEnabled}
             mediaKind={selectedMediaKind}
             mediaUrl={mediaUrl}
+            onClockSample={setPlaybackClockSample}
             onDurationChange={setPlaybackDuration}
             onError={setMediaError}
             onTimeChange={setPlaybackTime}
@@ -2160,7 +2176,6 @@ type VirtualizedSegmentListProps = {
   onUpdateSegment: (segmentId: string, text: string) => Promise<TranscriptSegment | null>;
   activeSearchSegmentId: string | null;
   playbackTime: number;
-  playbackWordSegmentIndex: number;
   searchQuery: string;
   segments: TranscriptSegment[];
 };
@@ -2174,7 +2189,6 @@ function VirtualizedSegmentList({
   onUpdateSegment,
   activeSearchSegmentId,
   playbackTime,
-  playbackWordSegmentIndex,
   searchQuery,
   segments
 }: VirtualizedSegmentListProps): ReactElement {
@@ -2216,11 +2230,10 @@ function VirtualizedSegmentList({
       return;
     }
 
-    const segment = segments[playbackWordSegmentIndex];
+    const segment = segments[activeSegmentIndex];
     const wordState = segment ? getPlaybackWordState(segment, playbackTime) : null;
     const diagnosticKey = [
       activeSegmentIndex,
-      playbackWordSegmentIndex,
       wordState?.reason ?? 'no-playback-segment',
       wordState?.wordIndex ?? -1
     ].join(':');
@@ -2233,11 +2246,10 @@ function VirtualizedSegmentList({
     logWordTimingDiagnostic({
       activeSegmentIndex,
       playbackTime,
-      playbackWordSegmentIndex,
       segment,
       wordState
     });
-  }, [activeSegmentIndex, playbackTime, playbackWordSegmentIndex, segments]);
+  }, [activeSegmentIndex, playbackTime, segments]);
 
   function startEditing(segment: TranscriptSegment): void {
     setSaveErrorSegmentId(null);
@@ -2423,7 +2435,7 @@ function VirtualizedSegmentList({
           const saveError = segment.id === saveErrorSegmentId;
           const searchMatch = searchQuery.trim() ? segment.text.toLowerCase().includes(searchQuery.trim().toLowerCase()) : false;
           const activeSearchMatch = segment.id === activeSearchSegmentId;
-          const playbackWordRange = virtualRow.index === playbackWordSegmentIndex ? currentPlaybackWordRange(segment, playbackTime) : null;
+          const playbackWordRange = active ? currentPlaybackWordRange(segment, playbackTime) : null;
 
           return (
             <div
@@ -2821,6 +2833,35 @@ type WordTimingSnapshot = {
   text: string;
 };
 
+type PlaybackClockSample = {
+  mediaTime: number;
+  playbackRate: number;
+  readyState: number;
+  sampleTimeMs: number;
+  seeking: boolean;
+  statePlaybackTime: number;
+};
+
+type PlaybackTimingDiagnostic = {
+  activeSegmentIndex: number;
+  anomaly: string | null;
+  gapSeconds: number | null;
+  mediaClockDriftSeconds: number | null;
+  mediaSegmentIndex: number;
+  mediaTime: number | null;
+  playbackTime: number;
+  reason: PlaybackWordState['reason'] | 'no-segment';
+  segmentEndSeconds: number | null;
+  segmentId: string | null;
+  segmentStartSeconds: number | null;
+  stateSegmentOffsetSeconds: number | null;
+  wordDurationSeconds: number | null;
+  wordEndSeconds: number | null;
+  wordIndex: number;
+  wordStartSeconds: number | null;
+  wordText: string | null;
+};
+
 function HighlightedTranscriptText({ playbackRange, query, text }: { playbackRange: TextRange | null; query: string; text: string }): ReactElement {
   const normalizedQuery = query.trim();
   if (!normalizedQuery && !playbackRange) {
@@ -2877,12 +2918,12 @@ function getPlaybackWordState(segment: TranscriptSegment, playbackTime: number):
 
   if (
     playbackTime < segment.startSeconds - wordTimingBoundaryToleranceSeconds ||
-    playbackTime > segment.endSeconds + wordHighlightHoldSeconds
+    playbackTime > segment.endSeconds + wordTimingBoundaryToleranceSeconds
   ) {
     return playbackWordState(baseState, 'outside-segment-window');
   }
 
-  const ranges = mapWordTimingsToTextRanges(segment.text, wordTimings);
+  const ranges = mapTranscriptWordTimingsToTextRanges(segment.text, wordTimings);
   let activeWordIndex = -1;
   let previousWordIndex = -1;
   let nextWordIndex = -1;
@@ -2894,7 +2935,7 @@ function getPlaybackWordState(segment: TranscriptSegment, playbackTime: number):
     }
 
     if (
-      word.startSeconds - wordTimingBoundaryToleranceSeconds <= playbackTime &&
+      word.startSeconds <= playbackTime &&
       playbackTime < word.endSeconds + wordTimingBoundaryToleranceSeconds
     ) {
       activeWordIndex = index;
@@ -2922,22 +2963,6 @@ function getPlaybackWordState(segment: TranscriptSegment, playbackTime: number):
 
   const previousWord = wordTimingSnapshot(wordTimings, previousWordIndex);
   const nextWord = wordTimingSnapshot(wordTimings, nextWordIndex);
-  if (
-    previousWord &&
-    playbackTime - previousWord.endSeconds <= wordHighlightHoldSeconds &&
-    (!nextWord || playbackTime < nextWord.startSeconds - wordTimingBoundaryToleranceSeconds)
-  ) {
-    const range = ranges[previousWord.index] ?? null;
-    return playbackWordState(
-      baseState,
-      range ? 'recently-ended' : 'text-range-missing',
-      previousWord,
-      range,
-      previousWord,
-      nextWord
-    );
-  }
-
   return playbackWordState(baseState, 'between-words', null, null, previousWord, nextWord);
 }
 
@@ -2990,26 +3015,6 @@ function wordTimingSnapshot(wordTimings: NonNullable<TranscriptSegment['wordTimi
     startSeconds: word.startSeconds,
     text: word.text
   };
-}
-
-function mapWordTimingsToTextRanges(text: string, wordTimings: NonNullable<TranscriptSegment['wordTimings']>): Array<TextRange | null> {
-  const lowerText = text.toLowerCase();
-  let cursor = 0;
-
-  return wordTimings.map((word) => {
-    const searchText = normalizedWordText(word.text);
-    if (!searchText) {
-      return null;
-    }
-
-    const index = lowerText.indexOf(searchText.toLowerCase(), cursor);
-    if (index < 0) {
-      return null;
-    }
-
-    cursor = index + searchText.length;
-    return { start: index, end: cursor };
-  });
 }
 
 function buildHighlightedTextSlices(text: string, query: string, playbackRange: TextRange | null): Array<TextRange & { text: string; search: boolean; playback: boolean }> {
@@ -3074,9 +3079,6 @@ function findSearchRanges(text: string, query: string): TextRange[] {
   return ranges;
 }
 
-function normalizedWordText(value: string): string {
-  return value.trim().replace(/^[^\p{L}\p{N}']+|[^\p{L}\p{N}']+$/gu, '');
-}
 
 type VideoPreviewProps = {
   currentTime: number;
@@ -3261,12 +3263,14 @@ const WaveformGraph = memo(function WaveformGraph({ loading, peaks, scaleMode }:
 type AudioDeckProps = {
   audioRef: MutableRefObject<HTMLMediaElement | null>;
   currentTime: number;
+  diagnosticsEnabled: boolean;
   disabled: boolean;
   duration: number | null;
   externalSeekSignal: number;
   mediaError: string | null;
   mediaKind: MediaKind;
   mediaUrl: string | null;
+  onClockSample: (sample: PlaybackClockSample | null) => void;
   onDurationChange: (duration: number | null) => void;
   onError: (message: string | null) => void;
   onTimeChange: (time: number) => void;
@@ -3281,12 +3285,14 @@ type AudioDeckProps = {
 function AudioDeck({
   audioRef,
   currentTime,
+  diagnosticsEnabled,
   disabled,
   duration,
   externalSeekSignal,
   mediaError,
   mediaKind,
   mediaUrl,
+  onClockSample,
   onDurationChange,
   onError,
   onTimeChange,
@@ -3307,12 +3313,17 @@ function AudioDeck({
   const [waveformScaleMode, setWaveformScaleMode] = useState<WaveformScaleMode>('actual');
   const lastPlaybackSyncRef = useRef(0);
   const lastPreviewSeekRef = useRef(0);
+  const syncedPlaybackTimeRef = useRef(currentTime);
   const resolvedDuration = duration && Number.isFinite(duration) && duration > 0 ? duration : null;
   const mediaTime = resolvedDuration ? Math.min(visualTime, resolvedDuration) : visualTime;
   const displayTime = draftSeekTime ?? mediaTime;
   const currentProgress = resolvedDuration ? Math.min(1, Math.max(0, displayTime / resolvedDuration)) : 0;
   const canPlay = !disabled && Boolean(mediaUrl) && !mediaError;
   const volumePercent = Math.round((muted ? 0 : volume) * 100);
+
+  useEffect(() => {
+    syncedPlaybackTimeRef.current = currentTime;
+  }, [currentTime]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -3383,6 +3394,9 @@ function AudioDeck({
       if (audio && draftSeekTime === null && timestamp - lastUpdate >= 33) {
         const nextTime = audio.currentTime;
         setVisualTime(nextTime);
+        if (diagnosticsEnabled) {
+          onClockSample(createPlaybackClockSample(audio, nextTime, syncedPlaybackTimeRef.current, timestamp));
+        }
         syncPlaybackSample(nextTime);
         lastUpdate = timestamp;
       }
@@ -3392,7 +3406,7 @@ function AudioDeck({
     animationFrame = window.requestAnimationFrame(updateVisualTime);
 
     return () => window.cancelAnimationFrame(animationFrame);
-  }, [audioRef, canPlay, draftSeekTime, onTimeChange, playing]);
+  }, [audioRef, canPlay, diagnosticsEnabled, draftSeekTime, onClockSample, onTimeChange, playing]);
 
   function skipBy(seconds: number): void {
     const audio = audioRef.current;
@@ -3404,6 +3418,7 @@ function AudioDeck({
     const nextTime = resolvedDuration ? Math.min(resolvedDuration, Math.max(0, unclamped)) : Math.max(0, unclamped);
     applyMediaSeek(audio, nextTime, false);
     setVisualTime(nextTime);
+    recordSeekSample(audio, nextTime);
     syncPlaybackSample(nextTime, true);
   }
 
@@ -3417,6 +3432,12 @@ function AudioDeck({
     onTimeChange(time);
   }
 
+  function recordSeekSample(media: HTMLMediaElement, time: number): void {
+    if (diagnosticsEnabled) {
+      onClockSample(createPlaybackClockSample(media, time, syncedPlaybackTimeRef.current, performance.now()));
+    }
+  }
+
   function previewSeek(seconds: number): void {
     if (!resolvedDuration) {
       return;
@@ -3426,6 +3447,9 @@ function AudioDeck({
     const nextTime = Math.min(resolvedDuration, Math.max(0, seconds));
     setDraftSeekTime(nextTime);
     setVisualTime(nextTime);
+    if (audio) {
+      recordSeekSample(audio, nextTime);
+    }
     syncPlaybackSample(nextTime, true);
 
     if (!audio || !canPlay) {
@@ -3453,6 +3477,7 @@ function AudioDeck({
     applyMediaSeek(audio, nextTime, false);
     setDraftSeekTime(null);
     setVisualTime(nextTime);
+    recordSeekSample(audio, nextTime);
     syncPlaybackSample(nextTime, true);
   }
 
@@ -3486,6 +3511,7 @@ function AudioDeck({
           onPlay={() => setPlaying(true)}
           onSeeked={(event) => {
             setVisualTime(event.currentTarget.currentTime);
+            recordSeekSample(event.currentTarget, event.currentTarget.currentTime);
             syncPlaybackSample(event.currentTarget.currentTime, true);
             logPlaybackDiagnostic('audio:seeked', event.currentTarget);
           }}
@@ -3663,6 +3689,23 @@ function AudioDeck({
   );
 }
 
+function PlaybackDiagnosticsPanel({ diagnostic }: { diagnostic: PlaybackTimingDiagnostic | null }): ReactElement | null {
+  if (!import.meta.env.DEV || !diagnostic) {
+    return null;
+  }
+
+  return (
+    <aside className={`playback-diagnostics-panel ${diagnostic.anomaly ? 'warn' : ''}`} aria-label="Playback diagnostics">
+      <strong>Playback diagnostics</strong>
+      <span>Media {formatDiagnosticSeconds(diagnostic.mediaTime)} / UI {formatDiagnosticSeconds(diagnostic.playbackTime)}</span>
+      <span>Drift {formatDiagnosticSeconds(diagnostic.mediaClockDriftSeconds)} / segment {diagnostic.activeSegmentIndex}</span>
+      <span>Word {diagnostic.wordIndex >= 0 ? diagnostic.wordIndex + 1 : '-'} {diagnostic.wordText ?? diagnostic.reason}</span>
+      <span>Word window {formatDiagnosticSeconds(diagnostic.wordStartSeconds)} - {formatDiagnosticSeconds(diagnostic.wordEndSeconds)}</span>
+      <span>{diagnostic.anomaly ?? 'No timing anomaly detected'}</span>
+    </aside>
+  );
+}
+
 function StatusBar({ activeJob, appInfo, status }: { activeJob: JobWithSource | null; appInfo: AppInfo | null; status: { tone: StatusTone; text: string } }): ReactElement {
   const isLive = activeJob !== null;
 
@@ -3823,43 +3866,6 @@ function findActiveSegmentIndex(segments: TranscriptSegment[], time: number): nu
   return candidate;
 }
 
-function findPlaybackWordSegmentIndex(segments: TranscriptSegment[], time: number): number {
-  if (segments.length === 0 || !Number.isFinite(time)) {
-    return -1;
-  }
-
-  const candidate = findActiveSegmentIndex(segments, time);
-  const candidateIndexes = [candidate, candidate - 1, candidate + 1].filter(
-    (index, position, indexes) => index >= 0 && index < segments.length && indexes.indexOf(index) === position
-  );
-  const candidateStates = candidateIndexes.map((index) => {
-    const segment = segments[index];
-    return {
-      index,
-      state: segment ? getPlaybackWordState(segment, time) : null
-    };
-  });
-  const currentCandidateState = candidateStates.find((entry) => entry.index === candidate)?.state ?? null;
-  const previousCandidateState = candidateStates.find((entry) => entry.index === candidate - 1)?.state ?? null;
-
-  if (
-    previousCandidateState?.reason === 'recently-ended' &&
-    previousCandidateState.wordIndex === previousCandidateState.wordCount - 1 &&
-    currentCandidateState?.reason === 'active' &&
-    currentCandidateState.wordIndex === 0
-  ) {
-    return candidate - 1;
-  }
-
-  for (const { index, state } of candidateStates) {
-    if (state?.range) {
-      return index;
-    }
-  }
-
-  return candidate;
-}
-
 function scaleWaveformPeak(peak: number, mode: WaveformScaleMode): number {
   const clampedPeak = Math.max(0, Math.min(1, peak));
 
@@ -3973,6 +3979,131 @@ function applyMediaSeek(media: HTMLMediaElement, seconds: number, approximate: b
   media.currentTime = seconds;
 }
 
+function usePlaybackDiagnosticsEnabled(): boolean {
+  const [enabled, setEnabled] = useState(() => playbackDiagnosticsEnabled());
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) {
+      return;
+    }
+
+    const sync = (): void => setEnabled(playbackDiagnosticsEnabled());
+    window.addEventListener('voxmire:playbackDiagnosticsChanged', sync);
+    const intervalId = window.setInterval(sync, 1000);
+
+    return () => {
+      window.removeEventListener('voxmire:playbackDiagnosticsChanged', sync);
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  return enabled;
+}
+
+function createPlaybackClockSample(media: HTMLMediaElement, mediaTime: number, statePlaybackTime: number, sampleTimeMs: number): PlaybackClockSample {
+  return {
+    mediaTime,
+    playbackRate: media.playbackRate,
+    readyState: media.readyState,
+    sampleTimeMs,
+    seeking: media.seeking,
+    statePlaybackTime
+  };
+}
+
+function buildPlaybackTimingDiagnostic({
+  activeSegmentIndex,
+  playbackClockSample,
+  playbackTime,
+  segments
+}: {
+  activeSegmentIndex: number;
+  playbackClockSample: PlaybackClockSample | null;
+  playbackTime: number;
+  segments: TranscriptSegment[];
+}): PlaybackTimingDiagnostic {
+  const segment = segments[activeSegmentIndex];
+  const wordState = segment ? getPlaybackWordState(segment, playbackTime) : null;
+  const mediaTime = playbackClockSample?.mediaTime ?? null;
+  const mediaSegmentIndex = mediaTime === null ? -1 : findActiveSegmentIndex(segments, mediaTime);
+  const gapSeconds = wordState?.previousWord && wordState.nextWord ? wordState.nextWord.startSeconds - wordState.previousWord.endSeconds : null;
+  const wordDurationSeconds = wordState && wordState.wordStartSeconds !== null && wordState.wordEndSeconds !== null
+    ? wordState.wordEndSeconds - wordState.wordStartSeconds
+    : null;
+  const mediaClockDriftSeconds = mediaTime === null ? null : mediaTime - playbackTime;
+  const diagnostic: PlaybackTimingDiagnostic = {
+    activeSegmentIndex,
+    anomaly: null,
+    gapSeconds,
+    mediaClockDriftSeconds,
+    mediaSegmentIndex,
+    mediaTime,
+    playbackTime,
+    reason: wordState?.reason ?? 'no-segment',
+    segmentEndSeconds: segment?.endSeconds ?? null,
+    segmentId: segment?.id ?? null,
+    segmentStartSeconds: segment?.startSeconds ?? null,
+    stateSegmentOffsetSeconds: segment ? playbackTime - segment.startSeconds : null,
+    wordDurationSeconds,
+    wordEndSeconds: wordState?.wordEndSeconds ?? null,
+    wordIndex: wordState?.wordIndex ?? -1,
+    wordStartSeconds: wordState?.wordStartSeconds ?? null,
+    wordText: wordState?.wordText ?? null
+  };
+
+  diagnostic.anomaly = playbackTimingDiagnosticAnomaly(diagnostic);
+  return diagnostic;
+}
+
+let lastPlaybackDiagnosticConsoleKey = '';
+
+function recordPlaybackTimingDiagnostic(diagnostic: PlaybackTimingDiagnostic): void {
+  if (!playbackDiagnosticsEnabled()) {
+    return;
+  }
+
+  const trace = window.__VOXMIRE_PLAYBACK_TRACE__ ?? [];
+  trace.push(diagnostic);
+  if (trace.length > playbackTraceLimit) {
+    trace.splice(0, trace.length - playbackTraceLimit);
+  }
+  window.__VOXMIRE_PLAYBACK_TRACE__ = trace;
+
+  const consoleKey = [diagnostic.activeSegmentIndex, diagnostic.wordIndex, diagnostic.reason, diagnostic.anomaly].join(':');
+  if (consoleKey !== lastPlaybackDiagnosticConsoleKey || diagnostic.anomaly) {
+    console.debug('[voxmire:word-sync]', JSON.stringify(diagnostic));
+    lastPlaybackDiagnosticConsoleKey = consoleKey;
+  }
+}
+
+function playbackTimingDiagnosticAnomaly(diagnostic: PlaybackTimingDiagnostic): string | null {
+  if (diagnostic.mediaClockDriftSeconds !== null && Math.abs(diagnostic.mediaClockDriftSeconds) > playbackDiagnosticClockDriftWarningSeconds) {
+    return diagnostic.mediaClockDriftSeconds > 0 ? 'ui-clock-behind-media' : 'ui-clock-ahead-of-media';
+  }
+
+  if (diagnostic.mediaSegmentIndex >= 0 && diagnostic.activeSegmentIndex !== diagnostic.mediaSegmentIndex) {
+    return 'segment-selection-mismatch';
+  }
+
+  if (diagnostic.reason === 'text-range-missing') {
+    return 'word-text-range-missing';
+  }
+
+  if (diagnostic.reason === 'between-words' && diagnostic.gapSeconds !== null && diagnostic.gapSeconds > playbackDiagnosticLongGapWarningSeconds) {
+    return 'word-timing-gap';
+  }
+
+  if (diagnostic.wordDurationSeconds !== null && diagnostic.wordDurationSeconds < playbackSyncIntervalMs / 1000) {
+    return 'word-shorter-than-ui-sample';
+  }
+
+  return null;
+}
+
+function formatDiagnosticSeconds(value: number | null): string {
+  return value === null || !Number.isFinite(value) ? '-' : value.toFixed(3);
+}
+
 function playbackDiagnosticsEnabled(): boolean {
   if (!import.meta.env.DEV) {
     return false;
@@ -4002,13 +4133,11 @@ function logPlaybackDiagnostic(eventName: string, media: HTMLMediaElement): void
 function logWordTimingDiagnostic({
   activeSegmentIndex,
   playbackTime,
-  playbackWordSegmentIndex,
   segment,
   wordState
 }: {
   activeSegmentIndex: number;
   playbackTime: number;
-  playbackWordSegmentIndex: number;
   segment: TranscriptSegment | undefined;
   wordState: PlaybackWordState | null;
 }): void {
@@ -4016,12 +4145,11 @@ function logWordTimingDiagnostic({
     return;
   }
 
-  console.debug('[voxmire:word-timing]', wordState?.reason ?? 'no-playback-segment', {
+  const details = {
     activeSegmentIndex,
     alignmentStatus: wordState?.alignmentStatus ?? null,
     nextWord: wordState?.nextWord ?? null,
     playbackTime,
-    playbackWordSegmentIndex,
     previousWord: wordState?.previousWord ?? null,
     range: wordState?.range ?? null,
     segmentEndSeconds: segment?.endSeconds ?? null,
@@ -4032,7 +4160,9 @@ function logWordTimingDiagnostic({
     wordIndex: wordState?.wordIndex ?? -1,
     wordStartSeconds: wordState?.wordStartSeconds ?? null,
     wordText: wordState?.wordText ?? null
-  });
+  };
+
+  console.debug('[voxmire:word-timing]', wordState?.reason ?? 'no-playback-segment', JSON.stringify(details));
 }
 
 function timeRangesToTuples(ranges: TimeRanges): Array<[number, number]> {

@@ -108,12 +108,50 @@ function createMainWindow(): void {
     return { action: 'deny' };
   });
 
+  attachDevelopmentShortcuts(mainWindow);
+
   if (isDev && process.env.ELECTRON_RENDERER_URL) {
     void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
     return;
   }
 
   void mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
+}
+
+function attachDevelopmentShortcuts(window: BrowserWindow): void {
+  if (!isDev) {
+    return;
+  }
+
+  window.webContents.on('before-input-event', (event, input) => {
+    const key = input.key.toLowerCase();
+    const commandModifier = input.control || input.meta;
+
+    if (input.key === 'F12' || (commandModifier && input.shift && key === 'i')) {
+      event.preventDefault();
+      window.webContents.toggleDevTools();
+      return;
+    }
+
+    if (commandModifier && input.alt && input.shift && key === 'd') {
+      event.preventDefault();
+      void window.webContents.executeJavaScript(`
+        (() => {
+          const key = 'voxmire:playbackDiagnostics';
+          const enabled = window.localStorage.getItem(key) === '1';
+          if (enabled) {
+            window.localStorage.removeItem(key);
+          } else {
+            window.localStorage.setItem(key, '1');
+          }
+          window.dispatchEvent(new CustomEvent('voxmire:playbackDiagnosticsChanged', { detail: { enabled: !enabled } }));
+          console.info('[voxmire:playbackDiagnostics]', enabled ? 'disabled' : 'enabled');
+          return !enabled;
+        })();
+      `);
+      window.webContents.openDevTools({ mode: 'detach' });
+    }
+  });
 }
 
 function registerIpcHandlers(): void {

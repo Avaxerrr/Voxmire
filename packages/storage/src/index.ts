@@ -1,4 +1,5 @@
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
+import { mapTranscriptWordTimingsToTextRanges } from '@voxmire/core';
 import {
   type EngineBackend,
   type JobStatus,
@@ -890,7 +891,7 @@ function partitionWordTimingsForSplit(
     return { left: undefined, right: undefined };
   }
 
-  const ranges = mapWordTimingsToTextRanges(segment.text, wordTimings);
+  const ranges = mapTranscriptWordTimingsToTextRanges(segment.text, wordTimings);
   const left: TranscriptWordTiming[] = [];
   const right: TranscriptWordTiming[] = [];
 
@@ -953,37 +954,12 @@ function mergeAlignmentStatus(
   return 'partial';
 }
 
-function mapWordTimingsToTextRanges(
-  text: string,
-  wordTimings: TranscriptWordTiming[]
-): Array<{ start: number; end: number } | null> {
-  const lowerText = text.toLowerCase();
-  let cursor = 0;
-  return wordTimings.map((word) => {
-    const searchText = normalizeWordText(word.text);
-    if (!searchText) {
-      return null;
-    }
-
-    const index = lowerText.indexOf(searchText.toLowerCase(), cursor);
-    if (index < 0) {
-      return null;
-    }
-
-    cursor = index + searchText.length;
-    return { start: index, end: cursor };
-  });
-}
-
 function normalizeWords(value: string): string[] {
   return value
     .toLowerCase()
     .match(/[\p{L}\p{N}']+/gu) ?? [];
 }
 
-function normalizeWordText(value: string): string {
-  return value.trim().replace(/^[^\p{L}\p{N}']+|[^\p{L}\p{N}']+$/gu, '');
-}
 
 function mergeConfidence(first: number | null, second: number | null): number | null {
   if (first === null) {

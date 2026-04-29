@@ -11,7 +11,8 @@
                     "lint":  "echo \"lint not configured yet\""
                 },
     "dependencies":  {
-                         "@voxmire/contracts":  "workspace:*"
+                         "@voxmire/contracts":  "workspace:*",
+                         "@voxmire/core":  "workspace:*"
                      },
     "devDependencies":  {
 

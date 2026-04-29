@@ -4,6 +4,7 @@ import {
   canTransitionJobStatus,
   estimateChunkCount,
   getTranscriptionPreset,
+  mapTranscriptWordTimingsToTextRanges,
   resolveTranscriptionPreset,
   shouldChunkAudio,
   transcriptionPresets
@@ -51,5 +52,49 @@ describe('transcription presets', () => {
 
   it('returns preset metadata by id', () => {
     expect(getTranscriptionPreset('balanced').label).toBe('Balanced');
+  });
+});
+
+describe('transcript word range mapping', () => {
+  it('maps compact timing words to hyphenated visible text', () => {
+    const text = 'The award-winning piano uses very high-quality hammers.';
+    const ranges = mapTranscriptWordTimingsToTextRanges(text, [
+      { text: 'The' },
+      { text: 'awardwinning' },
+      { text: 'piano' },
+      { text: 'highquality' },
+      { text: 'hammers' }
+    ]);
+
+    expect(ranges.map((range) => range ? text.slice(range.start, range.end) : null)).toEqual([
+      'The',
+      'award-winning',
+      'piano',
+      'high-quality',
+      'hammers'
+    ]);
+  });
+
+  it('maps hyphenated timing words to spaced visible text', () => {
+    const text = 'Award winning results need careful review.';
+    const ranges = mapTranscriptWordTimingsToTextRanges(text, [
+      { text: 'award-winning' },
+      { text: 'results' }
+    ]);
+
+    expect(ranges.map((range) => range ? text.slice(range.start, range.end) : null)).toEqual([
+      'Award winning',
+      'results'
+    ]);
+  });
+
+  it('ignores timestamp token suffixes while preserving visible ranges', () => {
+    const text = 'Take care.';
+    const ranges = mapTranscriptWordTimingsToTextRanges(text, [
+      { text: 'Take' },
+      { text: 'careTT_906' }
+    ]);
+
+    expect(ranges.map((range) => range ? text.slice(range.start, range.end) : null)).toEqual(['Take', 'care']);
   });
 });
