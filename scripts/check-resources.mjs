@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -7,6 +7,8 @@ const root = dirname(scriptDirectory);
 const platform = process.platform === 'win32' ? 'win32' : process.platform === 'darwin' ? 'darwin' : 'linux';
 const exe = process.platform === 'win32' ? '.exe' : '';
 const engineRoot = join(root, 'resources', 'engines', platform);
+const whisperCppRuntimeVersion = 'v1.8.4';
+const whisperCppRuntimeDirectoryPrefix = 'whispercpp-';
 
 const runtimeDefinitions = {
   'cuda-12.4': {
@@ -61,11 +63,66 @@ if (missingRequired > 0) {
 
 function runtimeResources(runtimeId, level) {
   const definition = runtimeDefinitions[runtimeId];
-  const isolatedExe = join(engineRoot, runtimeId, `whisper-cli${exe}`);
+  const runtimeRoot = join(engineRoot, runtimeId);
+  const flatExe = join(runtimeRoot, `whisper-cli${exe}`);
   const legacyExe = join(engineRoot, definition.legacyExe);
-  const directory = existsSync(isolatedExe) ? join(engineRoot, runtimeId) : existsSync(legacyExe) ? engineRoot : join(engineRoot, runtimeId);
+  const directory = resolveRuntimeDirectory(runtimeRoot, flatExe, legacyExe);
   return definition.files.map((fileName, index) => {
     const path = index === 0 && directory === engineRoot ? legacyExe : join(directory, fileName);
     return [level, `${runtimeId} ${fileName}`, path];
   });
+}
+
+function resolveRuntimeDirectory(runtimeRoot, flatExe, legacyExe) {
+  const versionedDirectory = installedRuntimeDirectories(runtimeRoot)
+    .find((directory) => existsSync(join(directory, `whisper-cli${exe}`)));
+  if (versionedDirectory) {
+    return versionedDirectory;
+  }
+
+  if (existsSync(flatExe)) {
+    return runtimeRoot;
+  }
+
+  if (existsSync(legacyExe)) {
+    return engineRoot;
+  }
+
+  return join(runtimeRoot, `${whisperCppRuntimeDirectoryPrefix}${whisperCppRuntimeVersion}`);
+}
+
+function installedRuntimeDirectories(runtimeRoot) {
+  try {
+    return readdirSync(runtimeRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && entry.name.startsWith(whisperCppRuntimeDirectoryPrefix))
+      .map((entry) => entry.name)
+      .sort(compareRuntimeDirectoryNamesDescending)
+      .map((name) => join(runtimeRoot, name));
+  } catch {
+    return [];
+  }
+}
+
+function compareRuntimeDirectoryNamesDescending(left, right) {
+  const leftParts = versionParts(left);
+  const rightParts = versionParts(right);
+  const length = Math.max(leftParts.length, rightParts.length);
+
+  for (let index = 0; index < length; index += 1) {
+    const difference = (rightParts[index] ?? 0) - (leftParts[index] ?? 0);
+    if (difference !== 0) {
+      return difference;
+    }
+  }
+
+  return right.localeCompare(left);
+}
+
+function versionParts(directoryName) {
+  return directoryName
+    .replace(whisperCppRuntimeDirectoryPrefix, '')
+    .replace(/^v/i, '')
+    .split(/[^\d]+/)
+    .filter(Boolean)
+    .map((part) => Number(part));
 }

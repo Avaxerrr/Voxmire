@@ -1,5 +1,8 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { detectWhisperEngines, getMachineProfile, parseWhisperJsonSegmentsPayload, parseWhisperProgressLine } from './index';
+import { detectWhisperEngines, detectWhisperRuntime, getMachineProfile, parseWhisperJsonSegmentsPayload, parseWhisperProgressLine, whisperRuntimeDefinition } from './index';
 
 describe('parseWhisperProgressLine', () => {
   it('parses whisper.cpp progress output', () => {
@@ -115,5 +118,25 @@ describe('getMachineProfile', () => {
 
     expect(engines.map((engine) => engine.runtimeId)).toEqual(['cuda-12.4', 'vulkan', 'cpu-blas', 'cpu']);
     expect(engines.map((engine) => engine.backend)).toEqual(['cuda', 'vulkan', 'cpu', 'cpu']);
+  });
+
+  it('detects runtime files inside a versioned whisper.cpp folder', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'voxmire-engine-'));
+    const platform = process.platform === 'win32' ? 'win32' : process.platform === 'darwin' ? 'darwin' : 'linux';
+    const runtimeDirectory = join(projectRoot, 'resources', 'engines', platform, 'cuda-12.4', 'whispercpp-v1.8.4');
+    mkdirSync(runtimeDirectory, { recursive: true });
+
+    for (const fileName of whisperRuntimeDefinition('cuda-12.4').requiredFiles) {
+      writeFileSync(join(runtimeDirectory, fileName), '');
+    }
+
+    if (process.platform !== 'win32') {
+      writeFileSync(join(runtimeDirectory, 'whisper-cli'), '');
+    }
+
+    const runtime = detectWhisperRuntime({ projectRoot }, 'cuda-12.4');
+
+    expect(runtime.available).toBe(true);
+    expect(runtime.executablePath).toContain(join('cuda-12.4', 'whispercpp-v1.8.4'));
   });
 });

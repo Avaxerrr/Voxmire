@@ -12,11 +12,12 @@ resources/
   engines/
     win32/
       cpu/
-        whisper-cli.exe
-        whisper.dll
-        ggml.dll
-        ggml-base.dll
-        ggml-cpu.dll
+        whispercpp-v1.8.4/
+          whisper-cli.exe
+          whisper.dll
+          ggml.dll
+          ggml-base.dll
+          ggml-cpu.dll
   models/
     ggml-large-v3-turbo.bin
 ```
@@ -25,10 +26,10 @@ The app can open without these files, but transcription will fail with a clear m
 
 ## Optional Engine Runtimes
 
-Keep each whisper.cpp build in its own folder because the builds contain overlapping DLL names that must stay paired with their matching executable.
+Keep each whisper.cpp build in its own versioned folder because the builds contain overlapping DLL names that must stay paired with their matching executable. Replace the whole `whispercpp-v...` folder when upgrading; do not mix files between whisper.cpp releases.
 
 ```txt
-resources/engines/win32/cuda-12.4/
+resources/engines/win32/cuda-12.4/whispercpp-v1.8.4/
   whisper-cli.exe
   whisper.dll
   ggml.dll
@@ -39,7 +40,7 @@ resources/engines/win32/cuda-12.4/
   cublasLt64_12.dll
   cudart64_12.dll
 
-resources/engines/win32/vulkan/
+resources/engines/win32/vulkan/whispercpp-v1.8.4/
   whisper-cli.exe
   whisper.dll
   ggml.dll
@@ -47,7 +48,7 @@ resources/engines/win32/vulkan/
   ggml-cpu.dll
   ggml-vulkan.dll
 
-resources/engines/win32/cpu-blas/
+resources/engines/win32/cpu-blas/whispercpp-v1.8.4/
   whisper-cli.exe
   whisper.dll
   ggml.dll

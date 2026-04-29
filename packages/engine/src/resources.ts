@@ -1,3 +1,4 @@
+import { existsSync, readdirSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import type { EngineBackend, EngineRuntimeId, ModelId } from '@voxmire/contracts';
 import type { ResourcePaths } from './types';
@@ -10,6 +11,10 @@ export type WhisperRuntimeDefinition = {
   extraArgs: readonly string[];
   legacyExecutableName: string | null;
 };
+
+export const whisperCppRuntimeVersion = 'v1.8.4';
+
+const whisperCppRuntimeDirectoryPrefix = 'whispercpp-';
 
 const windowsRuntimeDefinitions: readonly WhisperRuntimeDefinition[] = [
   {
@@ -81,8 +86,28 @@ export function whisperRuntimeIdsForBackend(backend: EngineBackend): readonly En
   return ['cpu-blas', 'cpu'];
 }
 
-export function resolveWhisperRuntimeDirectory(paths: ResourcePaths, runtimeId: EngineRuntimeId): string {
+export function resolveWhisperRuntimeRootDirectory(paths: ResourcePaths, runtimeId: EngineRuntimeId): string {
   return join(paths.projectRoot, 'resources', 'engines', platformResourceDirectory(), runtimeId);
+}
+
+export function resolveDefaultWhisperRuntimeDirectory(paths: ResourcePaths, runtimeId: EngineRuntimeId): string {
+  return join(resolveWhisperRuntimeRootDirectory(paths, runtimeId), `${whisperCppRuntimeDirectoryPrefix}${whisperCppRuntimeVersion}`);
+}
+
+export function resolveWhisperRuntimeDirectory(paths: ResourcePaths, runtimeId: EngineRuntimeId): string {
+  const runtimeRoot = resolveWhisperRuntimeRootDirectory(paths, runtimeId);
+  const versionedDirectory = installedWhisperRuntimeDirectories(runtimeRoot)
+    .find((directory) => existsSync(join(directory, executableName('whisper-cli'))));
+  if (versionedDirectory) {
+    return versionedDirectory;
+  }
+
+  const flatExecutable = join(runtimeRoot, executableName('whisper-cli'));
+  if (existsSync(flatExecutable)) {
+    return runtimeRoot;
+  }
+
+  return resolveDefaultWhisperRuntimeDirectory(paths, runtimeId);
 }
 
 export function resolveWhisperRuntimeExecutable(paths: ResourcePaths, runtimeId: EngineRuntimeId): string {
@@ -133,4 +158,40 @@ export function platformResourceDirectory(): string {
 
 function executableName(name: string): string {
   return process.platform === 'win32' ? `${name}.exe` : name;
+}
+
+function installedWhisperRuntimeDirectories(runtimeRoot: string): string[] {
+  try {
+    return readdirSync(runtimeRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && entry.name.startsWith(whisperCppRuntimeDirectoryPrefix))
+      .map((entry) => entry.name)
+      .sort(compareRuntimeDirectoryNamesDescending)
+      .map((name) => join(runtimeRoot, name));
+  } catch {
+    return [];
+  }
+}
+
+function compareRuntimeDirectoryNamesDescending(left: string, right: string): number {
+  const leftParts = versionParts(left);
+  const rightParts = versionParts(right);
+  const length = Math.max(leftParts.length, rightParts.length);
+
+  for (let index = 0; index < length; index += 1) {
+    const difference = (rightParts[index] ?? 0) - (leftParts[index] ?? 0);
+    if (difference !== 0) {
+      return difference;
+    }
+  }
+
+  return right.localeCompare(left);
+}
+
+function versionParts(directoryName: string): number[] {
+  return directoryName
+    .replace(whisperCppRuntimeDirectoryPrefix, '')
+    .replace(/^v/i, '')
+    .split(/[^\d]+/)
+    .filter(Boolean)
+    .map((part) => Number(part));
 }

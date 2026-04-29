@@ -141,10 +141,10 @@ Reason:
 Recommended Windows sidecar binaries:
 
 ```txt
-resources/engines/win32/cuda-12.4/whisper-cli.exe
-resources/engines/win32/vulkan/whisper-cli.exe
-resources/engines/win32/cpu-blas/whisper-cli.exe
-resources/engines/win32/cpu/whisper-cli.exe
+resources/engines/win32/cuda-12.4/whispercpp-v1.8.4/whisper-cli.exe
+resources/engines/win32/vulkan/whispercpp-v1.8.4/whisper-cli.exe
+resources/engines/win32/cpu-blas/whispercpp-v1.8.4/whisper-cli.exe
+resources/engines/win32/cpu/whispercpp-v1.8.4/whisper-cli.exe
 ```
 
 Runtime preference:
