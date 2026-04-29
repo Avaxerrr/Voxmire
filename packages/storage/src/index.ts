@@ -390,7 +390,8 @@ export function splitTranscriptSegment(
 
   const now = new Date().toISOString();
   const splitRatio = Math.min(Math.max(offset / current.text.length, 0.05), 0.95);
-  const splitSeconds = current.startSeconds + (current.endSeconds - current.startSeconds) * splitRatio;
+  const fallbackSplitSeconds = current.startSeconds + (current.endSeconds - current.startSeconds) * splitRatio;
+  const splitSeconds = splitSecondsForTextOffset(current, offset, fallbackSplitSeconds);
   const originalText = current.originalText ?? current.text;
   const partitionedWordTimings = partitionWordTimingsForSplit(current, offset, splitSeconds);
   const nextSegment: TranscriptSegment = {
@@ -879,6 +880,74 @@ function alignmentStatusForTiming(
   }
 
   return current.alignmentStatus === 'partial' ? 'partial' : 'aligned';
+}
+
+function splitSecondsForTextOffset(segment: TranscriptSegment, offset: number, fallbackSplitSeconds: number): number {
+  const wordTimings = segment.wordTimings;
+  if (!wordTimings || wordTimings.length === 0) {
+    return fallbackSplitSeconds;
+  }
+
+  const ranges = mapTranscriptWordTimingsToTextRanges(segment.text, wordTimings);
+  let previousWord: TranscriptWordTiming | null = null;
+  let nextWord: TranscriptWordTiming | null = null;
+  let splitInsideWordSeconds: number | null = null;
+
+  for (let index = 0; index < wordTimings.length; index += 1) {
+    const word = wordTimings[index];
+    const range = ranges[index];
+    if (!word || !range) {
+      continue;
+    }
+
+    if (range.end <= offset) {
+      previousWord = word;
+      continue;
+    }
+
+    if (range.start >= offset) {
+      nextWord = word;
+      break;
+    }
+
+    if (range.start < offset && offset < range.end) {
+      const wordTextRatio = (offset - range.start) / Math.max(1, range.end - range.start);
+      splitInsideWordSeconds = word.startSeconds + (word.endSeconds - word.startSeconds) * wordTextRatio;
+      break;
+    }
+  }
+
+  if (splitInsideWordSeconds !== null) {
+    return clampSegmentSplitSeconds(segment, splitInsideWordSeconds, fallbackSplitSeconds);
+  }
+
+  if (previousWord && nextWord) {
+    return clampSegmentSplitSeconds(segment, Math.max(previousWord.endSeconds, nextWord.startSeconds), fallbackSplitSeconds);
+  }
+
+  if (nextWord) {
+    return clampSegmentSplitSeconds(segment, nextWord.startSeconds, fallbackSplitSeconds);
+  }
+
+  if (previousWord) {
+    return clampSegmentSplitSeconds(segment, previousWord.endSeconds, fallbackSplitSeconds);
+  }
+
+  return fallbackSplitSeconds;
+}
+
+function clampSegmentSplitSeconds(segment: TranscriptSegment, splitSeconds: number, fallbackSplitSeconds: number): number {
+  if (!Number.isFinite(splitSeconds)) {
+    return fallbackSplitSeconds;
+  }
+
+  const minimum = segment.startSeconds + 0.001;
+  const maximum = segment.endSeconds - 0.001;
+  if (maximum <= minimum) {
+    return fallbackSplitSeconds;
+  }
+
+  return Math.min(maximum, Math.max(minimum, splitSeconds));
 }
 
 function partitionWordTimingsForSplit(

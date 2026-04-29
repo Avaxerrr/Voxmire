@@ -233,6 +233,8 @@ describe('storage repositories', () => {
       { text: 'world', startSeconds: 1.1, endSeconds: 1.7 },
       { text: 'again', startSeconds: 2.2, endSeconds: 2.9 }
     ]);
+    expect(splitSegments[0]?.endSeconds).toBeCloseTo(1.1);
+    expect(splitSegments[1]?.startSeconds).toBeCloseTo(1.1);
     expect(splitSegments[0]?.alignmentStatus).toBe('aligned');
     expect(splitSegments[1]?.alignmentStatus).toBe('aligned');
 
@@ -242,6 +244,48 @@ describe('storage repositories', () => {
     expect(mergedSegments[0]?.text).toBe('Hello world again');
     expect(mergedSegments[0]?.alignmentStatus).toBe('aligned');
     expect(mergedSegments[0]?.wordTimings?.map((word) => word.text)).toEqual(['Hello', 'world', 'again']);
+    db.close();
+  });
+
+  it('uses word timing instead of character ratio when splitting before a delayed final word', () => {
+    const db = openVoxmireDatabase(':memory:');
+    const created = createJobRecord(db, {
+      modelId: 'large-v3-turbo',
+      sourceFile: {
+        id: 'src_1',
+        path: 'C:/audio/example.wav',
+        name: 'example.wav',
+        extension: 'wav',
+        sizeBytes: 100,
+        durationSeconds: 10,
+        createdAt: '2026-04-23T00:00:00.000Z'
+      }
+    });
+
+    saveTranscriptSegment(db, {
+      id: 'seg_1',
+      jobId: created.job.id,
+      index: 0,
+      startSeconds: 0,
+      endSeconds: 10,
+      text: 'We wait now',
+      wordTimings: [
+        { text: 'We', startSeconds: 0.1, endSeconds: 0.3 },
+        { text: 'wait', startSeconds: 0.4, endSeconds: 0.8 },
+        { text: 'now', startSeconds: 8.5, endSeconds: 9 }
+      ],
+      alignmentStatus: 'aligned',
+      confidence: 0.8,
+      createdAt: '2026-04-23T00:00:00.000Z'
+    });
+
+    const splitSegments = splitTranscriptSegment(db, created.job.id, 'seg_1', 'We wait '.length);
+
+    expect(splitSegments.map((segment) => segment.text)).toEqual(['We wait', 'now']);
+    expect(splitSegments[0]?.endSeconds).toBeCloseTo(8.5);
+    expect(splitSegments[1]?.startSeconds).toBeCloseTo(8.5);
+    expect(splitSegments[0]?.wordTimings?.map((word) => word.text)).toEqual(['We', 'wait']);
+    expect(splitSegments[1]?.wordTimings?.map((word) => word.text)).toEqual(['now']);
     db.close();
   });
 
