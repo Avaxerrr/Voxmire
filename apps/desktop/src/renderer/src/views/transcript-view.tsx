@@ -5,16 +5,15 @@ import { TranscriptHeader } from '../features/transcript/transcript-header';
 import { findActiveSegmentIndex, preferredActiveSegmentIndexForPlayback, transcriptSubtitle, type PreferredActiveSegment } from '../features/transcript/transcript-selection';
 import { TranscriptStage } from '../features/transcript/transcript-stage';
 import { TranscriptSwitcherDrawer } from '../features/transcript/transcript-switcher-drawer';
+import { useTranscriptHistory } from '../features/transcript/use-transcript-history';
+import { useTranscriptSearchReplace } from '../features/transcript/use-transcript-search-replace';
 import { ResetTranscriptModal } from '../components/project-dialogs';
 import { applyMediaSeek } from '../features/media/media-seek';
 import { buildPlaybackTimingDiagnostic, logPlaybackDiagnostic, logWordTimingDiagnostic, recordPlaybackTimingDiagnostic, usePlaybackDiagnosticsEnabled } from '../features/media/playback-diagnostics';
 import { AudioDeck, type PlaybackClockSample } from '../features/media/playback-controls';
 import { loadVideoPreviewPreference, saveVideoPreviewPreference, type VideoPreviewDock } from '../features/media/video-preview-preferences';
-import { exportResultLabel } from '../lib/format';
-import { isEditableHistoryShortcutTarget, isPlainSpaceKey, isPlaybackShortcutTarget } from '../lib/keyboard';
+import { isPlainSpaceKey, isPlaybackShortcutTarget } from '../lib/keyboard';
 import { mediaKindFromExtension, type MediaKind } from '../lib/media-kind';
-import { countTranscriptMatches, escapeRegExp, findTranscriptMatchIndexes } from '../lib/transcript-search';
-import { replaceSegmentInTranscriptSnapshot, transcriptSegmentsEqual, type TranscriptHistoryEntry } from '../lib/transcript-history';
 
 type MediaInfo = {
   contentType: string;
@@ -22,9 +21,6 @@ type MediaInfo = {
   hasVideo: boolean;
   kind: MediaKind;
 };
-
-
-const transcriptHistoryLimit = 20;
 
 type TranscriptViewProps = {
   busy: boolean;
@@ -78,18 +74,6 @@ export function TranscriptView({
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [switcherQuery, setSwitcherQuery] = useState('');
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
-  const [findPanelOpen, setFindPanelOpen] = useState(false);
-  const [findQuery, setFindQuery] = useState('');
-  const [replacePanelOpen, setReplacePanelOpen] = useState(false);
-  const [replaceQuery, setReplaceQuery] = useState('');
-  const [activeFindIndex, setActiveFindIndex] = useState(0);
-  const [replacingText, setReplacingText] = useState(false);
-  const [resetTranscriptOpen, setResetTranscriptOpen] = useState(false);
-  const [resettingTranscript, setResettingTranscript] = useState(false);
-  const [undoStack, setUndoStack] = useState<TranscriptHistoryEntry[]>([]);
-  const [redoStack, setRedoStack] = useState<TranscriptHistoryEntry[]>([]);
-  const [historyBusy, setHistoryBusy] = useState(false);
-  const [editorResetSignal, setEditorResetSignal] = useState(0);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [mediaInfo, setMediaInfo] = useState<MediaInfo | null>(null);
@@ -119,47 +103,58 @@ export function TranscriptView({
   );
   const transcriptActiveSegmentIndex = preferredActiveSegmentIndex >= 0 ? preferredActiveSegmentIndex : activeSegmentIndex;
   const resolvedPlaybackDuration = playbackDuration ?? selectedJob?.sourceFile.durationSeconds ?? null;
-  const findMatchCount = useMemo(() => countTranscriptMatches(segments, findQuery), [findQuery, segments]);
-  const findMatchIndexes = useMemo(() => findTranscriptMatchIndexes(segments, findQuery), [findQuery, segments]);
-  const activeFindSegment = findMatchIndexes.length > 0 ? segments[findMatchIndexes[Math.min(activeFindIndex, findMatchIndexes.length - 1)] ?? -1] ?? null : null;
   const playbackTimingDiagnostic = useMemo(
     () => diagnosticsEnabled ? buildPlaybackTimingDiagnostic({ activeSegmentIndex, playbackClockSample, playbackTime, segments }) : null,
     [activeSegmentIndex, diagnosticsEnabled, playbackClockSample, playbackTime, segments]
   );
-
-  useEffect(() => {
-    setActiveFindIndex(0);
-  }, [findQuery]);
-
-  useEffect(() => {
-    setUndoStack([]);
-    setRedoStack([]);
-    setEditorResetSignal((value) => value + 1);
-  }, [selectedJob?.job.id]);
-
-  useEffect(() => {
-    function handleHistoryKeyDown(event: KeyboardEvent): void {
-      const commandModifier = event.ctrlKey || event.metaKey;
-      if (!commandModifier || isEditableHistoryShortcutTarget(event.target)) {
-        return;
-      }
-
-      const key = event.key.toLowerCase();
-      if (key === 'z' && !event.shiftKey) {
-        event.preventDefault();
-        void applyTranscriptHistory('undo');
-        return;
-      }
-
-      if (key === 'y' || (key === 'z' && event.shiftKey)) {
-        event.preventDefault();
-        void applyTranscriptHistory('redo');
-      }
-    }
-
-    window.addEventListener('keydown', handleHistoryKeyDown);
-    return () => window.removeEventListener('keydown', handleHistoryKeyDown);
-  }, [historyBusy, redoStack, selectedJob?.job.id, undoStack]);
+  const {
+    applyTranscriptHistory,
+    editorResetSignal,
+    historyBusy,
+    mergeSegmentWithHistory,
+    redoLabel,
+    rememberTranscriptHistory,
+    resetTranscriptOpen,
+    resetTranscriptWithHistory,
+    resettingTranscript,
+    setResetTranscriptOpen,
+    splitSegmentWithHistory,
+    undoLabel,
+    updateSegmentTimingWithHistory,
+    updateSegmentWithHistory
+  } = useTranscriptHistory({
+    mergeSegment,
+    replaceSegments,
+    resetSegments,
+    selectedJobId: selectedJob?.job.id ?? null,
+    segments,
+    splitSegment,
+    updateSegment,
+    updateSegmentTiming
+  });
+  const {
+    activeFindIndex,
+    activeFindSegment,
+    findMatchCount,
+    findMatchIndexesCount,
+    findPanelOpen,
+    findQuery,
+    jumpToFindMatch,
+    replaceAllTranscriptMatches,
+    replacePanelOpen,
+    replaceQuery,
+    replacingText,
+    setFindPanelOpen,
+    setFindQuery,
+    setReplacePanelOpen,
+    setReplaceQuery,
+    toggleFindPanel
+  } = useTranscriptSearchReplace({
+    onSeekSegment: seekToSegment,
+    rememberTranscriptHistory,
+    segments,
+    updateSegment
+  });
 
   useEffect(() => {
     function handlePlaybackKeyDown(event: KeyboardEvent): void {
@@ -225,7 +220,7 @@ export function TranscriptView({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('mousedown', handlePointerDown);
     };
-  }, [exportMenuOpen, findPanelOpen, switcherOpen]);
+  }, [exportMenuOpen, findPanelOpen, setFindPanelOpen, setReplacePanelOpen, switcherOpen]);
 
   useEffect(() => {
     function handleResize(): void {
@@ -324,119 +319,6 @@ export function TranscriptView({
     };
   }, [mediaApi, selectedJob?.job.id, setPlaying]);
 
-  function rememberTranscriptHistory(label: string, before: TranscriptSegment[], after: TranscriptSegment[]): void {
-    if (transcriptSegmentsEqual(before, after)) {
-      return;
-    }
-
-    setUndoStack((current) => [
-      ...current.slice(Math.max(0, current.length - transcriptHistoryLimit + 1)),
-      { after, before, label }
-    ]);
-    setRedoStack([]);
-  }
-
-  async function applyTranscriptHistory(direction: 'undo' | 'redo'): Promise<void> {
-    if (historyBusy || !selectedJob) {
-      return;
-    }
-
-    const stack = direction === 'undo' ? undoStack : redoStack;
-    const entry = stack[stack.length - 1];
-    if (!entry) {
-      return;
-    }
-
-    setHistoryBusy(true);
-    try {
-      const restored = await replaceSegments(direction === 'undo' ? entry.before : entry.after);
-      if (!restored) {
-        return;
-      }
-
-      setEditorResetSignal((value) => value + 1);
-      if (direction === 'undo') {
-        setUndoStack((current) => current.slice(0, -1));
-        setRedoStack((current) => [
-          ...current.slice(Math.max(0, current.length - transcriptHistoryLimit + 1)),
-          entry
-        ]);
-        return;
-      }
-
-      setRedoStack((current) => current.slice(0, -1));
-      setUndoStack((current) => [
-        ...current.slice(Math.max(0, current.length - transcriptHistoryLimit + 1)),
-        entry
-      ]);
-    } finally {
-      setHistoryBusy(false);
-    }
-  }
-
-  async function updateSegmentWithHistory(segmentId: string, text: string): Promise<TranscriptSegment | null> {
-    const before = segments;
-    const updated = await updateSegment(segmentId, text);
-    if (updated) {
-      rememberTranscriptHistory('Edit text', before, replaceSegmentInTranscriptSnapshot(before, updated));
-    }
-
-    return updated;
-  }
-
-  async function updateSegmentTimingWithHistory(
-    segmentId: string,
-    startSeconds: number,
-    endSeconds: number
-  ): Promise<TranscriptSegmentListResult | null> {
-    const before = segments;
-    const result = await updateSegmentTiming(segmentId, startSeconds, endSeconds);
-    if (result && !result.error) {
-      rememberTranscriptHistory('Edit timing', before, result.segments);
-    }
-
-    return result;
-  }
-
-  async function splitSegmentWithHistory(segmentId: string, offset: number): Promise<TranscriptSegment[] | null> {
-    const before = segments;
-    const updatedSegments = await splitSegment(segmentId, offset);
-    if (updatedSegments) {
-      rememberTranscriptHistory('Split segment', before, updatedSegments);
-    }
-
-    return updatedSegments;
-  }
-
-  async function mergeSegmentWithHistory(segmentId: string, direction: 'previous' | 'next'): Promise<TranscriptSegment[] | null> {
-    const before = segments;
-    const updatedSegments = await mergeSegment(segmentId, direction);
-    if (updatedSegments) {
-      rememberTranscriptHistory('Merge segments', before, updatedSegments);
-    }
-
-    return updatedSegments;
-  }
-
-  async function resetTranscriptWithHistory(): Promise<void> {
-    if (resettingTranscript) {
-      return;
-    }
-
-    const before = segments;
-    setResettingTranscript(true);
-    try {
-      const result = await resetSegments();
-      if (result && !result.error) {
-        rememberTranscriptHistory('Reset transcript', before, result.segments);
-        setEditorResetSignal((value) => value + 1);
-        setResetTranscriptOpen(false);
-      }
-    } finally {
-      setResettingTranscript(false);
-    }
-  }
-
   function seekToTime(seconds: number, preferredSegmentId: string | null = null): void {
     const nextTime = Math.max(0, seconds);
     const audio = audioRef.current;
@@ -460,67 +342,6 @@ export function TranscriptView({
     const segment = segments[nextIndex];
     if (segment) {
       seekToSegment(segment);
-    }
-  }
-
-  function jumpToFindMatch(direction: 'previous' | 'next'): void {
-    if (findMatchIndexes.length === 0) {
-      return;
-    }
-
-    const nextIndex =
-      direction === 'next'
-        ? (activeFindIndex + 1) % findMatchIndexes.length
-        : (activeFindIndex - 1 + findMatchIndexes.length) % findMatchIndexes.length;
-    const segment = segments[findMatchIndexes[nextIndex] ?? -1];
-    setActiveFindIndex(nextIndex);
-    if (segment) {
-      seekToSegment(segment);
-    }
-  }
-
-  function toggleFindPanel(): void {
-    if (findPanelOpen) {
-      setReplacePanelOpen(false);
-    }
-
-    setFindPanelOpen((open) => !open);
-  }
-
-  async function replaceAllTranscriptMatches(): Promise<void> {
-    const query = findQuery.trim();
-    if (!query || replacingText) {
-      return;
-    }
-
-    const matcher = new RegExp(escapeRegExp(query), 'gi');
-    const matchingSegments = segments.filter((segment) => {
-      matcher.lastIndex = 0;
-      return matcher.test(segment.text);
-    });
-    if (matchingSegments.length === 0) {
-      return;
-    }
-
-    const before = segments;
-    let nextSegments = segments;
-    setReplacingText(true);
-    try {
-      for (const segment of matchingSegments) {
-        const currentSegment = nextSegments.find((candidate) => candidate.id === segment.id) ?? segment;
-        matcher.lastIndex = 0;
-        const nextText = currentSegment.text.replace(matcher, replaceQuery);
-        if (nextText !== currentSegment.text) {
-          const updated = await updateSegment(currentSegment.id, nextText);
-          if (updated) {
-            nextSegments = replaceSegmentInTranscriptSnapshot(nextSegments, updated);
-          }
-        }
-      }
-
-      rememberTranscriptHistory('Replace all', before, nextSegments);
-    } finally {
-      setReplacingText(false);
     }
   }
 
@@ -548,12 +369,12 @@ export function TranscriptView({
         onToggleFindPanel={toggleFindPanel}
         onToggleSwitcher={() => setSwitcherOpen((open) => !open)}
         onUndo={() => void applyTranscriptHistory('undo')}
-        redoLabel={redoStack[redoStack.length - 1]?.label ?? null}
+        redoLabel={redoLabel}
         resettingTranscript={resettingTranscript}
         selectedJob={selectedJob}
         selectedSubtitle={selectedSubtitle}
         switcherOpen={switcherOpen}
-        undoLabel={undoStack[undoStack.length - 1]?.label ?? null}
+        undoLabel={undoLabel}
       />
 
       <section className="transcript-layout">
@@ -572,7 +393,7 @@ export function TranscriptView({
           <FindReplacePanel
             activeFindIndex={activeFindIndex}
             findMatchCount={findMatchCount}
-            findMatchIndexesCount={findMatchIndexes.length}
+            findMatchIndexesCount={findMatchIndexesCount}
             findQuery={findQuery}
             onFindQueryChange={setFindQuery}
             onJumpMatch={jumpToFindMatch}
