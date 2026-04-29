@@ -144,6 +144,7 @@ const transcriptShortcuts = [
   { keys: 'Tab', action: 'Save and move to next segment' },
   { keys: 'Shift+Tab', action: 'Save and move to previous segment' },
   { keys: 'Esc', action: 'Cancel the active edit' },
+  { keys: 'Space', action: 'Play or pause media' },
   { keys: 'Ctrl/Cmd+S', action: 'Save the active segment' }
 ];
 
@@ -1158,6 +1159,31 @@ function TranscriptView({
     window.addEventListener('keydown', handleHistoryKeyDown);
     return () => window.removeEventListener('keydown', handleHistoryKeyDown);
   }, [historyBusy, redoStack, selectedJob?.job.id, undoStack]);
+
+  useEffect(() => {
+    function handlePlaybackKeyDown(event: KeyboardEvent): void {
+      if (
+        event.defaultPrevented ||
+        event.repeat ||
+        !isPlainSpaceKey(event) ||
+        isPlaybackShortcutTarget(event.target) ||
+        resetTranscriptOpen ||
+        switcherOpen ||
+        exportMenuOpen ||
+        !selectedJob ||
+        !mediaUrl ||
+        mediaError
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      setPlaying(!playing);
+    }
+
+    window.addEventListener('keydown', handlePlaybackKeyDown);
+    return () => window.removeEventListener('keydown', handlePlaybackKeyDown);
+  }, [exportMenuOpen, mediaError, mediaUrl, playing, resetTranscriptOpen, selectedJob, setPlaying, switcherOpen]);
 
   useEffect(() => {
     if (preferredActiveSegment && preferredActiveSegmentIndex < 0) {
@@ -3879,9 +3905,9 @@ function AudioDeck({
             <button className="icon-button" disabled={!canPlay || !canGoNextSegment} onClick={onNextSegment} title="Next segment" type="button"><SkipForward size={18} /></button>
           </div>
           <div className="deck-time-group" aria-label="Playback time">
-            <span className="deck-time current">{formatTime(displayTime)}</span>
+            <span className="deck-time current">{formatPreciseTime(displayTime)}</span>
             <span className="deck-time-divider">/</span>
-            <span className="deck-time">{formatDuration(resolvedDuration)}</span>
+            <span className="deck-time">{formatPreciseDuration(resolvedDuration)}</span>
           </div>
           <div className="waveform-wrap">
             <div className="waveform-control">
@@ -3908,7 +3934,7 @@ function AudioDeck({
                 onPointerCancel={() => setDraftSeekTime(null)}
                 onPointerDown={() => setDraftSeekTime(displayTime)}
                 onPointerUp={(event) => seekTo(Number(event.currentTarget.value))}
-                step={0.01}
+                step={0.001}
                 type="range"
                 value={resolvedDuration ? Math.min(displayTime, resolvedDuration) : 0}
               />
@@ -4574,12 +4600,29 @@ function formatTime(seconds: number): string {
   return `${minutes}:${remainder.toString().padStart(2, '0')}`;
 }
 
+function formatPreciseTime(seconds: number): string {
+  const safeSeconds = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+  const totalMilliseconds = Math.round(safeSeconds * 1000);
+  const hours = Math.floor(totalMilliseconds / 3_600_000);
+  const minutes = Math.floor((totalMilliseconds % 3_600_000) / 60_000);
+  const wholeSeconds = Math.floor((totalMilliseconds % 60_000) / 1000);
+  const milliseconds = totalMilliseconds % 1000;
+  const suffix = `.${milliseconds.toString().padStart(3, '0')}`;
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${wholeSeconds.toString().padStart(2, '0')}${suffix}`;
+  }
+
+  return `${minutes}:${wholeSeconds.toString().padStart(2, '0')}${suffix}`;
+}
+
 function formatEditableTime(seconds: number): string {
   const safeSeconds = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
-  const hours = Math.floor(safeSeconds / 3600);
-  const minutes = Math.floor((safeSeconds % 3600) / 60);
-  const wholeSeconds = Math.floor(safeSeconds % 60);
-  const milliseconds = Math.round((safeSeconds - Math.floor(safeSeconds)) * 1000);
+  const totalMilliseconds = Math.round(safeSeconds * 1000);
+  const hours = Math.floor(totalMilliseconds / 3_600_000);
+  const minutes = Math.floor((totalMilliseconds % 3_600_000) / 60_000);
+  const wholeSeconds = Math.floor((totalMilliseconds % 60_000) / 1000);
+  const milliseconds = totalMilliseconds % 1000;
   const suffix = milliseconds > 0 ? `.${milliseconds.toString().padStart(3, '0').replace(/0+$/, '')}` : '';
 
   if (hours > 0) {
@@ -4621,6 +4664,21 @@ function isEditableHistoryShortcutTarget(target: EventTarget | null): boolean {
   }
 
   return Boolean(target.closest('input, textarea, select, [contenteditable]'));
+}
+
+function isPlainSpaceKey(event: KeyboardEvent): boolean {
+  return (event.code === 'Space' || event.key === ' ' || event.key === 'Spacebar')
+    && !event.altKey
+    && !event.ctrlKey
+    && !event.metaKey;
+}
+
+function isPlaybackShortcutTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+
+  return Boolean(target.closest('input, textarea, select, button, [contenteditable], [role="button"], [role="slider"], [role="dialog"]'));
 }
 
 function replaceSegmentInTranscriptSnapshot(segments: TranscriptSegment[], updatedSegment: TranscriptSegment): TranscriptSegment[] {
@@ -4693,6 +4751,10 @@ function findTranscriptMatchIndexes(segments: TranscriptSegment[], query: string
 
 function formatDuration(seconds: number | null): string {
   return seconds === null ? 'Duration unknown' : formatTime(seconds);
+}
+
+function formatPreciseDuration(seconds: number | null): string {
+  return seconds === null ? 'Duration unknown' : formatPreciseTime(seconds);
 }
 
 function formatFileSize(bytes: number): string {

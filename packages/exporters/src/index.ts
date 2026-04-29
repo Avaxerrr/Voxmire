@@ -26,7 +26,7 @@ function renderTxt(segments: readonly TranscriptSegment[], textMode: ExportTextM
     return `${segments
       .map((segment) => {
         const text = segment.text.trim();
-        return text ? `[${formatReadableTimestamp(segment.startSeconds)} - ${formatReadableTimestamp(segment.endSeconds)}] ${text}` : '';
+        return text ? `[${formatEditableTimestamp(segment.startSeconds)} - ${formatEditableTimestamp(segment.endSeconds)}] ${text}` : '';
       })
       .filter(Boolean)
       .join('\n\n')}\n`;
@@ -73,15 +73,17 @@ function pad(value: number): string {
   return value.toString().padStart(2, '0');
 }
 
-function formatReadableTimestamp(seconds: number): string {
-  const totalSeconds = Math.max(0, Math.floor(seconds));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const wholeSeconds = totalSeconds % 60;
+function formatEditableTimestamp(seconds: number): string {
+  const totalMilliseconds = Math.max(0, Math.round(seconds * 1000));
+  const hours = Math.floor(totalMilliseconds / 3_600_000);
+  const minutes = Math.floor((totalMilliseconds % 3_600_000) / 60_000);
+  const wholeSeconds = Math.floor((totalMilliseconds % 60_000) / 1000);
+  const milliseconds = totalMilliseconds % 1000;
+  const suffix = milliseconds > 0 ? `.${milliseconds.toString().padStart(3, '0').replace(/0+$/, '')}` : '';
 
   if (hours > 0) {
-    return `${hours}:${pad(minutes)}:${pad(wholeSeconds)}`;
+    return `${hours}:${pad(minutes)}:${pad(wholeSeconds)}${suffix}`;
   }
 
-  return `${minutes}:${pad(wholeSeconds)}`;
+  return `${minutes}:${pad(wholeSeconds)}${suffix}`;
 }

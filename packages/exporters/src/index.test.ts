@@ -21,7 +21,7 @@ describe('exporters', () => {
   });
 
   it('renders text with readable timestamps', () => {
-    expect(renderTranscriptExport('txt', segments, { textMode: 'timestamps' })).toContain('[0:00 - 0:02] Hello world.');
+    expect(renderTranscriptExport('txt', segments, { textMode: 'timestamps' })).toContain('[0:00 - 0:02.5] Hello world.');
   });
 
   it('renders the current edited segment text', () => {
