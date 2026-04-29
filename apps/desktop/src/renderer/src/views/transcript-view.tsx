@@ -1,8 +1,9 @@
 import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ChevronDown, Download, FileText, FolderOpen, Pause, Pencil, Play, Plus, Search, SkipBack, SkipForward, Square, Redo2, RotateCcw, Undo2, Video, X } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Download, FileText, FolderOpen, Pause, Play, Plus, Search, Square, Redo2, RotateCcw, Undo2, Video } from 'lucide-react';
 import type { ExportFormat, ExportTextMode, JobWithSource, TranscriptSegment, TranscriptSegmentListResult } from '@voxmire/contracts';
 import { EmptyState } from '../components/empty-state';
-import { ProgressPill } from '../components/progress-pill';
+import { FindReplacePanel } from '../features/transcript/find-replace-panel';
+import { TranscriptSwitcherDrawer } from '../features/transcript/transcript-switcher-drawer';
 import { ProjectActionsMenu } from '../components/project-actions-menu';
 import { ResetTranscriptModal } from '../components/project-dialogs';
 import { applyMediaSeek } from '../features/media/media-seek';
@@ -12,7 +13,7 @@ import { VideoPreview } from '../features/media/video-preview';
 import { loadVideoPreviewPreference, saveVideoPreviewPreference, type VideoPreviewDock } from '../features/media/video-preview-preferences';
 import { VirtualizedSegmentList } from '../features/transcript/segment-list';
 import { getPlaybackWordState, type PlaybackWordState } from '../features/transcript/word-timing';
-import { exportResultLabel, formatDate, formatDuration } from '../lib/format';
+import { exportResultLabel, formatDuration } from '../lib/format';
 import { isEditableHistoryShortcutTarget, isPlainSpaceKey, isPlaybackShortcutTarget } from '../lib/keyboard';
 import { activeStatuses, statusLabel } from '../lib/job-status';
 import { mediaKindFromExtension, mediaKindLabel, type MediaKind } from '../lib/media-kind';
@@ -148,15 +149,6 @@ export function TranscriptView({
   );
   const transcriptActiveSegmentIndex = preferredActiveSegmentIndex >= 0 ? preferredActiveSegmentIndex : activeSegmentIndex;
   const resolvedPlaybackDuration = playbackDuration ?? selectedJob?.sourceFile.durationSeconds ?? null;
-  const visibleJobs = useMemo(() => {
-    const query = switcherQuery.trim().toLowerCase();
-
-    if (!query) {
-      return jobs;
-    }
-
-    return jobs.filter((entry) => entry.sourceFile.name.toLowerCase().includes(query));
-  }, [jobs, switcherQuery]);
   const findMatchCount = useMemo(() => countTranscriptMatches(segments, findQuery), [findQuery, segments]);
   const findMatchIndexes = useMemo(() => findTranscriptMatchIndexes(segments, findQuery), [findQuery, segments]);
   const activeFindSegment = findMatchIndexes.length > 0 ? segments[findMatchIndexes[Math.min(activeFindIndex, findMatchIndexes.length - 1)] ?? -1] ?? null : null;
@@ -674,127 +666,31 @@ export function TranscriptView({
 
       <section className="transcript-layout">
         {switcherOpen ? (
-          <div className="transcript-switcher-layer" onClick={() => setSwitcherOpen(false)} role="presentation">
-            <aside className="transcript-switcher-drawer" aria-label="Transcript switcher" onClick={(event) => event.stopPropagation()}>
-              <div className="switcher-heading">
-                <div>
-                  <p className="eyebrow">Switch transcript</p>
-                  <h3>Transcript projects</h3>
-                </div>
-                <button className="icon-button" onClick={() => setSwitcherOpen(false)} title="Close transcript switcher" type="button">
-                  <X size={15} />
-                </button>
-              </div>
-
-              <label className="search-field switcher-search">
-                <Search size={15} />
-                <input
-                  aria-label="Find transcript"
-                  name="transcriptSwitcherSearch"
-                  onChange={(event) => setSwitcherQuery(event.target.value)}
-                  placeholder="Find transcript"
-                  type="search"
-                  value={switcherQuery}
-                />
-              </label>
-
-              <div className="transcript-switcher-list">
-                {jobs.length === 0 ? (
-                  <EmptyState title="No transcripts yet" body="Import a recording to create your first transcript." />
-                ) : visibleJobs.length === 0 ? (
-                  <EmptyState title="No matches" body="Try a different transcript name." />
-                ) : (
-                  visibleJobs.map((entry) => {
-                    const isSelected = entry.job.id === selectedJob?.job.id;
-                    const isLive = activeStatuses.includes(entry.job.status);
-                    const showStatus = entry.job.status !== 'completed';
-
-                    return (
-                      <button
-                        className={`transcript-switcher-row ${isSelected ? 'selected' : ''} ${isLive ? 'live' : ''}`}
-                        key={entry.job.id}
-                        onClick={() => {
-                          onSelectJob(entry.job.id);
-                          setSwitcherOpen(false);
-                        }}
-                        type="button"
-                      >
-                        <span className="project-main">
-                          <strong>{entry.sourceFile.name}</strong>
-                          <small>{formatDuration(entry.sourceFile.durationSeconds)} / {formatDate(entry.job.createdAt)}</small>
-                        </span>
-                        {showStatus ? <ProgressPill job={entry} /> : null}
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            </aside>
-          </div>
+          <TranscriptSwitcherDrawer
+            jobs={jobs}
+            onClose={() => setSwitcherOpen(false)}
+            onSelectJob={onSelectJob}
+            query={switcherQuery}
+            selectedJobId={selectedJob?.job.id ?? null}
+            setQuery={setSwitcherQuery}
+          />
         ) : null}
 
-
         {findPanelOpen ? (
-          <div className="find-replace-panel">
-            <label className="search-field compact-find-field">
-              <Search size={14} />
-              <input
-                aria-label="Find transcript text"
-                onChange={(event) => setFindQuery(event.target.value)}
-                placeholder="Find"
-                type="search"
-                value={findQuery}
-              />
-            </label>
-            <div className="find-nav-controls" aria-label="Find result navigation">
-              <button
-                aria-label="Previous match"
-                disabled={findMatchIndexes.length === 0}
-                onClick={() => jumpToFindMatch('previous')}
-                type="button"
-              >
-                <SkipBack size={14} />
-              </button>
-              <button
-                aria-label="Next match"
-                disabled={findMatchIndexes.length === 0}
-                onClick={() => jumpToFindMatch('next')}
-                type="button"
-              >
-                <SkipForward size={14} />
-              </button>
-            </div>
-            <span className="find-count">{findQuery.trim() ? `${findMatchIndexes.length === 0 ? 0 : activeFindIndex + 1}/${findMatchCount}` : 'Find text'}</span>
-            <button
-              aria-expanded={replacePanelOpen}
-              className={`secondary-action replace-toggle ${replacePanelOpen ? 'active' : ''}`}
-              onClick={() => setReplacePanelOpen((open) => !open)}
-              type="button"
-            >
-              <Pencil size={14} />
-              Replace
-            </button>
-            {replacePanelOpen ? (
-              <>
-                <input
-                  aria-label="Replace transcript text"
-                  className="replace-field"
-                  onChange={(event) => setReplaceQuery(event.target.value)}
-                  placeholder="Replace"
-                  type="text"
-                  value={replaceQuery}
-                />
-                <button
-                  className="secondary-action"
-                  disabled={!findQuery.trim() || findMatchCount === 0 || replacingText}
-                  onClick={() => void replaceAllTranscriptMatches()}
-                  type="button"
-                >
-                  Replace all
-                </button>
-              </>
-            ) : null}
-          </div>
+          <FindReplacePanel
+            activeFindIndex={activeFindIndex}
+            findMatchCount={findMatchCount}
+            findMatchIndexesCount={findMatchIndexes.length}
+            findQuery={findQuery}
+            onFindQueryChange={setFindQuery}
+            onJumpMatch={jumpToFindMatch}
+            onReplaceAll={() => void replaceAllTranscriptMatches()}
+            onReplaceQueryChange={setReplaceQuery}
+            onToggleReplacePanel={() => setReplacePanelOpen((open) => !open)}
+            replacePanelOpen={replacePanelOpen}
+            replaceQuery={replaceQuery}
+            replacingText={replacingText}
+          />
         ) : null}
 
         <div className="transcript-main">
