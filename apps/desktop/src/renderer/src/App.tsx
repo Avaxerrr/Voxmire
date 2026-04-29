@@ -1183,8 +1183,8 @@ function TranscriptView({
     };
   }, [mediaApi, selectedJob?.job.id, setPlaying]);
 
-  function seekToSegment(segment: TranscriptSegment): void {
-    const nextTime = Math.max(0, segment.startSeconds);
+  function seekToTime(seconds: number): void {
+    const nextTime = Math.max(0, seconds);
     const audio = audioRef.current;
 
     setPlaybackTime(nextTime);
@@ -1192,6 +1192,10 @@ function TranscriptView({
     if (audio) {
       applyMediaSeek(audio, nextTime, false);
     }
+  }
+
+  function seekToSegment(segment: TranscriptSegment): void {
+    seekToTime(segment.startSeconds);
   }
 
   function jumpToFindMatch(direction: 'previous' | 'next'): void {
@@ -1518,6 +1522,7 @@ function TranscriptView({
                         activeSegmentIndex={activeSegmentIndex}
                         onMergeSegment={mergeSegment}
                         onSeek={seekToSegment}
+                        onSeekTime={seekToTime}
                         onSplitSegment={splitSegment}
                         onUpdateTiming={updateSegmentTiming}
                         onUpdateSegment={updateSegment}
@@ -1535,6 +1540,7 @@ function TranscriptView({
                     activeSegmentIndex={activeSegmentIndex}
                     onMergeSegment={mergeSegment}
                     onSeek={seekToSegment}
+                    onSeekTime={seekToTime}
                     onSplitSegment={splitSegment}
                     onUpdateTiming={updateSegmentTiming}
                     onUpdateSegment={updateSegment}
@@ -2171,6 +2177,7 @@ type VirtualizedSegmentListProps = {
   activeSegmentIndex: number;
   onMergeSegment: (segmentId: string, direction: 'previous' | 'next') => Promise<TranscriptSegment[] | null>;
   onSeek: (segment: TranscriptSegment) => void;
+  onSeekTime: (seconds: number) => void;
   onSplitSegment: (segmentId: string, offset: number) => Promise<TranscriptSegment[] | null>;
   onUpdateTiming: (segmentId: string, startSeconds: number, endSeconds: number) => Promise<TranscriptSegmentListResult | null>;
   onUpdateSegment: (segmentId: string, text: string) => Promise<TranscriptSegment | null>;
@@ -2184,6 +2191,7 @@ function VirtualizedSegmentList({
   activeSegmentIndex,
   onMergeSegment,
   onSeek,
+  onSeekTime,
   onSplitSegment,
   onUpdateTiming,
   onUpdateSegment,
@@ -2459,6 +2467,7 @@ function VirtualizedSegmentList({
                 onMergeNext={() => mergeSegment(segment, 'next', virtualRow.index)}
                 onMergePrevious={() => mergeSegment(segment, 'previous', virtualRow.index)}
                 onSave={(nextText) => saveSegmentText(segment, nextText)}
+                onSeekTime={onSeekTime}
                 onSaveAndClose={(nextText) => saveAndClose(segment, nextText)}
                 onSaveAndMoveNext={(nextText) => saveAndMoveToNext(segment, nextText, virtualRow.index)}
                 onSaveAndMovePrevious={(nextText) => saveAndMoveToPrevious(segment, nextText, virtualRow.index)}
@@ -2495,6 +2504,7 @@ type EditableSegmentRowProps = {
   onMergeNext: () => Promise<void>;
   onMergePrevious: () => Promise<void>;
   onSave: (nextText: string) => Promise<boolean>;
+  onSeekTime: (seconds: number) => void;
   onSaveAndClose: (nextText: string) => Promise<void>;
   onSaveAndMoveNext: (nextText: string) => Promise<boolean>;
   onSaveAndMovePrevious: (nextText: string) => Promise<boolean>;
@@ -2521,6 +2531,7 @@ function EditableSegmentRow({
   onCursorOffsetChange,
   onDraftChange,
   onSave,
+  onSeekTime,
   onFocus,
   onMergeNext,
   onMergePrevious,
@@ -2675,13 +2686,20 @@ function EditableSegmentRow({
     event.preventDefault();
   }
 
+  function handleTimestampPointerDown(event: ReactPointerEvent<HTMLInputElement>, seconds: number): void {
+    event.stopPropagation();
+    if (event.button === 0 && !event.defaultPrevented) {
+      onSeekTime(seconds);
+    }
+  }
+
   function handleSegmentPointerDown(event: ReactPointerEvent<HTMLDivElement>): void {
     if (event.button !== 0 || event.defaultPrevented) {
       return;
     }
 
     const target = event.target instanceof Element ? event.target : null;
-    if (target?.closest('.segment-structure-tools')) {
+    if (target?.closest('.segment-structure-tools, .segment-time-editors')) {
       return;
     }
 
@@ -2703,7 +2721,7 @@ function EditableSegmentRow({
         <div
           className="segment-time-editors"
           aria-label="Segment timestamps"
-          title={`Seek to ${formatTime(segment.startSeconds)}`}
+          title="Click a timestamp to seek"
         >
           <input
             aria-label="Segment start time"
@@ -2711,6 +2729,8 @@ function EditableSegmentRow({
             onBlur={saveTimingDraft}
             onChange={(event) => setStartDraft(event.target.value)}
             onKeyDown={handleTimingKeyDown}
+            onPointerDown={(event) => handleTimestampPointerDown(event, segment.startSeconds)}
+            title={`Seek to ${formatTime(segment.startSeconds)}`}
             value={startDraft}
           />
           <span>-</span>
@@ -2720,6 +2740,8 @@ function EditableSegmentRow({
             onBlur={saveTimingDraft}
             onChange={(event) => setEndDraft(event.target.value)}
             onKeyDown={handleTimingKeyDown}
+            onPointerDown={(event) => handleTimestampPointerDown(event, segment.endSeconds)}
+            title={`Seek to ${formatTime(segment.endSeconds)}`}
             value={endDraft}
           />
         </div>
