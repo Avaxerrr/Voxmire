@@ -111,9 +111,6 @@ const playbackDiagnosticClockDriftWarningSeconds = 0.08;
 const playbackDiagnosticLongGapWarningSeconds = 0.12;
 const playbackTraceLimit = 600;
 const wordTimingBoundaryToleranceSeconds = 0.025;
-const segmentScrollLeadMaxSeconds = 1;
-const segmentScrollLeadDurationRatio = 0.3;
-const segmentScrollManualPauseMs = 1600;
 const audioSeekThrottleMs = 50;
 const videoSeekThrottleMs = 140;
 const videoPreviewPreferenceKey = 'voxmire:videoPreviewPreference';
@@ -122,11 +119,6 @@ const minVideoPreviewWidth = 180;
 const maxTopVideoPreviewWidth = 420;
 const maxSideVideoPreviewWidth = 360;
 const sidePreviewBreakpoint = 1180;
-
-function currentTimeMs(): number {
-  return typeof performance === 'undefined' ? Date.now() : performance.now();
-}
-
 const transcriptShortcuts = [
   { keys: 'Enter', action: 'Split segment at the cursor' },
   { keys: 'Shift+Enter', action: 'Insert a line break inside the segment' },
@@ -1531,7 +1523,6 @@ function TranscriptView({
                         onUpdateSegment={updateSegment}
                         activeSearchSegmentId={activeFindSegment?.id ?? null}
                         playbackTime={playbackTime}
-                        playing={playing}
                         searchQuery={findQuery}
                         segments={segments}
                       />
@@ -1549,7 +1540,6 @@ function TranscriptView({
                     onUpdateSegment={updateSegment}
                     activeSearchSegmentId={activeFindSegment?.id ?? null}
                     playbackTime={playbackTime}
-                    playing={playing}
                     searchQuery={findQuery}
                     segments={segments}
                   />
@@ -2186,7 +2176,6 @@ type VirtualizedSegmentListProps = {
   onUpdateSegment: (segmentId: string, text: string) => Promise<TranscriptSegment | null>;
   activeSearchSegmentId: string | null;
   playbackTime: number;
-  playing: boolean;
   searchQuery: string;
   segments: TranscriptSegment[];
 };
@@ -2200,7 +2189,6 @@ function VirtualizedSegmentList({
   onUpdateSegment,
   activeSearchSegmentId,
   playbackTime,
-  playing,
   searchQuery,
   segments
 }: VirtualizedSegmentListProps): ReactElement {
@@ -2212,8 +2200,6 @@ function VirtualizedSegmentList({
   const [cursorOffset, setCursorOffset] = useState(0);
   const scrollParentRef = useRef<HTMLDivElement | null>(null);
   const lastWordDiagnosticKeyRef = useRef('');
-  const lastManualScrollAtRef = useRef(0);
-  const anticipatedSegmentIndexRef = useRef<number | null>(null);
   const rowVirtualizer = useVirtualizer({
     count: segments.length,
     estimateSize: () => 108,
@@ -2222,59 +2208,11 @@ function VirtualizedSegmentList({
     overscan: 8
   });
 
-  function markManualTranscriptScroll(): void {
-    lastManualScrollAtRef.current = currentTimeMs();
-    anticipatedSegmentIndexRef.current = null;
-  }
-
-  function anticipatedPlaybackSegmentIndex(): number | null {
-    if (!playing || editingSegmentId || activeSearchSegmentId || searchQuery.trim() || activeSegmentIndex < 0) {
-      return null;
-    }
-
-    const segment = segments[activeSegmentIndex];
-    const nextSegmentIndex = activeSegmentIndex + 1;
-    if (!segment || nextSegmentIndex >= segments.length) {
-      return null;
-    }
-
-    if (currentTimeMs() - lastManualScrollAtRef.current < segmentScrollManualPauseMs) {
-      return null;
-    }
-
-    const segmentDurationSeconds = Math.max(0, segment.endSeconds - segment.startSeconds);
-    const leadSeconds = Math.min(segmentScrollLeadMaxSeconds, segmentDurationSeconds * segmentScrollLeadDurationRatio);
-    if (leadSeconds <= 0 || playbackTime < segment.endSeconds - leadSeconds || playbackTime >= segment.endSeconds) {
-      return null;
-    }
-
-    return nextSegmentIndex;
-  }
-
-  const visualActiveSegmentIndex = anticipatedPlaybackSegmentIndex() ?? activeSegmentIndex;
-
   useEffect(() => {
-    if (activeSegmentIndex < 0 || editingSegmentId) {
-      return;
+    if (activeSegmentIndex >= 0 && !editingSegmentId) {
+      rowVirtualizer.scrollToIndex(activeSegmentIndex, { align: 'center' });
     }
-
-    if (anticipatedSegmentIndexRef.current === activeSegmentIndex) {
-      anticipatedSegmentIndexRef.current = null;
-      return;
-    }
-
-    rowVirtualizer.scrollToIndex(activeSegmentIndex, { align: 'center' });
   }, [activeSegmentIndex, editingSegmentId]);
-
-  useEffect(() => {
-    const nextSegmentIndex = anticipatedPlaybackSegmentIndex();
-    if (nextSegmentIndex === null || anticipatedSegmentIndexRef.current === nextSegmentIndex) {
-      return;
-    }
-
-    anticipatedSegmentIndexRef.current = nextSegmentIndex;
-    rowVirtualizer.scrollToIndex(nextSegmentIndex, { align: 'center' });
-  }, [activeSearchSegmentId, activeSegmentIndex, editingSegmentId, playbackTime, playing, searchQuery, segments]);
 
   useEffect(() => {
     if (!activeSearchSegmentId) {
@@ -2482,12 +2420,7 @@ function VirtualizedSegmentList({
   }, [draftText, editingSegmentId, savingSegmentId, segments]);
 
   return (
-    <div
-      className="segment-list virtualized"
-      onTouchStart={markManualTranscriptScroll}
-      onWheel={markManualTranscriptScroll}
-      ref={scrollParentRef}
-    >
+    <div className="segment-list virtualized" ref={scrollParentRef}>
       <div className="segment-list-inner" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
         {rowVirtualizer.getVirtualItems().map((virtualRow) => {
           const segment = segments[virtualRow.index];
@@ -2495,7 +2428,7 @@ function VirtualizedSegmentList({
             return null;
           }
 
-          const active = virtualRow.index === visualActiveSegmentIndex;
+          const active = virtualRow.index === activeSegmentIndex;
           const editing = segment.id === editingSegmentId;
           const saving = segment.id === savingSegmentId;
           const savingTiming = segment.id === savingTimingSegmentId;
