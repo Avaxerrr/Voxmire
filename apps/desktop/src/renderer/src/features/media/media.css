@@ -1,0 +1,63 @@
+.audio-deck {
+  position: absolute;
+  right: 18px;
+  bottom: 10px;
+  left: 18px;
+  display: grid;
+  grid-template-columns: auto auto minmax(160px, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 82px;
+  padding: 12px 18px;
+  background: rgba(18, 18, 22, 0.94);
+}
+.playback-media { display: none; }
+.deck-error { grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; color: #fca5a5; font-size: 12px; font-weight: 800; }
+.deck-error span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deck-controls { display: flex; align-items: center; gap: 9px; }
+.play-button { width: 42px; height: 42px; border: 0; color: #050505; background: #ffffff; }
+.deck-time-group { display: flex; align-items: center; gap: 6px; min-width: 92px; color: #71717a; font-family: "Fira Code", Consolas, monospace; font-size: 11px; font-weight: 800; }
+.deck-time { color: #b8bcc7; white-space: nowrap; }
+.deck-time.current { color: var(--violet); }
+.deck-time-divider { color: #52525b; }
+.waveform-wrap { min-width: 0; }
+.waveform-control { position: relative; min-width: 0; overflow: hidden; border-radius: 6px; }
+.waveform { display: block; width: 100%; height: 56px; }
+.waveform rect { fill: #3f3f46; transition: fill 120ms ease; }
+.waveform.loading { opacity: 0.55; animation: waveform-loading-pulse 1.2s ease-in-out infinite; }
+.waveform-progress-overlay { position: absolute; inset: 0; height: 56px; transform-origin: left center; background: linear-gradient(90deg, rgba(168, 85, 247, 0.42), rgba(34, 211, 238, 0.14)); mix-blend-mode: screen; pointer-events: none; will-change: transform; }
+.waveform-playhead { position: absolute; top: 6px; bottom: 6px; width: 2px; border-radius: 2px; background: var(--violet); box-shadow: 0 0 10px rgba(168, 85, 247, 0.8); pointer-events: none; will-change: left; }
+.audio-seek { position: absolute; inset: 0; width: 100%; height: 56px; margin: 0; opacity: 0; cursor: pointer; }
+.audio-seek:disabled { cursor: not-allowed; }
+.deck-option-group { display: flex; align-items: center; gap: 7px; }
+.waveform-scale-control,
+.speed-control,
+.volume-control { position: relative; display: grid; place-items: center; }
+.option-button,
+.volume-button,
+.volume-mute-button { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 1px solid var(--line); border-radius: 8px; color: #c5c8d0; background: rgba(255, 255, 255, 0.04); cursor: pointer; }
+.speed-button { display: grid; place-items: center; min-width: 42px; height: 30px; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px; color: #d7d8de; background: rgba(255, 255, 255, 0.04); cursor: pointer; font-family: "Fira Code", Consolas, monospace; font-size: 11px; font-weight: 800; }
+.option-button:hover:not(:disabled),
+.option-button.active,
+.speed-button:hover:not(:disabled),
+.speed-button.active,
+.volume-button:hover:not(:disabled),
+.volume-button.active,
+.volume-mute-button:hover { color: #ffffff; background: rgba(255, 255, 255, 0.08); }
+.speed-popover,
+.waveform-scale-popover { position: absolute; right: 0; bottom: calc(100% + 12px); z-index: 40; display: grid; gap: 4px; min-width: 72px; padding: 6px; border: 1px solid var(--line-strong); border-radius: 8px; background: #101014; box-shadow: 0 18px 42px rgba(0, 0, 0, 0.48); }
+.waveform-scale-popover { min-width: 92px; }
+.speed-popover button,
+.waveform-scale-popover button { height: 28px; padding: 0 9px; border: 0; border-radius: 6px; color: var(--muted); background: transparent; cursor: pointer; font-family: "Fira Code", Consolas, monospace; font-size: 11px; font-weight: 800; text-align: left; }
+.speed-popover button:hover,
+.speed-popover button.active,
+.waveform-scale-popover button:hover,
+.waveform-scale-popover button.active { color: #ffffff; background: rgba(168, 85, 247, 0.2); }
+.volume-popover { position: absolute; right: 0; bottom: calc(100% + 12px); z-index: 40; display: grid; justify-items: center; gap: 9px; min-width: 48px; padding: 10px 8px; border: 1px solid var(--line-strong); border-radius: 8px; background: #101014; box-shadow: 0 18px 42px rgba(0, 0, 0, 0.48); }
+.volume-slider { width: 22px; height: 118px; accent-color: var(--violet); writing-mode: vertical-lr; direction: rtl; }
+.volume-popover span { color: var(--muted); font-family: "Fira Code", Consolas, monospace; font-size: 10px; font-weight: 700; }
+
+@keyframes waveform-loading-pulse {
+  0%, 100% { opacity: 0.42; }
+  50% { opacity: 0.72; }
+}
