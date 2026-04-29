@@ -39,6 +39,7 @@ import {
   Square,
   Trash2,
   Redo2,
+  RotateCcw,
   Undo2,
   UploadCloud,
   Video,
@@ -606,6 +607,27 @@ export function App(): ReactElement {
     }
   }
 
+  async function resetTranscriptSegments(): Promise<TranscriptSegmentListResult | null> {
+    if (!selectedJob) {
+      return null;
+    }
+
+    if (!api) {
+      setMessage('Desktop bridge unavailable.');
+      return null;
+    }
+
+    try {
+      const result = await api.transcripts.resetSegments(selectedJob.job.id);
+      setSegments(result.segments);
+      setMessage(result.error ?? 'Transcript reset to original transcription.');
+      return result;
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to reset transcript.');
+      return null;
+    }
+  }
+
   function openProjectDetails(jobId: string): void {
     setDetailsJobId(jobId);
   }
@@ -759,6 +781,7 @@ export function App(): ReactElement {
             splitSegment={splitTranscriptSegment}
             mergeSegment={mergeTranscriptSegment}
             replaceSegments={replaceTranscriptSegments}
+            resetSegments={resetTranscriptSegments}
             updateSegmentTiming={updateTranscriptSegmentTiming}
             updateSegment={updateTranscriptSegment}
           />
@@ -1008,6 +1031,7 @@ type TranscriptViewProps = {
   splitSegment: (segmentId: string, offset: number) => Promise<TranscriptSegment[] | null>;
   mergeSegment: (segmentId: string, direction: 'previous' | 'next') => Promise<TranscriptSegment[] | null>;
   replaceSegments: (segments: TranscriptSegment[]) => Promise<TranscriptSegment[] | null>;
+  resetSegments: () => Promise<TranscriptSegmentListResult | null>;
   updateSegmentTiming: (segmentId: string, startSeconds: number, endSeconds: number) => Promise<TranscriptSegmentListResult | null>;
   updateSegment: (segmentId: string, text: string) => Promise<TranscriptSegment | null>;
 };
@@ -1032,6 +1056,7 @@ function TranscriptView({
   splitSegment,
   mergeSegment,
   replaceSegments,
+  resetSegments,
   updateSegmentTiming,
   updateSegment,
 }: TranscriptViewProps): ReactElement {
@@ -1044,6 +1069,8 @@ function TranscriptView({
   const [replaceQuery, setReplaceQuery] = useState('');
   const [activeFindIndex, setActiveFindIndex] = useState(0);
   const [replacingText, setReplacingText] = useState(false);
+  const [resetTranscriptOpen, setResetTranscriptOpen] = useState(false);
+  const [resettingTranscript, setResettingTranscript] = useState(false);
   const [undoStack, setUndoStack] = useState<TranscriptHistoryEntry[]>([]);
   const [redoStack, setRedoStack] = useState<TranscriptHistoryEntry[]>([]);
   const [historyBusy, setHistoryBusy] = useState(false);
@@ -1364,6 +1391,25 @@ function TranscriptView({
     return updatedSegments;
   }
 
+  async function resetTranscriptWithHistory(): Promise<void> {
+    if (resettingTranscript) {
+      return;
+    }
+
+    const before = segments;
+    setResettingTranscript(true);
+    try {
+      const result = await resetSegments();
+      if (result && !result.error) {
+        rememberTranscriptHistory('Reset transcript', before, result.segments);
+        setEditorResetSignal((value) => value + 1);
+        setResetTranscriptOpen(false);
+      }
+    } finally {
+      setResettingTranscript(false);
+    }
+  }
+
   function seekToTime(seconds: number, preferredSegmentId: string | null = null): void {
     const nextTime = Math.max(0, seconds);
     const audio = audioRef.current;
@@ -1493,6 +1539,16 @@ function TranscriptView({
             type="button"
           >
             <Redo2 size={17} />
+          </button>
+          <button
+            aria-label="Reset transcript"
+            className="icon-button danger-icon-button"
+            disabled={!selectedJob || historyBusy || resettingTranscript || segments.length === 0}
+            onClick={() => setResetTranscriptOpen(true)}
+            title="Reset transcript"
+            type="button"
+          >
+            <RotateCcw size={16} />
           </button>
           <button
             aria-expanded={findPanelOpen}
@@ -1804,6 +1860,15 @@ function TranscriptView({
           />
         </div>
       </section>
+
+      {resetTranscriptOpen && selectedJob ? (
+        <ResetTranscriptModal
+          busy={resettingTranscript}
+          onClose={() => setResetTranscriptOpen(false)}
+          onReset={resetTranscriptWithHistory}
+          project={selectedJob}
+        />
+      ) : null}
     </div>
   );
 }
@@ -2377,6 +2442,42 @@ function DeleteProjectModal({ busy, project, onClose, onDelete }: DeleteProjectM
           <button className="secondary-action danger solid-danger" disabled={busy} onClick={() => void onDelete(project.job.id)} type="button">
             <Trash2 size={14} />
             Delete project
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+type ResetTranscriptModalProps = {
+  busy: boolean;
+  project: JobWithSource;
+  onClose: () => void;
+  onReset: () => Promise<void>;
+};
+
+function ResetTranscriptModal({ busy, project, onClose, onReset }: ResetTranscriptModalProps): ReactElement {
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="import-modal project-modal delete-project-modal" aria-labelledby="reset-transcript-title" role="dialog">
+        <div className="modal-glow danger-glow" />
+        <header className="modal-header">
+          <div>
+            <p className="eyebrow">Transcript</p>
+            <h2 id="reset-transcript-title">Reset transcript</h2>
+          </div>
+          <button className="icon-button" disabled={busy} onClick={onClose} title="Close" type="button"><X size={18} /></button>
+        </header>
+
+        <p className="delete-copy">
+          Reset <strong>{project.sourceFile.name}</strong> to the original transcription. This removes transcript edits, splits, merges, and timing changes.
+        </p>
+
+        <footer className="modal-actions">
+          <button className="secondary-action" disabled={busy} onClick={onClose} type="button">Cancel</button>
+          <button className="secondary-action danger solid-danger" disabled={busy} onClick={() => void onReset()} type="button">
+            <RotateCcw size={14} />
+            Reset transcript
           </button>
         </footer>
       </section>

@@ -235,6 +235,12 @@ export const replaceTranscriptSegmentsResultSchema = z.object({
   segments: z.array(transcriptSegmentSchema)
 });
 
+export const resetTranscriptSegmentsInputSchema = z.object({
+  jobId: z.string().min(1)
+});
+
+export const resetTranscriptSegmentsResultSchema = transcriptSegmentListResultSchema;
+
 export const exportTranscriptInputSchema = z.object({
   jobId: z.string().min(1),
   format: exportFormatSchema,
@@ -300,5 +306,7 @@ export type MergeTranscriptSegmentInput = z.input<typeof mergeTranscriptSegmentI
 export type MergeTranscriptSegmentResult = z.infer<typeof mergeTranscriptSegmentResultSchema>;
 export type ReplaceTranscriptSegmentsInput = z.input<typeof replaceTranscriptSegmentsInputSchema>;
 export type ReplaceTranscriptSegmentsResult = z.infer<typeof replaceTranscriptSegmentsResultSchema>;
+export type ResetTranscriptSegmentsInput = z.input<typeof resetTranscriptSegmentsInputSchema>;
+export type ResetTranscriptSegmentsResult = z.infer<typeof resetTranscriptSegmentsResultSchema>;
 export type ExportTranscriptInput = z.infer<typeof exportTranscriptInputSchema>;
 export type ExportTranscriptResult = z.infer<typeof exportTranscriptResultSchema>;

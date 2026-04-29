@@ -78,6 +78,22 @@ export function runMigrations(db: VoxmireDatabase): void {
       UNIQUE(job_id, segment_index)
     );
 
+    CREATE TABLE IF NOT EXISTS original_transcript_segments (
+      id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      segment_index INTEGER NOT NULL,
+      start_seconds REAL NOT NULL,
+      end_seconds REAL NOT NULL,
+      text TEXT NOT NULL,
+      original_text TEXT,
+      word_timings TEXT,
+      alignment_status TEXT,
+      confidence REAL,
+      created_at TEXT NOT NULL,
+      edited_at TEXT,
+      UNIQUE(job_id, segment_index)
+    );
+
     CREATE TABLE IF NOT EXISTS transcription_chunks (
       id TEXT PRIMARY KEY,
       job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
@@ -101,6 +117,7 @@ export function runMigrations(db: VoxmireDatabase): void {
 
     CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_segments_job_index ON transcript_segments(job_id, segment_index);
+    CREATE INDEX IF NOT EXISTS idx_original_segments_job_index ON original_transcript_segments(job_id, segment_index);
     CREATE INDEX IF NOT EXISTS idx_chunks_job_index ON transcription_chunks(job_id, chunk_index);
   `);
 
@@ -264,34 +281,48 @@ export function getJob(db: VoxmireDatabase, jobId: string): TranscriptionJob | n
 
 export function saveTranscriptSegment(db: VoxmireDatabase, segment: TranscriptSegment): TranscriptSegment {
   const parsedSegment = transcriptSegmentSchema.parse(segment);
-  db.prepare(
-    `INSERT INTO transcript_segments (
-       id, job_id, segment_index, start_seconds, end_seconds, text, original_text, word_timings, alignment_status, confidence, created_at, edited_at
-     )
-     VALUES (
-       @id, @jobId, @index, @startSeconds, @endSeconds, @text, @originalText, @wordTimings, @alignmentStatus, @confidence, @createdAt, @editedAt
-     )
-     ON CONFLICT(job_id, segment_index) DO UPDATE SET
-       start_seconds = excluded.start_seconds,
-       end_seconds = excluded.end_seconds,
-       text = CASE
-         WHEN transcript_segments.edited_at IS NULL THEN excluded.text
-         ELSE transcript_segments.text
-       END,
-       original_text = CASE
-         WHEN transcript_segments.edited_at IS NULL THEN excluded.original_text
-         ELSE transcript_segments.original_text
-       END,
-       word_timings = CASE
-         WHEN transcript_segments.edited_at IS NULL THEN excluded.word_timings
-         ELSE transcript_segments.word_timings
-       END,
-       alignment_status = CASE
-         WHEN transcript_segments.edited_at IS NULL THEN excluded.alignment_status
-         ELSE transcript_segments.alignment_status
-       END,
-       confidence = excluded.confidence`
-  ).run(toSegmentRow(parsedSegment));
+  const segmentRow = toSegmentRow(parsedSegment);
+
+  runTransaction(db, () => {
+    db.prepare(
+      `INSERT INTO transcript_segments (
+         id, job_id, segment_index, start_seconds, end_seconds, text, original_text, word_timings, alignment_status, confidence, created_at, edited_at
+       )
+       VALUES (
+         @id, @jobId, @index, @startSeconds, @endSeconds, @text, @originalText, @wordTimings, @alignmentStatus, @confidence, @createdAt, @editedAt
+       )
+       ON CONFLICT(job_id, segment_index) DO UPDATE SET
+         start_seconds = excluded.start_seconds,
+         end_seconds = excluded.end_seconds,
+         text = CASE
+           WHEN transcript_segments.edited_at IS NULL THEN excluded.text
+           ELSE transcript_segments.text
+         END,
+         original_text = CASE
+           WHEN transcript_segments.edited_at IS NULL THEN excluded.original_text
+           ELSE transcript_segments.original_text
+         END,
+         word_timings = CASE
+           WHEN transcript_segments.edited_at IS NULL THEN excluded.word_timings
+           ELSE transcript_segments.word_timings
+         END,
+         alignment_status = CASE
+           WHEN transcript_segments.edited_at IS NULL THEN excluded.alignment_status
+           ELSE transcript_segments.alignment_status
+         END,
+         confidence = excluded.confidence`
+    ).run(segmentRow);
+
+    db.prepare(
+      `INSERT INTO original_transcript_segments (
+         id, job_id, segment_index, start_seconds, end_seconds, text, original_text, word_timings, alignment_status, confidence, created_at, edited_at
+       )
+       VALUES (
+         @id, @jobId, @index, @startSeconds, @endSeconds, @text, @originalText, @wordTimings, @alignmentStatus, @confidence, @createdAt, @editedAt
+       )
+       ON CONFLICT(job_id, segment_index) DO NOTHING`
+    ).run(segmentRow);
+  });
 
   return parsedSegment;
 }
@@ -563,6 +594,21 @@ export function replaceTranscriptSegments(
   return getTranscriptSegments(db, jobId);
 }
 
+export function resetTranscriptSegmentsToOriginal(db: VoxmireDatabase, jobId: string): TranscriptSegmentListUpdate {
+  const originalSegments = getOriginalTranscriptSegments(db, jobId);
+  if (originalSegments.length === 0) {
+    return {
+      segments: getTranscriptSegments(db, jobId),
+      error: 'Original transcript snapshot is unavailable.'
+    };
+  }
+
+  return {
+    segments: replaceTranscriptSegments(db, jobId, originalSegments),
+    error: null
+  };
+}
+
 export function saveTranscriptionChunk(db: VoxmireDatabase, chunk: TranscriptionChunk): TranscriptionChunk {
   const parsedChunk = transcriptionChunkSchema.parse(chunk);
   db.prepare(
@@ -636,6 +682,14 @@ export function getTranscriptionChunk(db: VoxmireDatabase, chunkId: string): Tra
 export function getTranscriptSegments(db: VoxmireDatabase, jobId: string): TranscriptSegment[] {
   const rows = db
     .prepare('SELECT * FROM transcript_segments WHERE job_id = ? ORDER BY segment_index ASC')
+    .all(jobId);
+
+  return rows.map(parseSegmentRow);
+}
+
+export function getOriginalTranscriptSegments(db: VoxmireDatabase, jobId: string): TranscriptSegment[] {
+  const rows = db
+    .prepare('SELECT * FROM original_transcript_segments WHERE job_id = ? ORDER BY segment_index ASC')
     .all(jobId);
 
   return rows.map(parseSegmentRow);

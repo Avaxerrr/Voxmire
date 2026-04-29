@@ -95,6 +95,7 @@ declare global {
         splitSegment: (jobId: string, segmentId: string, offset: number) => Promise<TranscriptSegment[]>;
         mergeSegment: (jobId: string, segmentId: string, direction: 'previous' | 'next') => Promise<TranscriptSegment[]>;
         replaceSegments: (jobId: string, segments: TranscriptSegment[]) => Promise<TranscriptSegment[]>;
+        resetSegments: (jobId: string) => Promise<TranscriptSegmentListResult>;
       };
       media: {
         getSourceUrl: (jobId: string) => Promise<string | null>;

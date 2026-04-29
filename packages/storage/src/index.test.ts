@@ -11,6 +11,7 @@ import {
   openVoxmireDatabase,
   renameProject,
   replaceTranscriptSegments,
+  resetTranscriptSegmentsToOriginal,
   resetInterruptedTranscriptionChunks,
   saveTranscriptionChunk,
   saveTranscriptSegment,
@@ -288,6 +289,56 @@ describe('storage repositories', () => {
     db.close();
   });
 
+  it('resets transcript segments to the original generated snapshot', () => {
+    const db = openVoxmireDatabase(':memory:');
+    const created = createJobRecord(db, {
+      modelId: 'large-v3-turbo',
+      sourceFile: {
+        id: 'src_1',
+        path: 'C:/audio/example.wav',
+        name: 'example.wav',
+        extension: 'wav',
+        sizeBytes: 100,
+        durationSeconds: 10,
+        createdAt: '2026-04-23T00:00:00.000Z'
+      }
+    });
+
+    saveTranscriptSegment(db, {
+      id: 'seg_1',
+      jobId: created.job.id,
+      index: 0,
+      startSeconds: 0,
+      endSeconds: 3,
+      text: 'Generated first segment.',
+      confidence: 0.8,
+      createdAt: '2026-04-23T00:00:00.000Z'
+    });
+    saveTranscriptSegment(db, {
+      id: 'seg_2',
+      jobId: created.job.id,
+      index: 1,
+      startSeconds: 3,
+      endSeconds: 6,
+      text: 'Generated second segment.',
+      confidence: 0.7,
+      createdAt: '2026-04-23T00:00:00.000Z'
+    });
+
+    updateTranscriptSegmentText(db, created.job.id, 'seg_1', 'Edited first segment.');
+    mergeTranscriptSegment(db, created.job.id, 'seg_1', 'next');
+
+    const reset = resetTranscriptSegmentsToOriginal(db, created.job.id);
+
+    expect(reset.error).toBeNull();
+    expect(reset.segments.map((segment) => segment.text)).toEqual([
+      'Generated first segment.',
+      'Generated second segment.'
+    ]);
+    expect(reset.segments.map((segment) => segment.index)).toEqual([0, 1]);
+    expect(reset.segments.map((segment) => segment.editedAt)).toEqual([null, null]);
+    db.close();
+  });
   it('replaces transcript segments from an editor history snapshot', () => {
     const db = openVoxmireDatabase(':memory:');
     const created = createJobRecord(db, {
