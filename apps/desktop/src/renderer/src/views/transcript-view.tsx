@@ -2,6 +2,7 @@ import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
 import type { ExportFormat, ExportTextMode, JobWithSource, TranscriptSegment, TranscriptSegmentListResult } from '@voxmire/contracts';
 import { FindReplacePanel } from '../features/transcript/find-replace-panel';
 import { TranscriptHeader } from '../features/transcript/transcript-header';
+import { findActiveSegmentIndex, preferredActiveSegmentIndexForPlayback, transcriptSubtitle, type PreferredActiveSegment } from '../features/transcript/transcript-selection';
 import { TranscriptStage } from '../features/transcript/transcript-stage';
 import { TranscriptSwitcherDrawer } from '../features/transcript/transcript-switcher-drawer';
 import { ResetTranscriptModal } from '../components/project-dialogs';
@@ -10,10 +11,9 @@ import { AudioDeck, type PlaybackClockSample } from '../features/media/playback-
 import { playbackSyncIntervalMs } from '../features/media/playback-constants';
 import { loadVideoPreviewPreference, saveVideoPreviewPreference, type VideoPreviewDock } from '../features/media/video-preview-preferences';
 import { getPlaybackWordState, type PlaybackWordState } from '../features/transcript/word-timing';
-import { exportResultLabel, formatDuration } from '../lib/format';
+import { exportResultLabel } from '../lib/format';
 import { isEditableHistoryShortcutTarget, isPlainSpaceKey, isPlaybackShortcutTarget } from '../lib/keyboard';
-import { activeStatuses, statusLabel } from '../lib/job-status';
-import { mediaKindFromExtension, mediaKindLabel, type MediaKind } from '../lib/media-kind';
+import { mediaKindFromExtension, type MediaKind } from '../lib/media-kind';
 import { countTranscriptMatches, escapeRegExp, findTranscriptMatchIndexes } from '../lib/transcript-search';
 import { replaceSegmentInTranscriptSnapshot, transcriptSegmentsEqual, type TranscriptHistoryEntry } from '../lib/transcript-history';
 
@@ -24,15 +24,10 @@ type MediaInfo = {
   kind: MediaKind;
 };
 
-type PreferredActiveSegment = {
-  segmentId: string;
-  timeSeconds: number;
-};
 
 const playbackDiagnosticClockDriftWarningSeconds = 0.08;
 const playbackDiagnosticLongGapWarningSeconds = 0.12;
 const playbackTraceLimit = 600;
-const timestampSeekPreferenceToleranceSeconds = 0.05;
 const transcriptHistoryLimit = 20;
 
 type TranscriptViewProps = {
@@ -700,59 +695,6 @@ type PlaybackTimingDiagnostic = {
   wordText: string | null;
 };
 
-function preferredActiveSegmentIndexForPlayback(
-  segments: TranscriptSegment[],
-  playbackTime: number,
-  preferredSegment: PreferredActiveSegment | null
-): number {
-  if (!preferredSegment || !Number.isFinite(playbackTime)) {
-    return -1;
-  }
-
-  const index = segments.findIndex((segment) => segment.id === preferredSegment.segmentId);
-  const segment = segments[index];
-  if (!segment) {
-    return -1;
-  }
-
-  const clickedTimeStillCurrent = Math.abs(playbackTime - preferredSegment.timeSeconds) <= timestampSeekPreferenceToleranceSeconds;
-  const playbackTimeWithinSegment =
-    playbackTime >= segment.startSeconds - timestampSeekPreferenceToleranceSeconds &&
-    playbackTime <= segment.endSeconds + timestampSeekPreferenceToleranceSeconds;
-
-  return clickedTimeStillCurrent && playbackTimeWithinSegment ? index : -1;
-}
-
-function findActiveSegmentIndex(segments: TranscriptSegment[], time: number): number {
-  if (segments.length === 0 || !Number.isFinite(time)) {
-    return -1;
-  }
-
-  const firstSegment = segments[0];
-  if (!firstSegment || time < firstSegment.startSeconds) {
-    return -1;
-  }
-
-  let low = 0;
-  let high = segments.length - 1;
-  let candidate = -1;
-
-  while (low <= high) {
-    const middle = Math.floor((low + high) / 2);
-    const segment = segments[middle];
-
-    if (!segment || segment.startSeconds > time) {
-      high = middle - 1;
-      continue;
-    }
-
-    candidate = middle;
-    low = middle + 1;
-  }
-
-  return candidate;
-}
-
 function usePlaybackDiagnosticsEnabled(): boolean {
   const [enabled, setEnabled] = useState(() => playbackDiagnosticsEnabled());
 
@@ -926,20 +868,4 @@ function logWordTimingDiagnostic({
 
 function timeRangesToTuples(ranges: TimeRanges): Array<[number, number]> {
   return Array.from({ length: ranges.length }, (_, index) => [ranges.start(index), ranges.end(index)]);
-}
-
-function transcriptSubtitle(job: JobWithSource, progress: number, mediaKind: MediaKind): string {
-  if (activeStatuses.includes(job.job.status) || job.job.status === 'paused') {
-    return `${statusLabel(job.job.status)} / ${progress}%`;
-  }
-
-  if (job.job.status === 'failed') {
-    return 'Failed. Check the job error below.';
-  }
-
-  if (job.job.status === 'canceled') {
-    return 'Canceled';
-  }
-
-  return `${formatDuration(job.sourceFile.durationSeconds)} ${mediaKindLabel(mediaKind)}`;
 }
