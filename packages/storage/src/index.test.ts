@@ -10,6 +10,7 @@ import {
   mergeTranscriptSegment,
   openVoxmireDatabase,
   renameProject,
+  replaceTranscriptSegments,
   resetInterruptedTranscriptionChunks,
   saveTranscriptionChunk,
   saveTranscriptSegment,
@@ -244,6 +245,56 @@ describe('storage repositories', () => {
     expect(mergedSegments[0]?.text).toBe('Hello world again');
     expect(mergedSegments[0]?.alignmentStatus).toBe('aligned');
     expect(mergedSegments[0]?.wordTimings?.map((word) => word.text)).toEqual(['Hello', 'world', 'again']);
+    db.close();
+  });
+
+  it('replaces transcript segments from an editor history snapshot', () => {
+    const db = openVoxmireDatabase(':memory:');
+    const created = createJobRecord(db, {
+      modelId: 'large-v3-turbo',
+      sourceFile: {
+        id: 'src_1',
+        path: 'C:/audio/example.wav',
+        name: 'example.wav',
+        extension: 'wav',
+        sizeBytes: 100,
+        durationSeconds: 10,
+        createdAt: '2026-04-23T00:00:00.000Z'
+      }
+    });
+
+    const first = saveTranscriptSegment(db, {
+      id: 'seg_1',
+      jobId: created.job.id,
+      index: 0,
+      startSeconds: 0,
+      endSeconds: 3,
+      text: 'Original first segment.',
+      confidence: 0.8,
+      createdAt: '2026-04-23T00:00:00.000Z'
+    });
+    const second = saveTranscriptSegment(db, {
+      id: 'seg_2',
+      jobId: created.job.id,
+      index: 1,
+      startSeconds: 3,
+      endSeconds: 6,
+      text: 'Original second segment.',
+      confidence: 0.7,
+      createdAt: '2026-04-23T00:00:00.000Z'
+    });
+
+    const replaced = replaceTranscriptSegments(db, created.job.id, [
+      { ...second, id: 'seg_3', index: 0, startSeconds: 0, text: 'Edited replacement.' }
+    ]);
+
+    expect(replaced).toHaveLength(1);
+    expect(replaced[0]).toMatchObject({ id: 'seg_3', index: 0, text: 'Edited replacement.' });
+
+    const restored = replaceTranscriptSegments(db, created.job.id, [first, second]);
+
+    expect(restored.map((segment) => segment.text)).toEqual(['Original first segment.', 'Original second segment.']);
+    expect(restored.map((segment) => segment.index)).toEqual([0, 1]);
     db.close();
   });
 

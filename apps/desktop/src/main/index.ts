@@ -11,6 +11,7 @@ import {
   exportTranscriptInputSchema,
   mergeTranscriptSegmentInputSchema,
   renameProjectInputSchema,
+  replaceTranscriptSegmentsInputSchema,
   splitTranscriptSegmentInputSchema,
   updateTranscriptSegmentTimingInputSchema,
   updateTranscriptSegmentInputSchema
@@ -195,6 +196,10 @@ function registerIpcHandlers(): void {
   ipcMain.handle('transcripts:merge-segment', (_event, rawInput: unknown) => {
     const input = mergeTranscriptSegmentInputSchema.parse(rawInput);
     return runtime.mergeTranscriptSegment(input.jobId, input.segmentId, input.direction);
+  });
+  ipcMain.handle('transcripts:replace-segments', (_event, rawInput: unknown) => {
+    const input = replaceTranscriptSegmentsInputSchema.parse(rawInput);
+    return runtime.replaceTranscriptSegments(input.jobId, input.segments);
   });
   ipcMain.handle('media:get-source-url', (_event, jobId: string) => {
     const job = runtime.getJob(jobId);

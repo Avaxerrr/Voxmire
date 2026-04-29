@@ -523,6 +523,39 @@ export function mergeTranscriptSegment(
   return getTranscriptSegments(db, jobId);
 }
 
+export function replaceTranscriptSegments(
+  db: VoxmireDatabase,
+  jobId: string,
+  segments: TranscriptSegment[]
+): TranscriptSegment[] {
+  if (segments.length === 0) {
+    return getTranscriptSegments(db, jobId);
+  }
+
+  const snapshot = segments.map((segment, index) => transcriptSegmentSchema.parse({
+    ...segment,
+    jobId,
+    index
+  }));
+  const insertSegment = db.prepare(
+    `INSERT INTO transcript_segments (
+       id, job_id, segment_index, start_seconds, end_seconds, text, original_text, word_timings, alignment_status, confidence, created_at, edited_at
+     )
+     VALUES (
+       @id, @jobId, @index, @startSeconds, @endSeconds, @text, @originalText, @wordTimings, @alignmentStatus, @confidence, @createdAt, @editedAt
+     )`
+  );
+
+  runTransaction(db, () => {
+    db.prepare('DELETE FROM transcript_segments WHERE job_id = ?').run(jobId);
+    snapshot.forEach((segment) => {
+      insertSegment.run(toSegmentRow(segment));
+    });
+  });
+
+  return getTranscriptSegments(db, jobId);
+}
+
 export function saveTranscriptionChunk(db: VoxmireDatabase, chunk: TranscriptionChunk): TranscriptionChunk {
   const parsedChunk = transcriptionChunkSchema.parse(chunk);
   db.prepare(

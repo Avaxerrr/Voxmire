@@ -1574,28 +1574,3 @@ textarea,
   .video-preview-panel,
   .transcript-content-with-preview.side .video-preview-panel { width: min(var(--preview-width, 320px), calc(100vw - 72px)); }
 }
-
-
-.playback-diagnostics-panel {
-  position: fixed;
-  right: 18px;
-  bottom: 108px;
-  z-index: 80;
-  display: grid;
-  gap: 4px;
-  max-width: min(340px, calc(100vw - 36px));
-  padding: 10px 12px;
-  border: 1px solid rgba(34, 211, 238, 0.26);
-  border-radius: 8px;
-  color: #dbeafe;
-  background: rgba(4, 10, 18, 0.9);
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.42);
-  font-family: "Fira Code", Consolas, monospace;
-  font-size: 10px;
-  line-height: 1.35;
-  pointer-events: none;
-}
-.playback-diagnostics-panel strong { color: var(--cyan); font-size: 11px; text-transform: uppercase; }
-.playback-diagnostics-panel span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.playback-diagnostics-panel.warn { border-color: rgba(245, 158, 11, 0.48); color: #ffedd5; }
-.playback-diagnostics-panel.warn strong { color: #fbbf24; }

@@ -38,6 +38,8 @@ import {
   Sparkles,
   Square,
   Trash2,
+  Redo2,
+  Undo2,
   UploadCloud,
   Video,
   Volume2,
@@ -102,6 +104,12 @@ type ExportOption = {
   textMode?: ExportTextMode;
 };
 
+type TranscriptHistoryEntry = {
+  after: TranscriptSegment[];
+  before: TranscriptSegment[];
+  label: string;
+};
+
 const exportOptions: ExportOption[] = [
   { format: 'txt', label: 'Text only', textMode: 'plain' },
   { format: 'txt', label: 'Text with timestamps', textMode: 'timestamps' },
@@ -126,6 +134,7 @@ const minVideoPreviewWidth = 180;
 const maxTopVideoPreviewWidth = 420;
 const maxSideVideoPreviewWidth = 360;
 const sidePreviewBreakpoint = 1180;
+const transcriptHistoryLimit = 20;
 const transcriptShortcuts = [
   { keys: 'Enter', action: 'Split segment at the cursor' },
   { keys: 'Shift+Enter', action: 'Insert a line break inside the segment' },
@@ -576,6 +585,27 @@ export function App(): ReactElement {
     }
   }
 
+  async function replaceTranscriptSegments(nextSegments: TranscriptSegment[]): Promise<TranscriptSegment[] | null> {
+    if (!selectedJob) {
+      return null;
+    }
+
+    if (!api) {
+      setMessage('Desktop bridge unavailable.');
+      return null;
+    }
+
+    try {
+      const updatedSegments = await api.transcripts.replaceSegments(selectedJob.job.id, nextSegments);
+      setSegments(updatedSegments);
+      setMessage('Transcript history applied.');
+      return updatedSegments;
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to restore transcript history.');
+      return null;
+    }
+  }
+
   function openProjectDetails(jobId: string): void {
     setDetailsJobId(jobId);
   }
@@ -728,6 +758,7 @@ export function App(): ReactElement {
             setPlaying={setPlaying}
             splitSegment={splitTranscriptSegment}
             mergeSegment={mergeTranscriptSegment}
+            replaceSegments={replaceTranscriptSegments}
             updateSegmentTiming={updateTranscriptSegmentTiming}
             updateSegment={updateTranscriptSegment}
           />
@@ -976,6 +1007,7 @@ type TranscriptViewProps = {
   setPlaying: (playing: boolean) => void;
   splitSegment: (segmentId: string, offset: number) => Promise<TranscriptSegment[] | null>;
   mergeSegment: (segmentId: string, direction: 'previous' | 'next') => Promise<TranscriptSegment[] | null>;
+  replaceSegments: (segments: TranscriptSegment[]) => Promise<TranscriptSegment[] | null>;
   updateSegmentTiming: (segmentId: string, startSeconds: number, endSeconds: number) => Promise<TranscriptSegmentListResult | null>;
   updateSegment: (segmentId: string, text: string) => Promise<TranscriptSegment | null>;
 };
@@ -999,6 +1031,7 @@ function TranscriptView({
   setPlaying,
   splitSegment,
   mergeSegment,
+  replaceSegments,
   updateSegmentTiming,
   updateSegment,
 }: TranscriptViewProps): ReactElement {
@@ -1011,6 +1044,10 @@ function TranscriptView({
   const [replaceQuery, setReplaceQuery] = useState('');
   const [activeFindIndex, setActiveFindIndex] = useState(0);
   const [replacingText, setReplacingText] = useState(false);
+  const [undoStack, setUndoStack] = useState<TranscriptHistoryEntry[]>([]);
+  const [redoStack, setRedoStack] = useState<TranscriptHistoryEntry[]>([]);
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const [editorResetSignal, setEditorResetSignal] = useState(0);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [mediaInfo, setMediaInfo] = useState<MediaInfo | null>(null);
@@ -1064,6 +1101,36 @@ function TranscriptView({
   useEffect(() => {
     setActiveFindIndex(0);
   }, [findQuery]);
+
+  useEffect(() => {
+    setUndoStack([]);
+    setRedoStack([]);
+    setEditorResetSignal((value) => value + 1);
+  }, [selectedJob?.job.id]);
+
+  useEffect(() => {
+    function handleHistoryKeyDown(event: KeyboardEvent): void {
+      const commandModifier = event.ctrlKey || event.metaKey;
+      if (!commandModifier || isEditableHistoryShortcutTarget(event.target)) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key === 'z' && !event.shiftKey) {
+        event.preventDefault();
+        void applyTranscriptHistory('undo');
+        return;
+      }
+
+      if (key === 'y' || (key === 'z' && event.shiftKey)) {
+        event.preventDefault();
+        void applyTranscriptHistory('redo');
+      }
+    }
+
+    window.addEventListener('keydown', handleHistoryKeyDown);
+    return () => window.removeEventListener('keydown', handleHistoryKeyDown);
+  }, [historyBusy, redoStack, selectedJob?.job.id, undoStack]);
 
   useEffect(() => {
     if (preferredActiveSegment && preferredActiveSegmentIndex < 0) {
@@ -1203,6 +1270,100 @@ function TranscriptView({
     };
   }, [mediaApi, selectedJob?.job.id, setPlaying]);
 
+  function rememberTranscriptHistory(label: string, before: TranscriptSegment[], after: TranscriptSegment[]): void {
+    if (transcriptSegmentsEqual(before, after)) {
+      return;
+    }
+
+    setUndoStack((current) => [
+      ...current.slice(Math.max(0, current.length - transcriptHistoryLimit + 1)),
+      { after, before, label }
+    ]);
+    setRedoStack([]);
+  }
+
+  async function applyTranscriptHistory(direction: 'undo' | 'redo'): Promise<void> {
+    if (historyBusy || !selectedJob) {
+      return;
+    }
+
+    const stack = direction === 'undo' ? undoStack : redoStack;
+    const entry = stack[stack.length - 1];
+    if (!entry) {
+      return;
+    }
+
+    setHistoryBusy(true);
+    try {
+      const restored = await replaceSegments(direction === 'undo' ? entry.before : entry.after);
+      if (!restored) {
+        return;
+      }
+
+      setEditorResetSignal((value) => value + 1);
+      if (direction === 'undo') {
+        setUndoStack((current) => current.slice(0, -1));
+        setRedoStack((current) => [
+          ...current.slice(Math.max(0, current.length - transcriptHistoryLimit + 1)),
+          entry
+        ]);
+        return;
+      }
+
+      setRedoStack((current) => current.slice(0, -1));
+      setUndoStack((current) => [
+        ...current.slice(Math.max(0, current.length - transcriptHistoryLimit + 1)),
+        entry
+      ]);
+    } finally {
+      setHistoryBusy(false);
+    }
+  }
+
+  async function updateSegmentWithHistory(segmentId: string, text: string): Promise<TranscriptSegment | null> {
+    const before = segments;
+    const updated = await updateSegment(segmentId, text);
+    if (updated) {
+      rememberTranscriptHistory('Edit text', before, replaceSegmentInTranscriptSnapshot(before, updated));
+    }
+
+    return updated;
+  }
+
+  async function updateSegmentTimingWithHistory(
+    segmentId: string,
+    startSeconds: number,
+    endSeconds: number
+  ): Promise<TranscriptSegmentListResult | null> {
+    const before = segments;
+    const result = await updateSegmentTiming(segmentId, startSeconds, endSeconds);
+    if (result && !result.error) {
+      rememberTranscriptHistory('Edit timing', before, result.segments);
+    }
+
+    return result;
+  }
+
+  async function splitSegmentWithHistory(segmentId: string, offset: number): Promise<TranscriptSegment[] | null> {
+    const before = segments;
+    const updatedSegments = await splitSegment(segmentId, offset);
+    if (updatedSegments) {
+      rememberTranscriptHistory('Split segment', before, updatedSegments);
+    }
+
+    return updatedSegments;
+  }
+
+  async function mergeSegmentWithHistory(segmentId: string, direction: 'previous' | 'next'): Promise<TranscriptSegment[] | null> {
+    const before = segments;
+    const updatedSegments = await mergeSegment(segmentId, direction);
+    if (updatedSegments) {
+      rememberTranscriptHistory('Merge segments', before, updatedSegments);
+    }
+
+    return updatedSegments;
+  }
+
   function seekToTime(seconds: number, preferredSegmentId: string | null = null): void {
     const nextTime = Math.max(0, seconds);
     const audio = audioRef.current;
@@ -1258,15 +1419,23 @@ function TranscriptView({
       return;
     }
 
+    const before = segments;
+    let nextSegments = segments;
     setReplacingText(true);
     try {
       for (const segment of matchingSegments) {
+        const currentSegment = nextSegments.find((candidate) => candidate.id === segment.id) ?? segment;
         matcher.lastIndex = 0;
-        const nextText = segment.text.replace(matcher, replaceQuery);
-        if (nextText !== segment.text) {
-          await updateSegment(segment.id, nextText);
+        const nextText = currentSegment.text.replace(matcher, replaceQuery);
+        if (nextText !== currentSegment.text) {
+          const updated = await updateSegment(currentSegment.id, nextText);
+          if (updated) {
+            nextSegments = replaceSegmentInTranscriptSnapshot(nextSegments, updated);
+          }
         }
       }
+
+      rememberTranscriptHistory('Replace all', before, nextSegments);
     } finally {
       setReplacingText(false);
     }
@@ -1305,6 +1474,26 @@ function TranscriptView({
         </div>
 
         <div className="transcript-actions">
+          <button
+            aria-label="Undo transcript edit"
+            className="icon-button"
+            disabled={!selectedJob || historyBusy || undoStack.length === 0}
+            onClick={() => void applyTranscriptHistory('undo')}
+            title={undoStack.length > 0 ? `Undo ${undoStack[undoStack.length - 1]?.label ?? 'edit'}` : 'Undo'}
+            type="button"
+          >
+            <Undo2 size={17} />
+          </button>
+          <button
+            aria-label="Redo transcript edit"
+            className="icon-button"
+            disabled={!selectedJob || historyBusy || redoStack.length === 0}
+            onClick={() => void applyTranscriptHistory('redo')}
+            title={redoStack.length > 0 ? `Redo ${redoStack[redoStack.length - 1]?.label ?? 'edit'}` : 'Redo'}
+            type="button"
+          >
+            <Redo2 size={17} />
+          </button>
           <button
             aria-expanded={findPanelOpen}
             aria-label="Find and replace transcript"
@@ -1413,7 +1602,6 @@ function TranscriptView({
           </div>
         ) : null}
 
-        {diagnosticsEnabled ? <PlaybackDiagnosticsPanel diagnostic={playbackTimingDiagnostic} /> : null}
 
         {findPanelOpen ? (
           <div className="find-replace-panel">
@@ -1541,14 +1729,15 @@ function TranscriptView({
                     ) : (
                       <VirtualizedSegmentList
                         activeSegmentIndex={transcriptActiveSegmentIndex}
-                        onMergeSegment={mergeSegment}
+                        onMergeSegment={mergeSegmentWithHistory}
                         onSeek={seekToSegment}
                         onSeekTime={seekToTime}
-                        onSplitSegment={splitSegment}
-                        onUpdateTiming={updateSegmentTiming}
-                        onUpdateSegment={updateSegment}
+                        onSplitSegment={splitSegmentWithHistory}
+                        onUpdateTiming={updateSegmentTimingWithHistory}
+                        onUpdateSegment={updateSegmentWithHistory}
                         activeSearchSegmentId={activeFindSegment?.id ?? null}
                         playbackTime={playbackTime}
+                        resetSignal={editorResetSignal}
                         searchQuery={findQuery}
                         segments={segments}
                       />
@@ -1559,14 +1748,15 @@ function TranscriptView({
                 ) : (
                   <VirtualizedSegmentList
                     activeSegmentIndex={transcriptActiveSegmentIndex}
-                    onMergeSegment={mergeSegment}
+                    onMergeSegment={mergeSegmentWithHistory}
                     onSeek={seekToSegment}
                     onSeekTime={seekToTime}
-                    onSplitSegment={splitSegment}
-                    onUpdateTiming={updateSegmentTiming}
-                    onUpdateSegment={updateSegment}
+                    onSplitSegment={splitSegmentWithHistory}
+                    onUpdateTiming={updateSegmentTimingWithHistory}
+                    onUpdateSegment={updateSegmentWithHistory}
                     activeSearchSegmentId={activeFindSegment?.id ?? null}
                     playbackTime={playbackTime}
+                    resetSignal={editorResetSignal}
                     searchQuery={findQuery}
                     segments={segments}
                   />
@@ -2204,6 +2394,7 @@ type VirtualizedSegmentListProps = {
   onUpdateSegment: (segmentId: string, text: string) => Promise<TranscriptSegment | null>;
   activeSearchSegmentId: string | null;
   playbackTime: number;
+  resetSignal: number;
   searchQuery: string;
   segments: TranscriptSegment[];
 };
@@ -2218,6 +2409,7 @@ function VirtualizedSegmentList({
   onUpdateSegment,
   activeSearchSegmentId,
   playbackTime,
+  resetSignal,
   searchQuery,
   segments
 }: VirtualizedSegmentListProps): ReactElement {
@@ -2236,6 +2428,13 @@ function VirtualizedSegmentList({
     getScrollElement: () => scrollParentRef.current,
     overscan: 8
   });
+
+  useEffect(() => {
+    setEditingSegmentId(null);
+    setDraftText('');
+    setCursorOffset(0);
+    setSaveErrorSegmentId(null);
+  }, [resetSignal]);
 
   useEffect(() => {
     if (activeSegmentIndex >= 0 && !editingSegmentId) {
@@ -3719,23 +3918,6 @@ function AudioDeck({
   );
 }
 
-function PlaybackDiagnosticsPanel({ diagnostic }: { diagnostic: PlaybackTimingDiagnostic | null }): ReactElement | null {
-  if (!import.meta.env.DEV || !diagnostic) {
-    return null;
-  }
-
-  return (
-    <aside className={`playback-diagnostics-panel ${diagnostic.anomaly ? 'warn' : ''}`} aria-label="Playback diagnostics">
-      <strong>Playback diagnostics</strong>
-      <span>Media {formatDiagnosticSeconds(diagnostic.mediaTime)} / UI {formatDiagnosticSeconds(diagnostic.playbackTime)}</span>
-      <span>Drift {formatDiagnosticSeconds(diagnostic.mediaClockDriftSeconds)} / segment {diagnostic.activeSegmentIndex}</span>
-      <span>Word {diagnostic.wordIndex >= 0 ? diagnostic.wordIndex + 1 : '-'} {diagnostic.wordText ?? diagnostic.reason}</span>
-      <span>Word window {formatDiagnosticSeconds(diagnostic.wordStartSeconds)} - {formatDiagnosticSeconds(diagnostic.wordEndSeconds)}</span>
-      <span>{diagnostic.anomaly ?? 'No timing anomaly detected'}</span>
-    </aside>
-  );
-}
-
 function StatusBar({ activeJob, appInfo, status }: { activeJob: JobWithSource | null; appInfo: AppInfo | null; status: { tone: StatusTone; text: string } }): ReactElement {
   const isLive = activeJob !== null;
 
@@ -4153,10 +4335,6 @@ function playbackTimingDiagnosticAnomaly(diagnostic: PlaybackTimingDiagnostic): 
   return null;
 }
 
-function formatDiagnosticSeconds(value: number | null): string {
-  return value === null || !Number.isFinite(value) ? '-' : value.toFixed(3);
-}
-
 function playbackDiagnosticsEnabled(): boolean {
   if (!import.meta.env.DEV) {
     return false;
@@ -4325,6 +4503,59 @@ function parseEditableTime(value: string): number | null {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function isEditableHistoryShortcutTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+
+  return Boolean(target.closest('input, textarea, select, [contenteditable]'));
+}
+
+function replaceSegmentInTranscriptSnapshot(segments: TranscriptSegment[], updatedSegment: TranscriptSegment): TranscriptSegment[] {
+  return segments.map((segment) => segment.id === updatedSegment.id ? updatedSegment : segment);
+}
+
+function transcriptSegmentsEqual(left: TranscriptSegment[], right: TranscriptSegment[]): boolean {
+  return left.length === right.length && left.every((segment, index) => transcriptSegmentEqual(segment, right[index]));
+}
+
+function transcriptSegmentEqual(left: TranscriptSegment, right: TranscriptSegment | undefined): boolean {
+  if (!right) {
+    return false;
+  }
+
+  return left.id === right.id
+    && left.jobId === right.jobId
+    && left.index === right.index
+    && left.startSeconds === right.startSeconds
+    && left.endSeconds === right.endSeconds
+    && left.text === right.text
+    && (left.originalText ?? null) === (right.originalText ?? null)
+    && (left.alignmentStatus ?? null) === (right.alignmentStatus ?? null)
+    && left.confidence === right.confidence
+    && left.createdAt === right.createdAt
+    && (left.editedAt ?? null) === (right.editedAt ?? null)
+    && transcriptWordTimingsEqual(left.wordTimings, right.wordTimings);
+}
+
+function transcriptWordTimingsEqual(
+  left: TranscriptSegment['wordTimings'],
+  right: TranscriptSegment['wordTimings']
+): boolean {
+  const leftWords = left ?? [];
+  const rightWords = right ?? [];
+  return leftWords.length === rightWords.length && leftWords.every((word, index) => {
+    const rightWord = rightWords[index];
+    if (!rightWord) {
+      return false;
+    }
+
+    return word.text === rightWord.text
+      && word.startSeconds === rightWord.startSeconds
+      && word.endSeconds === rightWord.endSeconds;
+  });
 }
 
 function countTranscriptMatches(segments: TranscriptSegment[], query: string): number {

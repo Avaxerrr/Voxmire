@@ -38,6 +38,7 @@ import {
   listJobs,
   mergeTranscriptSegment as mergeStoredTranscriptSegment,
   renameProject,
+  replaceTranscriptSegments as replaceStoredTranscriptSegments,
   resetInterruptedTranscriptionChunks,
   saveTranscriptionChunk,
   saveTranscriptSegment,
@@ -189,6 +190,19 @@ export class VoxmireRuntime {
       details: { segmentId, direction, segmentCount: segments.length }
     });
     return segments;
+  }
+
+  replaceTranscriptSegments(jobId: string, segments: TranscriptSegment[]): TranscriptSegment[] {
+    const restoredSegments = replaceStoredTranscriptSegments(this.options.db, jobId, segments);
+    this.log({
+      level: 'info',
+      event: 'transcript.segments.restored',
+      jobId,
+      chunkId: null,
+      message: 'Restored transcript segment snapshot.',
+      details: { segmentCount: restoredSegments.length }
+    });
+    return restoredSegments;
   }
 
   getProjectDetails(jobId: string): ProjectDetails | null {

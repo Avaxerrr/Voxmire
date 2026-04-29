@@ -67,7 +67,9 @@ const api = {
     splitSegment: (jobId: string, segmentId: string, offset: number): Promise<TranscriptSegment[]> =>
       ipcRenderer.invoke('transcripts:split-segment', { jobId, segmentId, offset }),
     mergeSegment: (jobId: string, segmentId: string, direction: 'previous' | 'next'): Promise<TranscriptSegment[]> =>
-      ipcRenderer.invoke('transcripts:merge-segment', { jobId, segmentId, direction })
+      ipcRenderer.invoke('transcripts:merge-segment', { jobId, segmentId, direction }),
+    replaceSegments: (jobId: string, segments: TranscriptSegment[]): Promise<TranscriptSegment[]> =>
+      ipcRenderer.invoke('transcripts:replace-segments', { jobId, segments })
   },
   media: {
     getSourceUrl: (jobId: string): Promise<string | null> => ipcRenderer.invoke('media:get-source-url', jobId),
