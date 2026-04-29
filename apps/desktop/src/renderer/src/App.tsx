@@ -114,7 +114,6 @@ const wordTimingBoundaryToleranceSeconds = 0.025;
 const segmentScrollLeadMaxSeconds = 1;
 const segmentScrollLeadDurationRatio = 0.3;
 const segmentScrollManualPauseMs = 1600;
-const segmentScrollComfortPaddingPx = 36;
 const audioSeekThrottleMs = 50;
 const videoSeekThrottleMs = 140;
 const videoPreviewPreferenceKey = 'voxmire:videoPreviewPreference';
@@ -2228,33 +2227,17 @@ function VirtualizedSegmentList({
     anticipatedSegmentIndexRef.current = null;
   }
 
-  function segmentIsComfortablyVisible(index: number): boolean {
-    const scrollElement = scrollParentRef.current;
-    if (!scrollElement) {
-      return false;
-    }
-
-    const item = rowVirtualizer.getVirtualItems().find((virtualItem) => virtualItem.index === index);
-    if (!item) {
-      return false;
-    }
-
-    const visibleStart = scrollElement.scrollTop + segmentScrollComfortPaddingPx;
-    const visibleEnd = scrollElement.scrollTop + scrollElement.clientHeight - segmentScrollComfortPaddingPx;
-    const visibleHeight = Math.max(0, visibleEnd - visibleStart);
-    const itemHeight = item.end - item.start;
-
-    if (itemHeight > visibleHeight) {
-      return item.start <= visibleStart && item.end >= visibleEnd;
-    }
-
-    return item.start >= visibleStart && item.end <= visibleEnd;
-  }
-
   useEffect(() => {
-    if (activeSegmentIndex >= 0 && !editingSegmentId && !segmentIsComfortablyVisible(activeSegmentIndex)) {
-      rowVirtualizer.scrollToIndex(activeSegmentIndex, { align: 'center' });
+    if (activeSegmentIndex < 0 || editingSegmentId) {
+      return;
     }
+
+    if (anticipatedSegmentIndexRef.current === activeSegmentIndex) {
+      anticipatedSegmentIndexRef.current = null;
+      return;
+    }
+
+    rowVirtualizer.scrollToIndex(activeSegmentIndex, { align: 'center' });
   }, [activeSegmentIndex, editingSegmentId]);
 
   useEffect(() => {
@@ -2283,9 +2266,7 @@ function VirtualizedSegmentList({
     }
 
     anticipatedSegmentIndexRef.current = nextSegmentIndex;
-    if (!segmentIsComfortablyVisible(nextSegmentIndex)) {
-      rowVirtualizer.scrollToIndex(nextSegmentIndex, { align: 'end' });
-    }
+    rowVirtualizer.scrollToIndex(nextSegmentIndex, { align: 'center' });
   }, [activeSearchSegmentId, activeSegmentIndex, editingSegmentId, playbackTime, playing, searchQuery, segments]);
 
   useEffect(() => {
