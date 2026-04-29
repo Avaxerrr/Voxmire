@@ -48,7 +48,9 @@ export class WhisperCppEngine implements TranscriptionEngine {
       status: 'transcribing',
       progress: 0,
       message: `Starting ${availability.label} transcription.`,
-      segment: null
+      segment: null,
+      engineRuntimeId: this.runtimeId,
+      engineLabel: availability.label
     };
 
     const outputBase = join(input.outputDirectory, input.outputBaseName ?? input.jobId);
@@ -77,7 +79,9 @@ export class WhisperCppEngine implements TranscriptionEngine {
         status: 'transcribing',
         progress: Math.min(0.95, progress),
         message: `Whisper progress ${Math.round(progress * 100)}%.`,
-        segment: null
+        segment: null,
+        engineRuntimeId: this.runtimeId,
+        engineLabel: availability.label
       };
     }
 
@@ -103,7 +107,9 @@ export class WhisperCppEngine implements TranscriptionEngine {
         status: 'transcribing',
         progress: Math.max(lastWhisperProgress, segmentProgress),
         message: 'Transcript segment saved.',
-        segment
+        segment,
+        engineRuntimeId: this.runtimeId,
+        engineLabel: availability.label
       };
     }
 
@@ -112,7 +118,9 @@ export class WhisperCppEngine implements TranscriptionEngine {
       status: 'completed',
       progress: 1,
       message: 'Transcription completed.',
-      segment: null
+      segment: null,
+      engineRuntimeId: this.runtimeId,
+      engineLabel: availability.label
     };
   }
 }

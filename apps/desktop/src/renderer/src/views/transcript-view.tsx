@@ -9,6 +9,7 @@ import { useTranscriptHistory } from '../features/transcript/use-transcript-hist
 import { useTranscriptSearchReplace } from '../features/transcript/use-transcript-search-replace';
 import { ResetTranscriptModal } from '../components/project-dialogs';
 import { applyMediaSeek } from '../features/media/media-seek';
+import { solverLabelForJob, type SolverLabelsByJobId } from '../lib/engines';
 import { buildPlaybackTimingDiagnostic, logPlaybackDiagnostic, logWordTimingDiagnostic, recordPlaybackTimingDiagnostic, usePlaybackDiagnosticsEnabled } from '../features/media/playback-diagnostics';
 import { AudioDeck, type PlaybackClockSample } from '../features/media/playback-controls';
 import { loadVideoPreviewPreference, saveVideoPreviewPreference, type VideoPreviewDock } from '../features/media/video-preview-preferences';
@@ -38,6 +39,7 @@ type TranscriptViewProps = {
   playing: boolean;
   selectedJob: JobWithSource | null;
   segments: TranscriptSegment[];
+  solverLabelsByJobId: SolverLabelsByJobId;
   setPlaying: (playing: boolean) => void;
   splitSegment: (segmentId: string, offset: number) => Promise<TranscriptSegment[] | null>;
   mergeSegment: (segmentId: string, direction: 'previous' | 'next') => Promise<TranscriptSegment[] | null>;
@@ -63,6 +65,7 @@ export function TranscriptView({
   playing,
   selectedJob,
   segments,
+  solverLabelsByJobId,
   setPlaying,
   splitSegment,
   mergeSegment,
@@ -95,7 +98,8 @@ export function TranscriptView({
   const diagnosticsEnabled = usePlaybackDiagnosticsEnabled();
   const progress = selectedJob ? Math.round(selectedJob.job.progress * 100) : 0;
   const selectedMediaKind = selectedJob ? mediaInfo?.kind ?? mediaKindFromExtension(selectedJob.sourceFile.extension) : 'audio';
-  const selectedSubtitle = selectedJob ? transcriptSubtitle(selectedJob, progress, selectedMediaKind) : 'Choose a project from Library or import a recording.';
+  const selectedSolverLabel = selectedJob ? solverLabelForJob(selectedJob, solverLabelsByJobId[selectedJob.job.id]) : null;
+  const selectedSubtitle = selectedJob ? transcriptSubtitle(selectedJob, progress, selectedMediaKind, selectedSolverLabel) : 'Choose a project from Library or import a recording.';
   const activeSegmentIndex = useMemo(() => findActiveSegmentIndex(segments, playbackTime), [playbackTime, segments]);
   const preferredActiveSegmentIndex = useMemo(
     () => preferredActiveSegmentIndexForPlayback(segments, playbackTime, preferredActiveSegment),
@@ -386,6 +390,7 @@ export function TranscriptView({
             query={switcherQuery}
             selectedJobId={selectedJob?.job.id ?? null}
             setQuery={setSwitcherQuery}
+            solverLabelsByJobId={solverLabelsByJobId}
           />
         ) : null}
 
@@ -440,6 +445,7 @@ export function TranscriptView({
             searchQuery={findQuery}
             selectedJob={selectedJob}
             selectedMediaKind={selectedMediaKind}
+            solverLabel={selectedSolverLabel}
             segments={segments}
             setPlaying={setPlaying}
             setVideoPreviewDock={setVideoPreviewDock}

@@ -69,10 +69,11 @@ type ProjectDetailsDrawerProps = {
   loading: boolean;
   onClose: () => void;
   onDelete: (project: JobWithSource) => void;
+  solverLabel: string | null;
   onRename: (project: JobWithSource) => void;
 };
 
-export function ProjectDetailsDrawer({ details, loading, onClose, onDelete, onRename }: ProjectDetailsDrawerProps): ReactElement {
+export function ProjectDetailsDrawer({ details, loading, onClose, onDelete, onRename, solverLabel }: ProjectDetailsDrawerProps): ReactElement {
   const project = details ? { job: details.job, sourceFile: details.sourceFile } : null;
   const mediaKind = details ? mediaKindFromExtension(details.sourceFile.extension) : 'audio';
 
@@ -104,6 +105,7 @@ export function ProjectDetailsDrawer({ details, loading, onClose, onDelete, onRe
               <div><dt>Progress</dt><dd>{Math.round(details.job.progress * 100)}%</dd></div>
               <div><dt>Model</dt><dd>{details.job.modelId}</dd></div>
               <div><dt>Backend</dt><dd>{details.job.engineBackend.toUpperCase()}</dd></div>
+              <div><dt>Solver</dt><dd>{solverLabel ?? details.job.engineBackend.toUpperCase()}</dd></div>
               <div><dt>Transcript segments</dt><dd>{details.segmentCount.toLocaleString()}</dd></div>
               <div><dt>Prepared chunks</dt><dd>{details.chunkCount.toLocaleString()}</dd></div>
               <div><dt>Media source</dt><dd>{details.mediaAvailable ? 'Available' : 'Missing'}</dd></div>

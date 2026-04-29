@@ -49,6 +49,7 @@ type TranscriptStageProps = {
   searchQuery: string;
   selectedJob: JobWithSource | null;
   selectedMediaKind: MediaKind;
+  solverLabel: string | null;
   segments: TranscriptSegment[];
   setPlaying: (playing: boolean) => void;
   setVideoPreviewDock: (dock: VideoPreviewDock) => void;
@@ -93,6 +94,7 @@ export function TranscriptStage({
   searchQuery,
   selectedJob,
   selectedMediaKind,
+  solverLabel,
   segments,
   setPlaying,
   setVideoPreviewDock,
@@ -135,6 +137,7 @@ export function TranscriptStage({
             onPause={onPause}
             onResume={onResume}
             progress={progress}
+            solverLabel={solverLabel}
           />
           {hasVideoPreview && mediaUrl ? (
             <div className={'transcript-content-with-preview ' + (videoPreviewHidden ? 'hidden' : videoPreviewDock)}>

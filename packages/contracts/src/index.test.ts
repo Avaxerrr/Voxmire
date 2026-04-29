@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createJobInputSchema, machineProfileSchema, transcriptionChunkSchema, transcriptionPresetProfileSchema, transcriptSegmentSchema, transcriptWordTimingSchema, transcriptionJobSchema } from './index';
+import { createJobInputSchema, machineProfileSchema, transcriptionChunkSchema, transcriptionPresetProfileSchema, transcriptionProgressEventSchema, transcriptSegmentSchema, transcriptWordTimingSchema, transcriptionJobSchema } from './index';
 
 describe('contracts', () => {
   it('validates transcription job payloads', () => {
@@ -98,6 +98,20 @@ describe('contracts', () => {
           }
         ],
         notes: ['CPU fallback remains available.']
+      })
+    ).not.toThrow();
+  });
+
+  it('validates progress events with active engine runtime metadata', () => {
+    expect(() =>
+      transcriptionProgressEventSchema.parse({
+        jobId: 'job_1',
+        status: 'transcribing',
+        progress: 0.42,
+        message: 'Whisper progress 42%.',
+        segment: null,
+        engineRuntimeId: 'cuda-12.4',
+        engineLabel: 'whisper.cpp CUDA 12.4'
       })
     ).not.toThrow();
   });

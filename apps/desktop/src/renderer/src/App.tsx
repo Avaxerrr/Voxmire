@@ -23,6 +23,7 @@ import { DashboardView } from './views/dashboard-view';
 import { SettingsView } from './views/settings-view';
 import { TranscriptView } from './views/transcript-view';
 import { exportResultLabel, extractDirectoryPath } from './lib/format';
+import { progressEventSolverLabel, solverLabelForJob, type SolverLabelsByJobId } from './lib/engines';
 import { activeStatuses } from './lib/job-status';
 import { fallbackModels, resolveBackendPreference, resolvePresetSelection, selectUsablePreset, type BackendPreference } from './lib/presets';
 
@@ -44,6 +45,7 @@ export function App(): ReactElement {
   const [machineProfile, setMachineProfile] = useState<MachineProfile | null>(null);
   const [selectedPresetId, setSelectedPresetId] = useState<TranscriptionPresetId>('balanced');
   const [selectedBackendPreference, setSelectedBackendPreference] = useState<BackendPreference>('auto');
+  const [solverLabelsByJobId, setSolverLabelsByJobId] = useState<SolverLabelsByJobId>({});
   const [jobs, setJobs] = useState<JobWithSource[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [segments, setSegments] = useState<TranscriptSegment[]>([]);
@@ -89,6 +91,9 @@ export function App(): ReactElement {
     [jobs]
   );
 
+  const activeJobSolverLabel = activeJob ? solverLabelForJob(activeJob, solverLabelsByJobId[activeJob.job.id]) : null;
+  const detailsSolverLabel = details ? solverLabelForJob({ job: details.job, sourceFile: details.sourceFile }, solverLabelsByJobId[details.job.id]) : null;
+
   const status = useMemo(() => {
     if (!api) {
       return { tone: 'warning' as StatusTone, text: 'Preview mode: desktop features are unavailable in browser.' };
@@ -97,7 +102,7 @@ export function App(): ReactElement {
     if (activeJob) {
       return {
         tone: 'active' as StatusTone,
-        text: `${activeJob.sourceFile.name} / ${Math.round(activeJob.job.progress * 100)}%`
+        text: `${activeJob.sourceFile.name} / ${Math.round(activeJob.job.progress * 100)}%${activeJobSolverLabel ? ` / ${activeJobSolverLabel}` : ''}`
       };
     }
 
@@ -117,7 +122,7 @@ export function App(): ReactElement {
     }
 
     return { tone: 'ready' as StatusTone, text: 'Ready' };
-  }, [activeJob, api, message, resources]);
+  }, [activeJob, activeJobSolverLabel, api, message, resources]);
 
   useEffect(() => {
     if (!api) {
@@ -206,6 +211,10 @@ export function App(): ReactElement {
 
   async function handleProgress(event: TranscriptionProgressEvent): Promise<void> {
     const sequence = ++progressRefreshSequence.current;
+    const solverLabel = progressEventSolverLabel(event);
+    if (solverLabel) {
+      setSolverLabelsByJobId((current) => current[event.jobId] === solverLabel ? current : { ...current, [event.jobId]: solverLabel });
+    }
     setMessage(event.message);
     if (!api) {
       return;
@@ -586,6 +595,7 @@ export function App(): ReactElement {
             onRenameProject={setRenameTarget}
             selectedBackend={selectedEngineBackend}
             selectedModel={selectedModel}
+            solverLabelsByJobId={solverLabelsByJobId}
           />
         ) : null}
 
@@ -606,6 +616,7 @@ export function App(): ReactElement {
             playing={playing}
             selectedJob={selectedJob}
             segments={segments}
+            solverLabelsByJobId={solverLabelsByJobId}
             setPlaying={setPlaying}
             splitSegment={splitTranscriptSegment}
             mergeSegment={mergeTranscriptSegment}
@@ -661,6 +672,7 @@ export function App(): ReactElement {
           loading={detailsLoading}
           onClose={() => setDetailsJobId(null)}
           onDelete={(project) => setDeleteTarget(project)}
+          solverLabel={detailsSolverLabel}
           onRename={(project) => setRenameTarget(project)}
         />
       ) : null}

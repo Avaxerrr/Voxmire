@@ -605,7 +605,9 @@ export class VoxmireRuntime {
             status: 'transcribing',
             progress,
             message: segment ? 'Transcript segment saved.' : event.message,
-            segment
+            segment,
+            engineRuntimeId: event.engineRuntimeId ?? candidate.engine.runtimeId,
+            engineLabel: event.engineLabel ?? candidate.label
           });
         }
 
@@ -644,6 +646,15 @@ export class VoxmireRuntime {
           chunkId: options.chunk.id,
           reason: message,
           log: (event) => this.log(event)
+        });
+        this.emitProgress({
+          jobId: options.jobId,
+          status: 'transcribing',
+          progress: calculateChunkedProgress(options.chunk.index, options.chunks.length, 0),
+          message: `Retrying with ${nextCandidate.label}.`,
+          segment: null,
+          engineRuntimeId: nextCandidate.engine.runtimeId,
+          engineLabel: nextCandidate.label
         });
         activeEngineIndex += 1;
       }

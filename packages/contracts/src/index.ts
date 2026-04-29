@@ -146,7 +146,9 @@ export const transcriptionProgressEventSchema = z.object({
   status: jobStatusSchema,
   progress: z.number().min(0).max(1),
   message: z.string().nullable(),
-  segment: transcriptSegmentSchema.nullable()
+  segment: transcriptSegmentSchema.nullable(),
+  engineRuntimeId: engineRuntimeIdSchema.nullable().optional(),
+  engineLabel: z.string().min(1).nullable().optional()
 });
 
 export const createJobInputSchema = z.object({

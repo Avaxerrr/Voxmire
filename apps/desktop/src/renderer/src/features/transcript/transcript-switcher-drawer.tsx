@@ -3,6 +3,7 @@ import { Search, X } from 'lucide-react';
 import type { JobWithSource } from '@voxmire/contracts';
 import { EmptyState } from '../../components/empty-state';
 import { ProgressPill } from '../../components/progress-pill';
+import { solverLabelForJob, type SolverLabelsByJobId } from '../../lib/engines';
 import { formatDate, formatDuration } from '../../lib/format';
 import { activeStatuses } from '../../lib/job-status';
 
@@ -13,9 +14,10 @@ type TranscriptSwitcherDrawerProps = {
   query: string;
   selectedJobId: string | null;
   setQuery: (query: string) => void;
+  solverLabelsByJobId: SolverLabelsByJobId;
 };
 
-export function TranscriptSwitcherDrawer({ jobs, onClose, onSelectJob, query, selectedJobId, setQuery }: TranscriptSwitcherDrawerProps): ReactElement {
+export function TranscriptSwitcherDrawer({ jobs, onClose, onSelectJob, query, selectedJobId, setQuery, solverLabelsByJobId }: TranscriptSwitcherDrawerProps): ReactElement {
   const visibleJobs = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
@@ -76,7 +78,7 @@ export function TranscriptSwitcherDrawer({ jobs, onClose, onSelectJob, query, se
                     <strong>{entry.sourceFile.name}</strong>
                     <small>{formatDuration(entry.sourceFile.durationSeconds)} / {formatDate(entry.job.createdAt)}</small>
                   </span>
-                  {showStatus ? <ProgressPill job={entry} /> : null}
+                  {showStatus ? <ProgressPill job={entry} solverLabel={solverLabelForJob(entry, solverLabelsByJobId[entry.job.id])} /> : null}
                 </button>
               );
             })

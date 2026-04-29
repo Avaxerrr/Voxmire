@@ -63,9 +63,9 @@ export function findActiveSegmentIndex(segments: TranscriptSegment[], time: numb
   return candidate;
 }
 
-export function transcriptSubtitle(job: JobWithSource, progress: number, mediaKind: MediaKind): string {
+export function transcriptSubtitle(job: JobWithSource, progress: number, mediaKind: MediaKind, solverLabel: string | null = null): string {
   if (activeStatuses.includes(job.job.status) || job.job.status === 'paused') {
-    return `${statusLabel(job.job.status)} / ${progress}%`;
+    return `${statusLabel(job.job.status)} / ${progress}%${solverLabel ? ` / ${solverLabel}` : ''}`;
   }
 
   if (job.job.status === 'failed') {

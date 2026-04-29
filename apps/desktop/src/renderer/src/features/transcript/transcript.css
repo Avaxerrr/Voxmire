@@ -211,6 +211,30 @@
   width: 100%;
   margin: 0 0 22px;
 }
+.job-progress-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.job-progress-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.job-progress-meta strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--cyan);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .job-inline-actions {
   display: inline-flex;
   align-items: center;
@@ -220,6 +244,10 @@
 }
 .progress-track { position: relative; height: 5px; max-width: 980px; margin: 0 auto 22px; overflow: hidden; border-radius: 999px; background: #29292f; }
 .job-progress-row .progress-track { width: 100%; max-width: none; margin: 0; }
+@media (max-width: 720px) {
+  .job-progress-row { grid-template-columns: 1fr; }
+  .job-inline-actions { justify-content: flex-start; min-width: 0; }
+}
 .progress-track div { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--violet), var(--cyan)); transition: width 180ms ease; }
 .progress-track.working::after {
   content: "";

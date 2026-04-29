@@ -1,7 +1,7 @@
 import { type ReactElement } from 'react';
 import { AlertTriangle, Pause, Play, Square } from 'lucide-react';
 import type { JobWithSource } from '@voxmire/contracts';
-import { activeStatuses } from '../../lib/job-status';
+import { activeStatuses, statusLabel } from '../../lib/job-status';
 
 type TranscriptJobStatusProps = {
   job: JobWithSource;
@@ -9,9 +9,10 @@ type TranscriptJobStatusProps = {
   onPause: (jobId: string) => Promise<void>;
   onResume: (jobId: string) => Promise<void>;
   progress: number;
+  solverLabel: string | null;
 };
 
-export function TranscriptJobStatus({ job, onCancel, onPause, onResume, progress }: TranscriptJobStatusProps): ReactElement {
+export function TranscriptJobStatus({ job, onCancel, onPause, onResume, progress, solverLabel }: TranscriptJobStatusProps): ReactElement {
   const isCancelable = activeStatuses.includes(job.job.status) || job.job.status === 'paused';
   const isPausable = activeStatuses.includes(job.job.status);
   const isResumable = job.job.status === 'paused';
@@ -22,8 +23,14 @@ export function TranscriptJobStatus({ job, onCancel, onPause, onResume, progress
     <>
       {showJobProgressRow ? (
         <div className="job-progress-row">
-          <div className={`progress-track ${isWorking ? 'working' : ''}`} aria-label="Progress">
-            <div style={{ width: `${progress}%` }} />
+          <div className="job-progress-stack">
+            <div className="job-progress-meta">
+              <span>{statusLabel(job.job.status)} / {progress}%</span>
+              {solverLabel ? <strong>{solverLabel}</strong> : null}
+            </div>
+            <div className={`progress-track ${isWorking ? 'working' : ''}`} aria-label="Progress">
+              <div style={{ width: `${progress}%` }} />
+            </div>
           </div>
           <div className="job-inline-actions" aria-label="Transcription controls">
             {isPausable ? (

@@ -3,6 +3,7 @@ import { FileAudio, FileVideo, Info, MicVocal, Pencil, Search, Trash2, UploadClo
 import type { EngineBackend, JobWithSource, ModelProfile } from '@voxmire/contracts';
 import { EmptyState } from '../components/empty-state';
 import { ProgressPill } from '../components/progress-pill';
+import { solverLabelForJob, type SolverLabelsByJobId } from '../lib/engines';
 import { formatDate, formatDuration } from '../lib/format';
 import { activeStatuses } from '../lib/job-status';
 import { mediaKindFromExtension } from '../lib/media-kind';
@@ -39,6 +40,7 @@ type DashboardViewProps = {
   onRenameProject: (project: JobWithSource) => void;
   selectedBackend: EngineBackend;
   selectedModel: ModelProfile | null;
+  solverLabelsByJobId: SolverLabelsByJobId;
 };
 
 export function DashboardView({
@@ -50,7 +52,8 @@ export function DashboardView({
   onOpenVoice,
   onRenameProject,
   selectedBackend,
-  selectedModel
+  selectedModel,
+  solverLabelsByJobId
 }: DashboardViewProps): ReactElement {
   return (
     <div className="view workspace-page dashboard-view">
@@ -114,7 +117,7 @@ export function DashboardView({
                         <strong>{entry.sourceFile.name}</strong>
                         <small>{formatDuration(entry.sourceFile.durationSeconds)} / {formatDate(entry.job.createdAt)}</small>
                       </span>
-                      {showStatus ? <ProgressPill job={entry} /> : null}
+                      {showStatus ? <ProgressPill job={entry} solverLabel={solverLabelForJob(entry, solverLabelsByJobId[entry.job.id])} /> : null}
                     </button>
                     <ProjectInlineActions
                       onDelete={() => onDeleteProject(entry)}
