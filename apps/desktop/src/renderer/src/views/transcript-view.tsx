@@ -1,9 +1,10 @@
 import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, FileText, FolderOpen, Pause, Play, Plus, Square, Video } from 'lucide-react';
+import { FileText, FolderOpen, Plus, Video } from 'lucide-react';
 import type { ExportFormat, ExportTextMode, JobWithSource, TranscriptSegment, TranscriptSegmentListResult } from '@voxmire/contracts';
 import { EmptyState } from '../components/empty-state';
 import { FindReplacePanel } from '../features/transcript/find-replace-panel';
 import { TranscriptHeader } from '../features/transcript/transcript-header';
+import { TranscriptJobStatus } from '../features/transcript/transcript-job-status';
 import { TranscriptSwitcherDrawer } from '../features/transcript/transcript-switcher-drawer';
 import { ResetTranscriptModal } from '../components/project-dialogs';
 import { applyMediaSeek } from '../features/media/media-seek';
@@ -122,11 +123,6 @@ export function TranscriptView({
   const mediaApi = window.voxmire?.media;
   const diagnosticsEnabled = usePlaybackDiagnosticsEnabled();
   const progress = selectedJob ? Math.round(selectedJob.job.progress * 100) : 0;
-  const isCancelable = selectedJob ? activeStatuses.includes(selectedJob.job.status) || selectedJob.job.status === 'paused' : false;
-  const isPausable = selectedJob ? activeStatuses.includes(selectedJob.job.status) : false;
-  const isResumable = selectedJob?.job.status === 'paused';
-  const isWorking = selectedJob ? activeStatuses.includes(selectedJob.job.status) : false;
-  const showJobProgressRow = isWorking || isResumable;
   const selectedMediaKind = selectedJob ? mediaInfo?.kind ?? mediaKindFromExtension(selectedJob.sourceFile.extension) : 'audio';
   const selectedSubtitle = selectedJob ? transcriptSubtitle(selectedJob, progress, selectedMediaKind) : 'Choose a project from Library or import a recording.';
   const activeSegmentIndex = useMemo(() => findActiveSegmentIndex(segments, playbackTime), [playbackTime, segments]);
@@ -606,34 +602,13 @@ export function TranscriptView({
           <section className={'transcript-stage ' + (selectedMediaKind === 'video' && mediaUrl ? 'has-video-preview preview-' + (videoPreviewHidden ? 'hidden' : videoPreviewDock) : '')}>
             {selectedJob ? (
               <>
-                {showJobProgressRow ? (
-                  <div className="job-progress-row">
-                    <div className={`progress-track ${isWorking ? 'working' : ''}`} aria-label="Progress">
-                      <div style={{ width: `${progress}%` }} />
-                    </div>
-                    <div className="job-inline-actions" aria-label="Transcription controls">
-                      {isPausable ? (
-                        <button className="secondary-action" onClick={() => void onPause(selectedJob.job.id)} type="button">
-                          <Pause size={14} />
-                          Pause
-                        </button>
-                      ) : null}
-                      {isResumable ? (
-                        <button className="secondary-action" onClick={() => void onResume(selectedJob.job.id)} type="button">
-                          <Play size={14} />
-                          Resume
-                        </button>
-                      ) : null}
-                      {isCancelable ? (
-                        <button className="secondary-action danger" onClick={() => void onCancel(selectedJob.job.id)} type="button">
-                          <Square size={14} />
-                          Stop
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-                ) : null}
-                {selectedJob.job.errorMessage ? <div className="error-text"><AlertTriangle size={16} /> {selectedJob.job.errorMessage}</div> : null}
+                <TranscriptJobStatus
+                  job={selectedJob}
+                  onCancel={onCancel}
+                  onPause={onPause}
+                  onResume={onResume}
+                  progress={progress}
+                />
                 {selectedMediaKind === 'video' && mediaUrl ? (
                   <div className={'transcript-content-with-preview ' + (videoPreviewHidden ? 'hidden' : videoPreviewDock)}>
                     {videoPreviewHidden ? (
