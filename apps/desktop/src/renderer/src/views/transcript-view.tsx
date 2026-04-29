@@ -1,18 +1,14 @@
 import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
-import { FileText, FolderOpen, Plus, Video } from 'lucide-react';
 import type { ExportFormat, ExportTextMode, JobWithSource, TranscriptSegment, TranscriptSegmentListResult } from '@voxmire/contracts';
-import { EmptyState } from '../components/empty-state';
 import { FindReplacePanel } from '../features/transcript/find-replace-panel';
 import { TranscriptHeader } from '../features/transcript/transcript-header';
-import { TranscriptJobStatus } from '../features/transcript/transcript-job-status';
+import { TranscriptStage } from '../features/transcript/transcript-stage';
 import { TranscriptSwitcherDrawer } from '../features/transcript/transcript-switcher-drawer';
 import { ResetTranscriptModal } from '../components/project-dialogs';
 import { applyMediaSeek } from '../features/media/media-seek';
 import { AudioDeck, type PlaybackClockSample } from '../features/media/playback-controls';
 import { playbackSyncIntervalMs } from '../features/media/playback-constants';
-import { VideoPreview } from '../features/media/video-preview';
 import { loadVideoPreviewPreference, saveVideoPreviewPreference, type VideoPreviewDock } from '../features/media/video-preview-preferences';
-import { VirtualizedSegmentList } from '../features/transcript/segment-list';
 import { getPlaybackWordState, type PlaybackWordState } from '../features/transcript/word-timing';
 import { exportResultLabel, formatDuration } from '../lib/format';
 import { isEditableHistoryShortcutTarget, isPlainSpaceKey, isPlaybackShortcutTarget } from '../lib/keyboard';
@@ -599,105 +595,49 @@ export function TranscriptView({
         ) : null}
 
         <div className="transcript-main">
-          <section className={'transcript-stage ' + (selectedMediaKind === 'video' && mediaUrl ? 'has-video-preview preview-' + (videoPreviewHidden ? 'hidden' : videoPreviewDock) : '')}>
-            {selectedJob ? (
-              <>
-                <TranscriptJobStatus
-                  job={selectedJob}
-                  onCancel={onCancel}
-                  onPause={onPause}
-                  onResume={onResume}
-                  progress={progress}
-                />
-                {selectedMediaKind === 'video' && mediaUrl ? (
-                  <div className={'transcript-content-with-preview ' + (videoPreviewHidden ? 'hidden' : videoPreviewDock)}>
-                    {videoPreviewHidden ? (
-                      <button className="show-video-preview" onClick={() => setVideoPreviewHidden(false)} type="button">
-                        <Video size={14} />
-                        Show video preview
-                      </button>
-                    ) : null}
-                    <VideoPreview
-                      currentTime={playbackTime}
-                      dock={videoPreviewDock}
-                      duration={resolvedPlaybackDuration}
-                      hidden={videoPreviewHidden}
-                      mediaRef={audioRef}
-                      mediaUrl={mediaUrl}
-                      onDurationChange={setPlaybackDuration}
-                      onError={setMediaError}
-                      onHide={() => setVideoPreviewHidden(true)}
-                      onMediaDiagnostic={logPlaybackDiagnostic}
-                      onTimeChange={setPlaybackTime}
-                      onWidthChange={setVideoPreviewWidth}
-                      playbackSpeed={playbackSpeed}
-                      playing={playing}
-                      setDock={setVideoPreviewDock}
-                      setPlaying={setPlaying}
-                      viewportHeight={viewportSize.height}
-                      viewportWidth={viewportSize.width}
-                      width={videoPreviewWidth}
-                    />
-                    {segments.length === 0 ? (
-                      <EmptyState title="Transcript pending" body="Transcript text will appear here as the job progresses." />
-                    ) : (
-                      <VirtualizedSegmentList
-                        activeSegmentIndex={transcriptActiveSegmentIndex}
-                        diagnosticsEnabled={diagnosticsEnabled}
-                        onWordTimingDiagnostic={logWordTimingDiagnostic}
-                        onMergeSegment={mergeSegmentWithHistory}
-                        onSeek={seekToSegment}
-                        onSeekTime={seekToTime}
-                        onSplitSegment={splitSegmentWithHistory}
-                        onUpdateTiming={updateSegmentTimingWithHistory}
-                        onUpdateSegment={updateSegmentWithHistory}
-                        activeSearchSegmentId={activeFindSegment?.id ?? null}
-                        playbackTime={playbackTime}
-                        resetSignal={editorResetSignal}
-                        searchQuery={findQuery}
-                        segments={segments}
-                      />
-                    )}
-                  </div>
-                ) : segments.length === 0 ? (
-                  <EmptyState title="Transcript pending" body="Transcript text will appear here as the job progresses." />
-                ) : (
-                  <VirtualizedSegmentList
-                    activeSegmentIndex={transcriptActiveSegmentIndex}
-                        diagnosticsEnabled={diagnosticsEnabled}
-                        onWordTimingDiagnostic={logWordTimingDiagnostic}
-                    onMergeSegment={mergeSegmentWithHistory}
-                    onSeek={seekToSegment}
-                    onSeekTime={seekToTime}
-                    onSplitSegment={splitSegmentWithHistory}
-                    onUpdateTiming={updateSegmentTimingWithHistory}
-                    onUpdateSegment={updateSegmentWithHistory}
-                    activeSearchSegmentId={activeFindSegment?.id ?? null}
-                    playbackTime={playbackTime}
-                    resetSignal={editorResetSignal}
-                    searchQuery={findQuery}
-                    segments={segments}
-                  />
-                )}
-              </>
-            ) : (
-              <div className="empty-state transcript-empty-state">
-                <FileText size={20} />
-                <h4>Open a transcript</h4>
-                <p>Choose a transcript from Library or import a recording.</p>
-                <div className="empty-actions">
-                  <button className="secondary-action" onClick={onBrowseLibrary} type="button">
-                    <FolderOpen size={14} />
-                    Browse Library
-                  </button>
-                  <button className="primary-action compact" disabled={busy} onClick={onImport} type="button">
-                    <Plus size={16} />
-                    Import
-                  </button>
-                </div>
-              </div>
-            )}
-          </section>
+          <TranscriptStage
+            activeSearchSegmentId={activeFindSegment?.id ?? null}
+            activeSegmentIndex={transcriptActiveSegmentIndex}
+            busy={busy}
+            diagnosticsEnabled={diagnosticsEnabled}
+            duration={resolvedPlaybackDuration}
+            mediaRef={audioRef}
+            mediaUrl={mediaUrl}
+            onBrowseLibrary={onBrowseLibrary}
+            onCancel={onCancel}
+            onImport={onImport}
+            onMediaDiagnostic={logPlaybackDiagnostic}
+            onMergeSegment={mergeSegmentWithHistory}
+            onPause={onPause}
+            onResume={onResume}
+            onSeek={seekToSegment}
+            onSeekTime={seekToTime}
+            onSplitSegment={splitSegmentWithHistory}
+            onUpdateSegment={updateSegmentWithHistory}
+            onUpdateTiming={updateSegmentTimingWithHistory}
+            onVideoDurationChange={setPlaybackDuration}
+            onVideoError={setMediaError}
+            onVideoTimeChange={setPlaybackTime}
+            onVideoWidthChange={setVideoPreviewWidth}
+            onWordTimingDiagnostic={logWordTimingDiagnostic}
+            playbackSpeed={playbackSpeed}
+            playbackTime={playbackTime}
+            playing={playing}
+            progress={progress}
+            resetSignal={editorResetSignal}
+            searchQuery={findQuery}
+            selectedJob={selectedJob}
+            selectedMediaKind={selectedMediaKind}
+            segments={segments}
+            setPlaying={setPlaying}
+            setVideoPreviewDock={setVideoPreviewDock}
+            setVideoPreviewHidden={setVideoPreviewHidden}
+            videoPreviewDock={videoPreviewDock}
+            videoPreviewHidden={videoPreviewHidden}
+            videoPreviewWidth={videoPreviewWidth}
+            viewportHeight={viewportSize.height}
+            viewportWidth={viewportSize.width}
+          />
 
           <AudioDeck
             audioRef={audioRef}
