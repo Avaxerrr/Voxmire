@@ -1095,6 +1095,7 @@ textarea,
   display: grid;
   gap: 7px;
   min-width: 0;
+  padding-top: 4px;
 }
 .segment-time-editors {
   display: grid;
