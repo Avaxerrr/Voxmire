@@ -90,6 +90,11 @@ type MediaInfo = {
   kind: MediaKind;
 };
 
+type PreferredActiveSegment = {
+  segmentId: string;
+  timeSeconds: number;
+};
+
 type ExportOption = {
   format: ExportFormat;
   label: string;
@@ -111,6 +116,7 @@ const playbackDiagnosticClockDriftWarningSeconds = 0.08;
 const playbackDiagnosticLongGapWarningSeconds = 0.12;
 const playbackTraceLimit = 600;
 const wordTimingBoundaryToleranceSeconds = 0.025;
+const timestampSeekPreferenceToleranceSeconds = 0.05;
 const audioSeekThrottleMs = 50;
 const videoSeekThrottleMs = 140;
 const videoPreviewPreferenceKey = 'voxmire:videoPreviewPreference';
@@ -1012,6 +1018,7 @@ function TranscriptView({
   const [playbackDuration, setPlaybackDuration] = useState<number | null>(null);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [externalSeekSignal, setExternalSeekSignal] = useState(0);
+  const [preferredActiveSegment, setPreferredActiveSegment] = useState<PreferredActiveSegment | null>(null);
   const [videoPreviewHidden, setVideoPreviewHidden] = useState(() => loadVideoPreviewPreference().hidden);
   const [videoPreviewDock, setVideoPreviewDock] = useState<VideoPreviewDock>(() => loadVideoPreviewPreference().dock);
   const [videoPreviewWidth, setVideoPreviewWidth] = useState(() => loadVideoPreviewPreference().width);
@@ -1030,6 +1037,11 @@ function TranscriptView({
   const selectedMediaKind = selectedJob ? mediaInfo?.kind ?? mediaKindFromExtension(selectedJob.sourceFile.extension) : 'audio';
   const selectedSubtitle = selectedJob ? transcriptSubtitle(selectedJob, progress, selectedMediaKind) : 'Choose a project from Library or import a recording.';
   const activeSegmentIndex = useMemo(() => findActiveSegmentIndex(segments, playbackTime), [playbackTime, segments]);
+  const preferredActiveSegmentIndex = useMemo(
+    () => preferredActiveSegmentIndexForPlayback(segments, playbackTime, preferredActiveSegment),
+    [playbackTime, preferredActiveSegment, segments]
+  );
+  const transcriptActiveSegmentIndex = preferredActiveSegmentIndex >= 0 ? preferredActiveSegmentIndex : activeSegmentIndex;
   const resolvedPlaybackDuration = playbackDuration ?? selectedJob?.sourceFile.durationSeconds ?? null;
   const visibleJobs = useMemo(() => {
     const query = switcherQuery.trim().toLowerCase();
@@ -1051,6 +1063,12 @@ function TranscriptView({
   useEffect(() => {
     setActiveFindIndex(0);
   }, [findQuery]);
+
+  useEffect(() => {
+    if (preferredActiveSegment && preferredActiveSegmentIndex < 0) {
+      setPreferredActiveSegment(null);
+    }
+  }, [preferredActiveSegment, preferredActiveSegmentIndex]);
 
   useEffect(() => {
     if (playbackTimingDiagnostic) {
@@ -1105,6 +1123,7 @@ function TranscriptView({
 
     setPlaying(false);
     setPlaybackTime(0);
+    setPreferredActiveSegment(null);
     setPlaybackClockSample(null);
     setPlaybackDuration(null);
     setMediaError(null);
@@ -1183,10 +1202,11 @@ function TranscriptView({
     };
   }, [mediaApi, selectedJob?.job.id, setPlaying]);
 
-  function seekToTime(seconds: number): void {
+  function seekToTime(seconds: number, preferredSegmentId: string | null = null): void {
     const nextTime = Math.max(0, seconds);
     const audio = audioRef.current;
 
+    setPreferredActiveSegment(preferredSegmentId ? { segmentId: preferredSegmentId, timeSeconds: nextTime } : null);
     setPlaybackTime(nextTime);
     setExternalSeekSignal((value) => value + 1);
     if (audio) {
@@ -1519,7 +1539,7 @@ function TranscriptView({
                       <EmptyState title="Transcript pending" body="Transcript text will appear here as the job progresses." />
                     ) : (
                       <VirtualizedSegmentList
-                        activeSegmentIndex={activeSegmentIndex}
+                        activeSegmentIndex={transcriptActiveSegmentIndex}
                         onMergeSegment={mergeSegment}
                         onSeek={seekToSegment}
                         onSeekTime={seekToTime}
@@ -1537,7 +1557,7 @@ function TranscriptView({
                   <EmptyState title="Transcript pending" body="Transcript text will appear here as the job progresses." />
                 ) : (
                   <VirtualizedSegmentList
-                    activeSegmentIndex={activeSegmentIndex}
+                    activeSegmentIndex={transcriptActiveSegmentIndex}
                     onMergeSegment={mergeSegment}
                     onSeek={seekToSegment}
                     onSeekTime={seekToTime}
@@ -2177,7 +2197,7 @@ type VirtualizedSegmentListProps = {
   activeSegmentIndex: number;
   onMergeSegment: (segmentId: string, direction: 'previous' | 'next') => Promise<TranscriptSegment[] | null>;
   onSeek: (segment: TranscriptSegment) => void;
-  onSeekTime: (seconds: number) => void;
+  onSeekTime: (seconds: number, preferredSegmentId?: string) => void;
   onSplitSegment: (segmentId: string, offset: number) => Promise<TranscriptSegment[] | null>;
   onUpdateTiming: (segmentId: string, startSeconds: number, endSeconds: number) => Promise<TranscriptSegmentListResult | null>;
   onUpdateSegment: (segmentId: string, text: string) => Promise<TranscriptSegment | null>;
@@ -2504,7 +2524,7 @@ type EditableSegmentRowProps = {
   onMergeNext: () => Promise<void>;
   onMergePrevious: () => Promise<void>;
   onSave: (nextText: string) => Promise<boolean>;
-  onSeekTime: (seconds: number) => void;
+  onSeekTime: (seconds: number, preferredSegmentId?: string) => void;
   onSaveAndClose: (nextText: string) => Promise<void>;
   onSaveAndMoveNext: (nextText: string) => Promise<boolean>;
   onSaveAndMovePrevious: (nextText: string) => Promise<boolean>;
@@ -2689,7 +2709,7 @@ function EditableSegmentRow({
   function handleTimestampPointerDown(event: ReactPointerEvent<HTMLInputElement>, seconds: number): void {
     event.stopPropagation();
     if (event.button === 0 && !event.defaultPrevented) {
-      onSeekTime(seconds);
+      onSeekTime(seconds, segment.id);
     }
   }
 
@@ -3843,6 +3863,29 @@ function modelLabel(models: ModelProfile[], modelId: ModelId): string {
 function formatBytes(value: number): string {
   const gib = value / 1024 / 1024 / 1024;
   return `${gib.toFixed(gib >= 10 ? 0 : 1)} GiB`;
+}
+
+function preferredActiveSegmentIndexForPlayback(
+  segments: TranscriptSegment[],
+  playbackTime: number,
+  preferredSegment: PreferredActiveSegment | null
+): number {
+  if (!preferredSegment || !Number.isFinite(playbackTime)) {
+    return -1;
+  }
+
+  const index = segments.findIndex((segment) => segment.id === preferredSegment.segmentId);
+  const segment = segments[index];
+  if (!segment) {
+    return -1;
+  }
+
+  const clickedTimeStillCurrent = Math.abs(playbackTime - preferredSegment.timeSeconds) <= timestampSeekPreferenceToleranceSeconds;
+  const playbackTimeWithinSegment =
+    playbackTime >= segment.startSeconds - timestampSeekPreferenceToleranceSeconds &&
+    playbackTime <= segment.endSeconds + timestampSeekPreferenceToleranceSeconds;
+
+  return clickedTimeStillCurrent && playbackTimeWithinSegment ? index : -1;
 }
 
 function findActiveSegmentIndex(segments: TranscriptSegment[], time: number): number {
