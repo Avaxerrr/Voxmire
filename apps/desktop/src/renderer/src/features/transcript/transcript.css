@@ -141,6 +141,35 @@
   text-align: left;
 }
 
+.transcript-switcher-open {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 40px 0 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.transcript-switcher-open .project-main {
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.transcript-switcher-open .project-main strong,
+.transcript-switcher-open .project-main small {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .transcript-switcher-row:hover {
   border-color: rgba(34, 211, 238, 0.34);
   background: rgba(34, 211, 238, 0.06);
@@ -171,6 +200,14 @@
 .transcript-switcher-row > * {
   position: relative;
   z-index: 1;
+}
+
+.transcript-switcher-row .project-action-menu {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  z-index: 2;
+  transform: translateY(-50%);
 }
 
 .transcript-switcher-row .progress-pill {

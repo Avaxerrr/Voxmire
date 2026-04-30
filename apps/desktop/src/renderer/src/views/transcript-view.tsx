@@ -386,6 +386,18 @@ export function TranscriptView({
           <TranscriptSwitcherDrawer
             jobs={jobs}
             onClose={() => setSwitcherOpen(false)}
+            onDeleteProject={(project) => {
+              setSwitcherOpen(false);
+              onDeleteProject(project);
+            }}
+            onDetailsProject={(jobId) => {
+              setSwitcherOpen(false);
+              onDetailsProject(jobId);
+            }}
+            onRenameProject={(project) => {
+              setSwitcherOpen(false);
+              onRenameProject(project);
+            }}
             onSelectJob={onSelectJob}
             query={switcherQuery}
             selectedJobId={selectedJob?.job.id ?? null}
