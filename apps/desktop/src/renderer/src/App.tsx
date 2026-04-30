@@ -29,7 +29,8 @@ import { TranscriptView } from './views/transcript-view';
 import { exportResultLabel, extractDirectoryPath } from './lib/format';
 import { progressEventSolverLabel, solverLabelForJob, type SolverLabelsByJobId } from './lib/engines';
 import { activeStatuses } from './lib/job-status';
-import { fallbackModels, resolveBackendPreference, resolvePresetSelection, selectUsablePreset, type BackendPreference } from './lib/presets';
+import { readCachedSetupSummary, writeCachedSetupSummary, type CachedSetupSummary } from './lib/setup-cache';
+import { fallbackModels, modelLabel, resolveBackendPreference, resolvePresetSelection, selectUsablePreset, type BackendPreference } from './lib/presets';
 
 type AppInfo = {
   name: string;
@@ -59,6 +60,7 @@ export function App(): ReactElement {
   const [segments, setSegments] = useState<TranscriptSegment[]>([]);
   const [workspaceLoading, setWorkspaceLoading] = useState(() => Boolean(window.voxmire));
   const [systemLoading, setSystemLoading] = useState(() => Boolean(window.voxmire));
+  const [cachedSetupSummary, setCachedSetupSummary] = useState<CachedSetupSummary | null>(() => readCachedSetupSummary());
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [view, setView] = useState<ViewId>('dashboard');
@@ -100,6 +102,18 @@ export function App(): ReactElement {
     () => jobs.find((entry) => activeStatuses.includes(entry.job.status)) ?? null,
     [jobs]
   );
+
+  const transcribeSetupLabel = useMemo(() => {
+    if (systemLoading && cachedSetupSummary) {
+      return setupSummaryLabel(cachedSetupSummary);
+    }
+
+    if (systemLoading) {
+      return 'Checking local setup';
+    }
+
+    return `${selectedModel?.label ?? 'Recommended preset'} / ${selectedEngineBackend.toUpperCase()}`;
+  }, [cachedSetupSummary, selectedEngineBackend, selectedModel?.label, systemLoading]);
 
   const activeJobSolverLabel = activeJob ? solverLabelForJob(activeJob, solverLabelsByJobId[activeJob.job.id]) : null;
   const detailsSolverLabel = details ? solverLabelForJob({ job: details.job, sourceFile: details.sourceFile }, solverLabelsByJobId[details.job.id]) : null;
@@ -211,6 +225,8 @@ export function App(): ReactElement {
     setWorkspaceLoading(true);
     setSystemLoading(true);
 
+    let modelProfilesForSetup = models;
+
     try {
       const [info, modelProfiles, jobList, resolvedExportDirectory] = await Promise.all([
         api.app.getInfo(),
@@ -219,6 +235,7 @@ export function App(): ReactElement {
         api.exports.getDirectory()
       ]);
 
+      modelProfilesForSetup = modelProfiles;
       setAppInfo(info);
       setModels(modelProfiles);
       setJobs(jobList);
@@ -231,13 +248,29 @@ export function App(): ReactElement {
     }
 
     try {
-      const systemState = await loadSystemState();
-      setSelectedPresetId(selectUsablePreset(systemState.machineProfile.recommendedModelId, systemState.resources));
+      await refreshSystemSetup(modelProfilesForSetup);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Failed to check local models and runtimes.');
     } finally {
       setSystemLoading(false);
     }
+  }
+
+  async function refreshSystemSetup(modelProfiles: ModelProfile[] = models): Promise<void> {
+    const systemState = await loadSystemState();
+    const nextPresetId = selectUsablePreset(systemState.machineProfile.recommendedModelId, systemState.resources);
+    const nextResolution = resolvePresetSelection(nextPresetId, systemState.machineProfile, systemState.resources);
+    const nextBackend = resolveBackendPreference(selectedBackendPreference, nextResolution.engineBackend, systemState.machineProfile);
+    const nextSummary = {
+      backend: nextBackend,
+      modelId: nextResolution.modelId,
+      modelLabel: modelLabel(modelProfiles, nextResolution.modelId),
+      updatedAt: new Date().toISOString()
+    } satisfies CachedSetupSummary;
+
+    setSelectedPresetId(nextPresetId);
+    setCachedSetupSummary(nextSummary);
+    writeCachedSetupSummary(nextSummary);
   }
 
   async function loadSystemState(): Promise<{ engines: EngineAvailability[]; resources: ResourceStatus[]; machineProfile: MachineProfile; runtimeInstallStatuses: RuntimeInstallStatus[]; modelInstallStatuses: ModelInstallStatus[] }> {
@@ -278,7 +311,7 @@ export function App(): ReactElement {
     setMessage('Downloading runtime package.');
     try {
       const result = await api.system.installRuntime(runtimeId);
-      await loadSystemState();
+      await refreshSystemSetup();
       setMessage(`Installed ${runtimeId} ${result.version}.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : `Failed to install ${runtimeId}.`);
@@ -297,7 +330,7 @@ export function App(): ReactElement {
     setMessage('Downloading model package.');
     try {
       const result = await api.models.install(modelId);
-      await loadSystemState();
+      await refreshSystemSetup();
       setMessage(`Installed ${result.fileName}.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : `Failed to install ${modelId}.`);
@@ -694,8 +727,7 @@ export function App(): ReactElement {
             onOpenJob={openJob}
             onOpenVoice={() => setView('voice')}
             onRenameProject={setRenameTarget}
-            selectedBackend={selectedEngineBackend}
-            selectedModel={selectedModel}
+            setupLabel={transcribeSetupLabel}
             setupLoading={systemLoading}
             solverLabelsByJobId={solverLabelsByJobId}
             workspaceLoading={workspaceLoading}
@@ -806,4 +838,8 @@ export function App(): ReactElement {
       ) : null}
     </main>
   );
+}
+
+function setupSummaryLabel(summary: CachedSetupSummary): string {
+  return `${summary.modelLabel} / ${summary.backend.toUpperCase()}`;
 }

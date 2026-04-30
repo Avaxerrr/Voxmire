@@ -1,6 +1,6 @@
 import { type ReactElement } from 'react';
 import { FileAudio, FileVideo, Info, MicVocal, Pencil, Search, Trash2, UploadCloud } from 'lucide-react';
-import type { EngineBackend, JobWithSource, ModelProfile } from '@voxmire/contracts';
+import type { JobWithSource } from '@voxmire/contracts';
 import { EmptyState } from '../components/empty-state';
 import { ProgressPill } from '../components/progress-pill';
 import { solverLabelForJob, type SolverLabelsByJobId } from '../lib/engines';
@@ -59,8 +59,7 @@ type DashboardViewProps = {
   onOpenJob: (jobId: string) => void;
   onOpenVoice: () => void;
   onRenameProject: (project: JobWithSource) => void;
-  selectedBackend: EngineBackend;
-  selectedModel: ModelProfile | null;
+  setupLabel: string;
   setupLoading: boolean;
   solverLabelsByJobId: SolverLabelsByJobId;
   workspaceLoading: boolean;
@@ -74,8 +73,7 @@ export function DashboardView({
   onOpenJob,
   onOpenVoice,
   onRenameProject,
-  selectedBackend,
-  selectedModel,
+  setupLabel,
   setupLoading,
   solverLabelsByJobId,
   workspaceLoading
@@ -96,7 +94,7 @@ export function DashboardView({
             <span className="tile-copy">
               <strong>Transcribe Audio</strong>
               <p>Create a private transcript from an audio or video file.</p>
-              <small>{setupLoading ? 'Checking local setup' : `${selectedModel?.label ?? 'Recommended preset'} / ${selectedBackend.toUpperCase()}`}</small>
+              <small>{setupLabel}</small>
             </span>
           </button>
 
