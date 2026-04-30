@@ -1,8 +1,10 @@
 # Local Resources
 
-Voxmire does not commit large runtime resources to git. Local transcription needs binaries and GGML model files placed under `resources/`.
+Voxmire keeps heavyweight runtime and model binaries out of git. The repo tracks manifests and tooling, while local development and packaged builds use files under `resources/`.
 
-## Required For First CPU Run
+## App Bundle Policy
+
+The Windows desktop app bundles these resources:
 
 ```txt
 resources/
@@ -11,20 +13,18 @@ resources/
     ffprobe.exe
   engines/
     win32/
-      cpu/
-        whispercpp-v1.8.4/
-          whisper-cli.exe
-          whisper.dll
-          ggml.dll
-          ggml-base.dll
-          ggml-cpu.dll
+      vulkan/whispercpp-v1.8.4/
+      cpu-blas/whispercpp-v1.8.4/
+      cpu/whispercpp-v1.8.4/
   models/
-    ggml-large-v3-turbo.bin
+    ggml-small-q8_0.bin
 ```
 
-The app can open without these files, but transcription will fail with a clear missing-resource message until at least the plain CPU runtime and required model exist.
+CUDA is not bundled because the CUDA package is much larger. The app downloads CUDA on demand from `resources/whisper-runtimes.manifest.json`.
 
-## Optional Engine Runtimes
+Large models are not bundled. The app downloads `large-v3-turbo` and `large-v3` on demand from `resources/whisper-models.manifest.json`.
+
+## Runtime Layout
 
 Keep each whisper.cpp build in its own versioned folder because the builds contain overlapping DLL names that must stay paired with their matching executable. Replace the whole `whispercpp-v...` folder when upgrading; do not mix files between whisper.cpp releases.
 
@@ -56,23 +56,69 @@ resources/engines/win32/cpu-blas/whispercpp-v1.8.4/
   ggml-cpu.dll
   ggml-blas.dll
   libopenblas.dll
+
+resources/engines/win32/cpu/whispercpp-v1.8.4/
+  whisper-cli.exe
+  whisper.dll
+  ggml.dll
+  ggml-base.dll
+  ggml-cpu.dll
 ```
 
-Runtime preference is:
+Runtime fallback order is:
 
 ```txt
 CUDA 12.4 -> Vulkan -> BLAS CPU -> plain CPU
 ```
 
-Plain CPU remains the final fallback. CUDA and Vulkan are optional acceleration paths; BLAS CPU is the preferred CPU path when present.
+Plain CPU remains the final fallback. BLAS CPU is the preferred CPU path when available.
 
-## Optional Models
+## Model Layout
+
+Bundled starter model:
 
 ```txt
-resources/models/ggml-large-v3.bin
-resources/models/ggml-distil-large-v3.5.bin
-resources/models/ggml-medium.bin
+resources/models/ggml-small-q8_0.bin
 ```
+
+Downloadable models:
+
+```txt
+ggml-large-v3-turbo.bin
+ggml-large-v3.bin
+```
+
+Installed runtime and model downloads go under Electron user data, not the app install directory. Downloads are written to a temporary folder, verified with SHA256, then moved into the final resource directory.
+
+## Developer Commands
+
+Download or verify the bundled starter model:
+
+```bash
+npm run models:download
+```
+
+Download all configured models for local testing:
+
+```bash
+npm run models:download:all
+```
+
+Prepare, promote, and upload whisper.cpp runtime packages:
+
+```bash
+npm run runtimes
+```
+
+Check local bundle policy:
+
+```bash
+npm run app:runtimes:check
+npm run app:models:check
+npm run resources:check
+```
+
+`npm run desktop:package` downloads/verifies the bundled starter model before building the app.
 
 ## Source Locations
 
@@ -82,14 +128,4 @@ Use upstream project pages and verify downloaded artifacts before packaging:
 - whisper.cpp GGML model files: https://huggingface.co/ggerganov/whisper.cpp/tree/main
 - Windows FFmpeg builds: https://www.gyan.dev/ffmpeg/builds/
 
-For V1 development, place files manually in the expected paths. Do not commit binaries or model files unless packaging rules are explicitly changed.
-
-## Status Check
-
-Run:
-
-```bash
-npm run resources:check
-```
-
-The command prints required and optional resources with their expected local paths.
+Do not commit runtime binaries, model binaries, generated zip packages, or local staging folders unless packaging rules are explicitly changed.

@@ -4,13 +4,18 @@
 
 This repo is for Voxmire, a local-first desktop transcription app for long audio files.
 
-Read `docs/HANDOFF.md` before making architectural decisions. Then check:
+Read these docs before making architectural decisions:
 
 - `docs/PRODUCT.md`
 - `docs/TECH_STACK.md`
 - `docs/ARCHITECTURE.md`
 - `docs/DECISIONS.md`
 - `docs/ROADMAP.md`
+
+For resource packaging or runtime distribution work, also read:
+
+- `docs/RESOURCES.md`
+- `docs/RUNTIME_PIPELINE.md`
 
 ## Fixed Decisions
 

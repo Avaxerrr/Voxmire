@@ -1,18 +1,20 @@
 # Voxmire Runtime Resources
 
-This folder is for local runtime binaries and models. Large files are intentionally ignored by git.
+This folder is for local runtime binaries, manifests, and model files. Large runtime and model binaries are intentionally ignored by git.
 
-Expected first-run CPU resources:
+Current packaged Windows resource policy:
 
 ```txt
 ffmpeg/ffmpeg.exe
 ffmpeg/ffprobe.exe
-engines/win32/whisper-cpu.exe
-engines/win32/whisper.dll
-engines/win32/ggml.dll
-engines/win32/ggml-base.dll
-engines/win32/ggml-cpu.dll
-models/ggml-large-v3-turbo.bin
+engines/win32/vulkan/whispercpp-v1.8.4/
+engines/win32/cpu-blas/whispercpp-v1.8.4/
+engines/win32/cpu/whispercpp-v1.8.4/
+models/ggml-small-q8_0.bin
+whisper-runtimes.manifest.json
+whisper-models.manifest.json
 ```
 
-See `docs/RESOURCES.md` for setup details.
+CUDA and larger models are installed on demand from the manifests instead of being committed or bundled by default.
+
+See `docs/RESOURCES.md` and `docs/RUNTIME_PIPELINE.md` for setup and packaging details.
