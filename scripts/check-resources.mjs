@@ -32,14 +32,13 @@ const runtimeDefinitions = {
 const resources = [
   ['required', 'ffmpeg', join(root, 'resources', 'ffmpeg', `ffmpeg${exe}`)],
   ['required', 'ffprobe', join(root, 'resources', 'ffmpeg', `ffprobe${exe}`)],
-  ['required', 'large-v3-turbo model', join(root, 'resources', 'models', 'ggml-large-v3-turbo.bin')],
+  ['required', 'small-q8_0 model', join(root, 'resources', 'models', 'ggml-small-q8_0.bin')],
   ...runtimeResources('cpu', 'required'),
   ...runtimeResources('cpu-blas', 'optional'),
   ...runtimeResources('vulkan', 'optional'),
   ...runtimeResources('cuda-12.4', 'optional'),
-  ['optional', 'large-v3 model', join(root, 'resources', 'models', 'ggml-large-v3.bin')],
-  ['optional', 'distil-large-v3.5 model', join(root, 'resources', 'models', 'ggml-distil-large-v3.5.bin')],
-  ['optional', 'medium model', join(root, 'resources', 'models', 'ggml-medium.bin')]
+  ['optional', 'large-v3-turbo model', join(root, 'resources', 'models', 'ggml-large-v3-turbo.bin')],
+  ['optional', 'large-v3 model', join(root, 'resources', 'models', 'ggml-large-v3.bin')]
 ];
 
 let missingRequired = 0;

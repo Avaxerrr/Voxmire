@@ -11,13 +11,15 @@ files:
 extraResources:
   - from: ../../resources/whisper-runtimes.manifest.json
     to: resources/whisper-runtimes.manifest.json
+  - from: ../../resources/whisper-models.manifest.json
+    to: resources/whisper-models.manifest.json
   - from: ../../resources/ffmpeg
     to: resources/ffmpeg
     filter:
       - ffmpeg.exe
       - ffprobe.exe
-  - from: ../../resources/models/ggml-large-v3-turbo.bin
-    to: resources/models/ggml-large-v3-turbo.bin
+  - from: ../../resources/models/ggml-small-q8_0.bin
+    to: resources/models/ggml-small-q8_0.bin
   - from: ../../resources/engines/win32/vulkan
     to: resources/engines/win32/vulkan
   - from: ../../resources/engines/win32/cpu-blas

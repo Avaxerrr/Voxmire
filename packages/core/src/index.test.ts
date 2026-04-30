@@ -40,12 +40,12 @@ describe('transcription presets', () => {
       engineBackend: 'cuda'
     });
     expect(resolveTranscriptionPreset('fast', { machineProfile: { recommendedBackend: 'vulkan' } })).toMatchObject({
-      modelId: 'distil-large-v3.5',
+      modelId: 'small-q8_0',
       engineBackend: 'vulkan'
     });
     expect(resolveTranscriptionPreset('quality')).toMatchObject({ modelId: 'large-v3', engineBackend: 'cpu' });
     expect(resolveTranscriptionPreset('low-memory', { machineProfile: { recommendedBackend: 'cuda' } })).toMatchObject({
-      modelId: 'medium',
+      modelId: 'small-q8_0',
       engineBackend: 'cpu'
     });
   });

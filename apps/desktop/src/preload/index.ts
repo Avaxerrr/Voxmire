@@ -9,6 +9,9 @@ import type {
   ExportTranscriptResult,
   JobWithSource,
   MachineProfile,
+  ModelId,
+  ModelInstallResult,
+  ModelInstallStatus,
   ModelProfile,
   ProjectDetails,
   ResourceStatus,
@@ -41,7 +44,9 @@ const api = {
     installRuntime: (runtimeId: EngineRuntimeId): Promise<RuntimeInstallResult> => ipcRenderer.invoke('system:install-runtime', { runtimeId })
   },
   models: {
-    list: (): Promise<ModelProfile[]> => ipcRenderer.invoke('models:list')
+    list: (): Promise<ModelProfile[]> => ipcRenderer.invoke('models:list'),
+    getInstallStatuses: (): Promise<ModelInstallStatus[]> => ipcRenderer.invoke('models:get-install-statuses'),
+    install: (modelId: ModelId): Promise<ModelInstallResult> => ipcRenderer.invoke('models:install', { modelId })
   },
   jobs: {
     create: (input?: { presetId?: TranscriptionPresetId; modelId?: string; engineBackend?: EngineBackend }): Promise<CreateJobResult | null> => ipcRenderer.invoke('jobs:create', input ?? {}),

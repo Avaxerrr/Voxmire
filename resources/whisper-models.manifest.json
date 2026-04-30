@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-04-30T00:00:00.000Z",
+  "provider": {
+    "type": "huggingface",
+    "repo": "ggerganov/whisper.cpp",
+    "publicBaseUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
+  },
+  "models": [
+    {
+      "modelId": "small-q8_0",
+      "label": "Small q8_0",
+      "fileName": "ggml-small-q8_0.bin",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q8_0.bin",
+      "sizeBytes": 264464607,
+      "sha256": "49c8fb02b65e6049d5fa6c04f81f53b867b5ec9540406812c643f177317f779f",
+      "bundled": true,
+      "recommended": false,
+      "purpose": "Bundled starter",
+      "description": "Smaller multilingual model included with the app for first-run transcription."
+    },
+    {
+      "modelId": "large-v3-turbo",
+      "label": "Large v3 Turbo",
+      "fileName": "ggml-large-v3-turbo.bin",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
+      "sizeBytes": 1624555275,
+      "sha256": "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
+      "bundled": false,
+      "recommended": true,
+      "purpose": "Recommended",
+      "description": "Best balance of quality, speed, and download size for long local transcription."
+    },
+    {
+      "modelId": "large-v3",
+      "label": "Large v3",
+      "fileName": "ggml-large-v3.bin",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin",
+      "sizeBytes": 3095033483,
+      "sha256": "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2",
+      "bundled": false,
+      "recommended": false,
+      "purpose": "Quality",
+      "description": "Largest and slowest option, intended for users who prefer maximum accuracy over speed and size."
+    }
+  ]
+}

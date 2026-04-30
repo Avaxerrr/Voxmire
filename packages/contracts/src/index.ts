@@ -19,7 +19,7 @@ export const engineBackendSchema = z.enum(['cpu', 'cuda', 'vulkan']);
 
 export const engineRuntimeIdSchema = z.enum(['cuda-12.4', 'vulkan', 'cpu-blas', 'cpu']);
 
-export const modelIdSchema = z.enum(['large-v3-turbo', 'large-v3', 'distil-large-v3.5', 'medium']);
+export const modelIdSchema = z.enum(['small-q8_0', 'large-v3-turbo', 'large-v3', 'distil-large-v3.5', 'medium']);
 
 export const transcriptionPresetIdSchema = z.enum(['balanced', 'fast', 'quality', 'low-memory']);
 
@@ -165,6 +165,57 @@ export const whisperRuntimeManifestSchema = z.object({
   packages: z.array(whisperRuntimePackageSchema)
 });
 
+
+export const whisperModelPackageSchema = z.object({
+  modelId: modelIdSchema,
+  label: z.string().min(1),
+  fileName: z.string().min(1),
+  url: z.string().url().nullable().optional(),
+  sizeBytes: z.number().int().nonnegative(),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/i),
+  bundled: z.boolean().default(false),
+  recommended: z.boolean().default(false),
+  purpose: z.string().min(1),
+  description: z.string().min(1)
+});
+
+export const whisperModelManifestSchema = z.object({
+  schemaVersion: z.number().int().positive(),
+  updatedAt: z.string().datetime().nullable(),
+  provider: z.object({
+    type: z.literal('huggingface'),
+    repo: z.string().min(1),
+    publicBaseUrl: z.string().url()
+  }),
+  models: z.array(whisperModelPackageSchema)
+});
+
+export const modelInstallStatusSchema = z.object({
+  modelId: modelIdSchema,
+  label: z.string().min(1),
+  fileName: z.string().min(1),
+  installed: z.boolean(),
+  bundled: z.boolean(),
+  downloadable: z.boolean(),
+  recommended: z.boolean(),
+  purpose: z.string().min(1),
+  description: z.string().min(1),
+  sizeBytes: z.number().int().nonnegative().nullable(),
+  path: z.string().min(1).nullable(),
+  source: z.enum(['user', 'bundled', 'none']),
+  reason: z.string().nullable()
+});
+
+export const installModelInputSchema = z.object({
+  modelId: modelIdSchema
+});
+
+export const modelInstallResultSchema = z.object({
+  modelId: modelIdSchema,
+  fileName: z.string().min(1),
+  installedPath: z.string().min(1),
+  installed: z.boolean()
+});
 export const runtimeInstallStatusSchema = z.object({
   runtimeId: engineRuntimeIdSchema,
   label: z.string().min(1),
@@ -362,6 +413,11 @@ export type EngineAvailability = z.infer<typeof engineAvailabilitySchema>;
 export type RuntimePackagePart = z.infer<typeof runtimePackagePartSchema>;
 export type WhisperRuntimePackage = z.infer<typeof whisperRuntimePackageSchema>;
 export type WhisperRuntimeManifest = z.infer<typeof whisperRuntimeManifestSchema>;
+export type WhisperModelPackage = z.infer<typeof whisperModelPackageSchema>;
+export type WhisperModelManifest = z.infer<typeof whisperModelManifestSchema>;
+export type ModelInstallStatus = z.infer<typeof modelInstallStatusSchema>;
+export type InstallModelInput = z.infer<typeof installModelInputSchema>;
+export type ModelInstallResult = z.infer<typeof modelInstallResultSchema>;
 export type RuntimeInstallStatus = z.infer<typeof runtimeInstallStatusSchema>;
 export type InstallRuntimeInput = z.infer<typeof installRuntimeInputSchema>;
 export type RuntimeInstallResult = z.infer<typeof runtimeInstallResultSchema>;

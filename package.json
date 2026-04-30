@@ -19,8 +19,11 @@
     "runtimes:upload": "node scripts/whisper-runtime-tool.mjs upload",
     "runtimes": "node scripts/whisper-runtime-tool.mjs menu",
     "runtimes:upload:r2": "node scripts/whisper-runtime-tool.mjs upload --target r2",
+    "models:download": "node scripts/download-whisper-models.mjs",
+    "models:download:all": "node scripts/download-whisper-models.mjs --all",
     "app:runtimes:check": "node scripts/check-app-runtime-bundle.mjs",
-    "desktop:package": "corepack pnpm --filter @voxmire/desktop package:win"
+    "app:models:check": "node scripts/check-app-model-bundle.mjs",
+    "desktop:package": "node scripts/download-whisper-models.mjs && corepack pnpm --filter @voxmire/desktop package:win"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",

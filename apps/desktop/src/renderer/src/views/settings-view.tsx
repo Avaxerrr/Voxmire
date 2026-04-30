@@ -4,13 +4,15 @@ import type {
   EngineAvailability,
   EngineRuntimeId,
   MachineProfile,
+  ModelId,
+  ModelInstallStatus,
   ModelProfile,
   ResourceStatus,
   RuntimeInstallStatus,
   TranscriptionPresetId
 } from '@voxmire/contracts';
 import { formatBytes, formatFileSize } from '../lib/format';
-import { backendOptions, modelInstalled, modelLabel, modelResource, presetModelOptionLabel, visiblePresetOptions, type BackendPreference, type ResolvedTranscriptionPreset } from '../lib/presets';
+import { backendOptions, modelLabel, presetModelOptionLabel, visiblePresetOptions, type BackendPreference, type ResolvedTranscriptionPreset } from '../lib/presets';
 
 type AppInfo = {
   name: string;
@@ -23,10 +25,13 @@ type SettingsViewProps = {
   appInfo: AppInfo | null;
   engines: EngineAvailability[];
   exportDirectory: string | null;
+  installingModelId: ModelId | null;
   installingRuntimeId: EngineRuntimeId | null;
   machineProfile: MachineProfile | null;
   models: ModelProfile[];
+  modelInstallStatuses: ModelInstallStatus[];
   onChooseExportDirectory: () => void;
+  onInstallModel: (modelId: ModelId) => void;
   onInstallRuntime: (runtimeId: EngineRuntimeId) => void;
   onResetExportDirectory: () => void;
   resources: ResourceStatus[];
@@ -50,10 +55,9 @@ const transcriptShortcuts = [
   { keys: 'Ctrl/Cmd+S', action: 'Save the active segment' }
 ];
 
-export function SettingsView({ appInfo, engines, exportDirectory, installingRuntimeId, machineProfile, models, onChooseExportDirectory, onInstallRuntime, onResetExportDirectory, resources, runtimeInstallStatuses, selectedBackendPreference, selectedPresetId, selectedPresetResolution, setSelectedBackendPreference, setSelectedPresetId }: SettingsViewProps): ReactElement {
+export function SettingsView({ appInfo, engines, exportDirectory, installingModelId, installingRuntimeId, machineProfile, models, modelInstallStatuses, onChooseExportDirectory, onInstallModel, onInstallRuntime, onResetExportDirectory, resources, runtimeInstallStatuses, selectedBackendPreference, selectedPresetId, selectedPresetResolution, setSelectedBackendPreference, setSelectedPresetId }: SettingsViewProps): ReactElement {
   const readyResources = resources.filter((resource) => resource.available).length;
   const selectablePresets = visiblePresetOptions(resources);
-  const installedModels = models.filter((model) => modelInstalled(resources, model.id));
 
   return (
     <div className="view workspace-page settings-view">
@@ -97,29 +101,34 @@ export function SettingsView({ appInfo, engines, exportDirectory, installingRunt
             <FileText size={18} />
             <div>
               <h3>Model manager</h3>
-              <p>Installed local models available for new transcription jobs.</p>
+              <p>Download approved ggml models. Large v3 Turbo is the best default; Small q8_0 is bundled for first-run use.</p>
             </div>
           </div>
           <div className="model-manager-list">
-            {installedModels.length === 0 ? (
+            {modelInstallStatuses.length === 0 ? (
               <div className="model-row missing">
                 <span>
-                  <strong>No installed models found</strong>
-                  <small>Add a local ggml model file under resources/models.</small>
+                  <strong>No model manifest found</strong>
+                  <small>Model downloads are unavailable.</small>
                 </span>
                 <em>Missing</em>
               </div>
-            ) : installedModels.map((model) => {
-              const resource = modelResource(resources, model.id);
+            ) : modelInstallStatuses.map((model) => {
+              const installing = installingModelId === model.modelId;
+              const disabled = model.installed || !model.downloadable || installing;
 
               return (
-                <div className="model-row installed" key={model.id}>
+                <div className={`model-row ${modelRowClass(model)}`} key={model.modelId}>
                   <span>
                     <strong>{model.label}</strong>
-                    <small>{model.purpose} / {model.relativeSpeed} / {model.relativeQuality}</small>
+                    <small>{modelInstallSummary(model)}</small>
                   </span>
-                  <em>Installed</em>
-                  <p>{resource?.path ?? 'Model path unavailable.'}</p>
+                  <em>{modelStatusLabel(model)}</em>
+                  <p>{model.description}</p>
+                  {model.path ? <p>{model.path}</p> : null}
+                  <button className="secondary-action model-install-action" disabled={disabled} onClick={() => onInstallModel(model.modelId)} type="button">
+                    {installing ? 'Downloading' : model.installed ? 'Installed' : 'Download'}
+                  </button>
                 </div>
               );
             })}
@@ -283,6 +292,28 @@ export function SettingsView({ appInfo, engines, exportDirectory, installingRunt
   );
 }
 
+function modelInstallSummary(model: ModelInstallStatus): string {
+  const size = model.sizeBytes === null ? 'size unavailable' : formatFileSize(model.sizeBytes);
+  const source = model.source === 'bundled' ? 'bundled' : model.source === 'user' ? 'downloaded' : 'not installed';
+  const recommendation = model.recommended ? 'Recommended' : model.purpose;
+  return `${recommendation} / ${source} / ${size}`;
+}
+
+function modelStatusLabel(model: ModelInstallStatus): string {
+  if (model.installed) {
+    return model.bundled ? 'Bundled' : 'Installed';
+  }
+
+  return model.downloadable ? 'Available' : 'Blocked';
+}
+
+function modelRowClass(model: ModelInstallStatus): string {
+  if (model.installed) {
+    return 'installed';
+  }
+
+  return model.downloadable ? 'available' : 'missing';
+}
 function backendEngine(engines: readonly EngineAvailability[], backend: MachineProfile['backends'][number]): EngineAvailability | null {
   return engines.find((engine) => engine.backend === backend.backend && engine.available) ?? null;
 }

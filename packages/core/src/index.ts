@@ -16,10 +16,20 @@ export const defaultChunkPolicy = {
 
 export const modelProfiles: readonly ModelProfile[] = [
   {
+    id: 'small-q8_0',
+    label: 'Small q8_0',
+    purpose: 'Starter',
+    description: 'Bundled starter model for first-run transcription with a smaller app footprint.',
+    recommended: false,
+    languages: 'multilingual',
+    relativeSpeed: 'fast',
+    relativeQuality: 'good'
+  },
+  {
     id: 'large-v3-turbo',
     label: 'Large v3 Turbo',
-    purpose: 'Default',
-    description: 'Balanced quality and speed for most machines.',
+    purpose: 'Recommended',
+    description: 'Best balance of quality, speed, and size for long local transcription.',
     recommended: true,
     languages: 'multilingual',
     relativeSpeed: 'balanced',
@@ -29,34 +39,13 @@ export const modelProfiles: readonly ModelProfile[] = [
     id: 'large-v3',
     label: 'Large v3',
     purpose: 'Quality',
-    description: 'Best quality mode when time and memory allow.',
+    description: 'Highest quality option when download size, memory, and runtime are acceptable.',
     recommended: false,
     languages: 'multilingual',
     relativeSpeed: 'slow',
     relativeQuality: 'best'
-  },
-  {
-    id: 'distil-large-v3.5',
-    label: 'Distil Large v3.5',
-    purpose: 'Fast English',
-    description: 'Fast option for English-heavy recordings.',
-    recommended: false,
-    languages: 'english-focused',
-    relativeSpeed: 'fast',
-    relativeQuality: 'better'
-  },
-  {
-    id: 'medium',
-    label: 'Medium',
-    purpose: 'Fallback',
-    description: 'Lower memory option for older hardware.',
-    recommended: false,
-    languages: 'multilingual',
-    relativeSpeed: 'fast',
-    relativeQuality: 'good'
   }
 ];
-
 export const transcriptionPresets: readonly TranscriptionPresetProfile[] = [
   {
     id: 'balanced',
@@ -69,11 +58,11 @@ export const transcriptionPresets: readonly TranscriptionPresetProfile[] = [
   },
   {
     id: 'fast',
-    label: 'Fast',
-    purpose: 'Speed',
-    description: 'Faster turnaround for English-heavy recordings with practical quality.',
+    label: 'Starter',
+    purpose: 'Bundled',
+    description: 'Bundled starter model for smaller installs and quick first-run transcription.',
     recommended: false,
-    modelId: 'distil-large-v3.5',
+    modelId: 'small-q8_0',
     backendPreference: 'auto'
   },
   {
@@ -89,9 +78,9 @@ export const transcriptionPresets: readonly TranscriptionPresetProfile[] = [
     id: 'low-memory',
     label: 'Low memory',
     purpose: 'Compatibility',
-    description: 'Lower memory CPU preset for older or resource-constrained machines.',
+    description: 'CPU-only starter model for older or resource-constrained machines.',
     recommended: false,
-    modelId: 'medium',
+    modelId: 'small-q8_0',
     backendPreference: 'cpu'
   }
 ];

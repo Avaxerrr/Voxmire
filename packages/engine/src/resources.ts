@@ -16,6 +16,8 @@ export const whisperCppRuntimeVersion = 'v1.8.4';
 
 const whisperCppRuntimeDirectoryPrefix = 'whispercpp-';
 
+const knownModelIds: readonly ModelId[] = ['small-q8_0', 'large-v3-turbo', 'large-v3'];
+
 const windowsRuntimeDefinitions: readonly WhisperRuntimeDefinition[] = [
   {
     id: 'cuda-12.4',
@@ -163,8 +165,39 @@ export function resolveFfmpegExecutable(paths: ResourcePaths): string {
 }
 
 export function defaultModelPath(paths: ResourcePaths, modelId: ModelId): string {
-  const fileName = `ggml-${modelId}.bin`;
-  return join(paths.projectRoot, 'resources', 'models', fileName);
+  return resolveModelPath(paths, modelId);
+}
+
+export function resolveModelPath(paths: ResourcePaths, modelId: ModelId): string {
+  const existing = resolveModelPathCandidates(paths, modelId).find((candidate) => existsSync(candidate));
+  return existing ?? resolveWritableModelPath(paths, modelId);
+}
+
+export function resolveBundledModelPath(paths: ResourcePaths, modelId: ModelId): string {
+  return join(paths.projectRoot, 'resources', 'models', modelFileName(modelId));
+}
+
+export function resolveWritableModelPath(paths: ResourcePaths, modelId: ModelId): string {
+  return paths.userResourceRoot
+    ? join(paths.userResourceRoot, 'models', modelFileName(modelId))
+    : resolveBundledModelPath(paths, modelId);
+}
+
+export function resolveModelPathCandidates(paths: ResourcePaths, modelId: ModelId): string[] {
+  const candidates = [
+    paths.userResourceRoot ? join(paths.userResourceRoot, 'models', modelFileName(modelId)) : null,
+    resolveBundledModelPath(paths, modelId)
+  ].filter((candidate): candidate is string => Boolean(candidate));
+
+  return [...new Set(candidates)];
+}
+
+export function modelFileName(modelId: ModelId): string {
+  return `ggml-${modelId}.bin`;
+}
+
+export function supportedModelIds(): readonly ModelId[] {
+  return knownModelIds;
 }
 
 export function sourceExtension(filePath: string): string {

@@ -1,4 +1,4 @@
-﻿import { resolveTranscriptionPreset, transcriptionPresets, type ResolvedTranscriptionPreset } from '@voxmire/core';
+import { resolveTranscriptionPreset, transcriptionPresets, type ResolvedTranscriptionPreset } from '@voxmire/core';
 import type {
   EngineBackend,
   MachineProfile,
@@ -21,9 +21,19 @@ export type BackendPreference = 'auto' | EngineBackend;
 
 export const fallbackModels: ModelProfile[] = [
   {
+    id: 'small-q8_0',
+    label: 'Small q8_0',
+    purpose: 'starter',
+    description: 'Bundled starter model for first-run transcription.',
+    recommended: false,
+    languages: 'multilingual',
+    relativeSpeed: 'fast',
+    relativeQuality: 'good'
+  },
+  {
     id: 'large-v3-turbo',
-    label: 'large-v3-turbo',
-    purpose: 'default',
+    label: 'Large v3 Turbo',
+    purpose: 'recommended',
     description: 'Recommended default for long recordings with a practical speed and quality balance.',
     recommended: true,
     languages: 'multilingual',
@@ -32,36 +42,15 @@ export const fallbackModels: ModelProfile[] = [
   },
   {
     id: 'large-v3',
-    label: 'large-v3',
+    label: 'Large v3',
     purpose: 'quality',
     description: 'Higher quality preset for jobs where accuracy matters more than speed.',
     recommended: false,
     languages: 'multilingual',
     relativeSpeed: 'slow',
     relativeQuality: 'best'
-  },
-  {
-    id: 'distil-large-v3.5',
-    label: 'distil-large-v3.5',
-    purpose: 'fast English',
-    description: 'Fast English-focused preset for shorter turnaround on compatible recordings.',
-    recommended: false,
-    languages: 'english-focused',
-    relativeSpeed: 'fast',
-    relativeQuality: 'good'
-  },
-  {
-    id: 'medium',
-    label: 'medium',
-    purpose: 'fallback',
-    description: 'Lower resource fallback for older machines.',
-    recommended: false,
-    languages: 'multilingual',
-    relativeSpeed: 'fast',
-    relativeQuality: 'good'
   }
 ];
-
 export function backendOptions(machineProfile: MachineProfile | null): BackendOption[] {
   if (!machineProfile) {
     return [{ available: true, backend: 'cpu', label: 'CPU' }];
@@ -87,12 +76,24 @@ export function presetUsable(resources: ResourceStatus[], preset: TranscriptionP
 }
 
 export function visiblePresetOptions(resources: ResourceStatus[]): readonly TranscriptionPresetProfile[] {
-  const installed = transcriptionPresets.filter((preset) => presetUsable(resources, preset));
+  const installed = uniquePresetsByModelId(transcriptionPresets.filter((preset) => presetUsable(resources, preset)));
   if (installed.length > 0) {
     return installed;
   }
 
-  return transcriptionPresets.filter((preset) => preset.recommended);
+  return uniquePresetsByModelId(transcriptionPresets.filter((preset) => preset.recommended));
+}
+
+function uniquePresetsByModelId(presets: readonly TranscriptionPresetProfile[]): TranscriptionPresetProfile[] {
+  const seen = new Set<ModelId>();
+  return presets.filter((preset) => {
+    if (seen.has(preset.modelId)) {
+      return false;
+    }
+
+    seen.add(preset.modelId);
+    return true;
+  });
 }
 
 export function presetModelOptionLabel(models: ModelProfile[], preset: TranscriptionPresetProfile): string {

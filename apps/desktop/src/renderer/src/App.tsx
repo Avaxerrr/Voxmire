@@ -7,6 +7,8 @@ import type {
   ExportTextMode,
   JobWithSource,
   MachineProfile,
+  ModelId,
+  ModelInstallStatus,
   ModelProfile,
   ProjectDetails,
   ResourceStatus,
@@ -45,7 +47,9 @@ export function App(): ReactElement {
   const [models, setModels] = useState<ModelProfile[]>(fallbackModels);
   const [resources, setResources] = useState<ResourceStatus[]>([]);
   const [runtimeInstallStatuses, setRuntimeInstallStatuses] = useState<RuntimeInstallStatus[]>([]);
+  const [modelInstallStatuses, setModelInstallStatuses] = useState<ModelInstallStatus[]>([]);
   const [installingRuntimeId, setInstallingRuntimeId] = useState<EngineRuntimeId | null>(null);
+  const [installingModelId, setInstallingModelId] = useState<ModelId | null>(null);
   const [machineProfile, setMachineProfile] = useState<MachineProfile | null>(null);
   const [selectedPresetId, setSelectedPresetId] = useState<TranscriptionPresetId>('balanced');
   const [selectedBackendPreference, setSelectedBackendPreference] = useState<BackendPreference>('auto');
@@ -208,28 +212,31 @@ export function App(): ReactElement {
     setExportDirectory(resolvedExportDirectory);
   }
 
-  async function loadSystemState(): Promise<{ engines: EngineAvailability[]; resources: ResourceStatus[]; machineProfile: MachineProfile; runtimeInstallStatuses: RuntimeInstallStatus[] }> {
+  async function loadSystemState(): Promise<{ engines: EngineAvailability[]; resources: ResourceStatus[]; machineProfile: MachineProfile; runtimeInstallStatuses: RuntimeInstallStatus[]; modelInstallStatuses: ModelInstallStatus[] }> {
     if (!api) {
       throw new Error('Desktop bridge unavailable.');
     }
 
-    const [engineAvailability, resourceStatus, detectedMachineProfile, installStatuses] = await Promise.all([
+    const [engineAvailability, resourceStatus, detectedMachineProfile, installStatuses, modelStatuses] = await Promise.all([
       api.system.getEngineAvailability(),
       api.system.getResourceStatus(),
       api.system.getMachineProfile(),
-      api.system.getRuntimeInstallStatuses()
+      api.system.getRuntimeInstallStatuses(),
+      api.models.getInstallStatuses()
     ]);
 
     setEngines(engineAvailability);
     setResources(resourceStatus);
     setMachineProfile(detectedMachineProfile);
     setRuntimeInstallStatuses(installStatuses);
+    setModelInstallStatuses(modelStatuses);
 
     return {
       engines: engineAvailability,
       resources: resourceStatus,
       machineProfile: detectedMachineProfile,
-      runtimeInstallStatuses: installStatuses
+      runtimeInstallStatuses: installStatuses,
+      modelInstallStatuses: modelStatuses
     };
   }
 
@@ -252,6 +259,24 @@ export function App(): ReactElement {
     }
   }
 
+  async function installModel(modelId: ModelId): Promise<void> {
+    if (!api) {
+      setMessage('Desktop bridge unavailable.');
+      return;
+    }
+
+    setInstallingModelId(modelId);
+    setMessage('Downloading model package.');
+    try {
+      const result = await api.models.install(modelId);
+      await loadSystemState();
+      setMessage(`Installed ${result.fileName}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : `Failed to install ${modelId}.`);
+    } finally {
+      setInstallingModelId(null);
+    }
+  }
   async function handleProgress(event: TranscriptionProgressEvent): Promise<void> {
     const sequence = ++progressRefreshSequence.current;
     const solverLabel = progressEventSolverLabel(event);
@@ -679,8 +704,11 @@ export function App(): ReactElement {
             exportDirectory={exportDirectory}
             machineProfile={machineProfile}
             models={models}
+            modelInstallStatuses={modelInstallStatuses}
             onChooseExportDirectory={() => void chooseExportDirectory()}
+            installingModelId={installingModelId}
             installingRuntimeId={installingRuntimeId}
+            onInstallModel={(modelId) => void installModel(modelId)}
             onInstallRuntime={(runtimeId) => void installRuntime(runtimeId)}
             onResetExportDirectory={() => void resetExportDirectory()}
             resources={resources}

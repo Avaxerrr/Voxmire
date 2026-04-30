@@ -10,6 +10,9 @@ import type {
   ExportTextMode,
   JobWithSource,
   MachineProfile,
+  ModelId,
+  ModelInstallResult,
+  ModelInstallStatus,
   ModelProfile,
   ProjectDetails,
   ResourceStatus,
@@ -78,6 +81,8 @@ declare global {
       };
       models: {
         list: () => Promise<ModelProfile[]>;
+        getInstallStatuses: () => Promise<ModelInstallStatus[]>;
+        install: (modelId: ModelId) => Promise<ModelInstallResult>;
       };
       jobs: {
         create: (input?: { presetId?: TranscriptionPresetId; modelId?: string; engineBackend?: EngineBackend }) => Promise<CreateJobResult | null>;

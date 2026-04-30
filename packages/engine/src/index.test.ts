@@ -2,7 +2,18 @@ import { existsSync, mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { cleanupStaleWhisperRuntimeDownloads, detectWhisperEngines, detectWhisperRuntime, getMachineProfile, parseWhisperJsonSegmentsPayload, parseWhisperProgressLine, whisperRuntimeDefinition } from './index';
+import {
+  cleanupStaleWhisperModelDownloads,
+  cleanupStaleWhisperRuntimeDownloads,
+  detectWhisperEngines,
+  detectWhisperRuntime,
+  getMachineProfile,
+  getWhisperModelInstallStatuses,
+  parseWhisperJsonSegmentsPayload,
+  parseWhisperProgressLine,
+  resolveModelPath,
+  whisperRuntimeDefinition
+} from './index';
 
 describe('parseWhisperProgressLine', () => {
   it('parses whisper.cpp progress output', () => {
@@ -165,6 +176,80 @@ describe('getMachineProfile', () => {
     expect(existsSync(freshDirectory)).toBe(true);
   });
 
+  it('reports bundled and user-installed model statuses from the manifest', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'voxmire-engine-'));
+    const userResourceRoot = join(projectRoot, 'user-resources');
+    const bundledModelRoot = join(projectRoot, 'resources', 'models');
+    const userModelRoot = join(userResourceRoot, 'models');
+    const paths = { projectRoot, userResourceRoot };
+
+    mkdirSync(join(projectRoot, 'resources'), { recursive: true });
+    mkdirSync(bundledModelRoot, { recursive: true });
+    mkdirSync(userModelRoot, { recursive: true });
+    writeFileSync(join(projectRoot, 'resources', 'whisper-models.manifest.json'), JSON.stringify({
+      schemaVersion: 1,
+      updatedAt: null,
+      provider: {
+        type: 'huggingface',
+        repo: 'ggerganov/whisper.cpp',
+        publicBaseUrl: 'https://example.com/models'
+      },
+      models: [
+        {
+          modelId: 'small-q8_0',
+          label: 'Small q8_0',
+          fileName: 'ggml-small-q8_0.bin',
+          sizeBytes: 1,
+          sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          bundled: true,
+          recommended: false,
+          purpose: 'Bundled starter',
+          description: 'Bundled starter model.'
+        },
+        {
+          modelId: 'large-v3-turbo',
+          label: 'Large v3 Turbo',
+          fileName: 'ggml-large-v3-turbo.bin',
+          sizeBytes: 1,
+          sha256: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          bundled: false,
+          recommended: true,
+          purpose: 'Recommended',
+          description: 'Recommended model.'
+        }
+      ]
+    }));
+    writeFileSync(join(bundledModelRoot, 'ggml-small-q8_0.bin'), 'small');
+    writeFileSync(join(userModelRoot, 'ggml-large-v3-turbo.bin'), 'turbo');
+
+    const statuses = getWhisperModelInstallStatuses(paths);
+
+    expect(statuses.map((status) => [status.modelId, status.installed, status.source])).toEqual([
+      ['small-q8_0', true, 'bundled'],
+      ['large-v3-turbo', true, 'user']
+    ]);
+    expect(resolveModelPath(paths, 'large-v3-turbo')).toBe(join(userModelRoot, 'ggml-large-v3-turbo.bin'));
+  });
+
+  it('removes stale model download folders but keeps fresh folders', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'voxmire-engine-'));
+    const userResourceRoot = join(projectRoot, 'user-resources');
+    const downloadRoot = join(userResourceRoot, 'model-downloads');
+    const staleDirectory = join(downloadRoot, 'large-v3-turbo-stale');
+    const freshDirectory = join(downloadRoot, 'large-v3-turbo-fresh');
+    const now = Date.now();
+
+    mkdirSync(staleDirectory, { recursive: true });
+    mkdirSync(freshDirectory, { recursive: true });
+    utimesSync(staleDirectory, new Date(now - 2 * 60 * 60 * 1000), new Date(now - 2 * 60 * 60 * 1000));
+    utimesSync(freshDirectory, new Date(now - 5 * 60 * 1000), new Date(now - 5 * 60 * 1000));
+
+    const removed = cleanupStaleWhisperModelDownloads({ projectRoot, userResourceRoot }, { maxAgeMs: 60 * 60 * 1000, now });
+
+    expect(removed).toBe(1);
+    expect(existsSync(staleDirectory)).toBe(false);
+    expect(existsSync(freshDirectory)).toBe(true);
+  });
   it('detects runtime files inside a versioned whisper.cpp folder', () => {
     const projectRoot = mkdtempSync(join(tmpdir(), 'voxmire-engine-'));
     const platform = process.platform === 'win32' ? 'win32' : process.platform === 'darwin' ? 'darwin' : 'linux';

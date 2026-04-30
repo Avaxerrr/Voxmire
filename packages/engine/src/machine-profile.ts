@@ -18,6 +18,7 @@ import {
   resolveWhisperRuntimeDirectory,
   resolveWhisperRuntimeExecutable,
   resolveWhisperRuntimeFile,
+  supportedModelIds,
   whisperRuntimeDefinition,
   whisperRuntimeDefinitions,
   whisperRuntimeVersionFromDirectory
@@ -121,7 +122,6 @@ export async function getMachineProfile(paths: ResourcePaths): Promise<MachinePr
 export function getResourceStatus(paths: ResourcePaths): ResourceStatus[] {
   const ffmpegPath = resolveFfmpegExecutable(paths);
   const ffprobePath = resolveFfprobeExecutable(paths);
-  const modelIds: ModelId[] = ['large-v3-turbo', 'large-v3', 'distil-large-v3.5', 'medium'];
   const runtimeStatuses = whisperRuntimeDefinitions().flatMap((definition) => {
     const detected = detectWhisperRuntime(paths, definition.id);
     const runtimeDirectory = dirname(detected.requiredFilePaths[0] ?? resolveWhisperRuntimeDirectory(paths, definition.id));
@@ -147,13 +147,13 @@ export function getResourceStatus(paths: ResourcePaths): ResourceStatus[] {
     resourceStatus('ffmpeg', 'ffmpeg', 'FFmpeg', true, ffmpegPath, 'https://www.gyan.dev/ffmpeg/builds/'),
     resourceStatus('ffprobe', 'ffprobe', 'ffprobe', true, ffprobePath, 'https://www.gyan.dev/ffmpeg/builds/'),
     ...runtimeStatuses,
-    ...modelIds.map((modelId) => {
+    ...supportedModelIds().map((modelId) => {
       const path = defaultModelPath(paths, modelId);
       return resourceStatus(
         `model-${modelId}`,
         'model',
         `GGML ${modelId}`,
-        modelId === 'large-v3-turbo',
+        modelId === 'small-q8_0',
         path,
         'https://huggingface.co/ggerganov/whisper.cpp/tree/main'
       );
@@ -201,19 +201,7 @@ function runtimeReady(
 
 function chooseRecommendedModel(totalMemoryBytes: number): ModelId {
   const gib = totalMemoryBytes / 1024 / 1024 / 1024;
-  if (gib >= 24) {
-    return 'large-v3';
-  }
-
-  if (gib >= 12) {
-    return 'large-v3-turbo';
-  }
-
-  if (gib >= 8) {
-    return 'distil-large-v3.5';
-  }
-
-  return 'medium';
+  return gib >= 12 ? 'large-v3-turbo' : 'small-q8_0';
 }
 
 function backendLabel(backend: EngineBackend, runtimes: readonly WhisperRuntimeAvailability[]): string {
