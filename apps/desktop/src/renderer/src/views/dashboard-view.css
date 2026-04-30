@@ -61,7 +61,7 @@
 .library-toolbar h3 { margin-top: 4px; color: var(--text); font-family: "Space Grotesk", Inter, sans-serif; font-size: 22px; }
 .library-controls { display: flex; align-items: center; gap: 8px; }
 .search-field { display: flex; align-items: center; gap: 8px; min-height: 36px; width: 240px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--muted); background: rgba(255, 255, 255, 0.04); }
-.search-field input { width: 100%; min-width: 0; border: 0; padding: 0; background: transparent; box-shadow: none; font-size: 13px; }
+.search-field input { width: 100%; min-width: 0; border: 0; padding: 0 1px 0 4px; background: transparent; box-shadow: none; font-size: 13px; }
 .find-replace-panel {
   position: absolute;
   top: 12px;

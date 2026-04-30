@@ -1,8 +1,9 @@
 import { type ReactElement, useMemo, useState } from 'react';
-import { FileAudio, FileVideo, Info, MicVocal, Pencil, Search, Trash2, UploadCloud } from 'lucide-react';
+import { FileAudio, FileVideo, Info, MicVocal, Pencil, Trash2, UploadCloud } from 'lucide-react';
 import type { JobWithSource } from '@voxmire/contracts';
 import { EmptyState } from '../components/empty-state';
 import { ProgressPill } from '../components/progress-pill';
+import { SearchField } from '../components/search-field';
 import { solverLabelForJob, type SolverLabelsByJobId } from '../lib/engines';
 import { formatDate, formatDuration } from '../lib/format';
 import { activeStatuses } from '../lib/job-status';
@@ -141,17 +142,13 @@ export function DashboardView({
               <h3>All transcripts</h3>
             </div>
             <div className="library-controls">
-              <label className="search-field">
-                <Search size={15} />
-                <input
-                  aria-label="Search projects"
-                  name="projectSearch"
-                  onChange={(event) => setProjectSearchQuery(event.target.value)}
-                  placeholder="Search projects"
-                  type="search"
-                  value={projectSearchQuery}
-                />
-              </label>
+              <SearchField
+                ariaLabel="Search projects"
+                name="projectSearch"
+                onChange={setProjectSearchQuery}
+                placeholder="Search projects"
+                value={projectSearchQuery}
+              />
               <button className="secondary-action" type="button">All</button>
               <button className="secondary-action" type="button">Active</button>
             </div>

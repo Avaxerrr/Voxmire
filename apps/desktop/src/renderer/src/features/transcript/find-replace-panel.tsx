@@ -1,5 +1,6 @@
 import { type ReactElement } from 'react';
-import { Pencil, Search, SkipBack, SkipForward } from 'lucide-react';
+import { Pencil, SkipBack, SkipForward } from 'lucide-react';
+import { SearchField } from '../../components/search-field';
 
 type FindReplacePanelProps = {
   activeFindIndex: number;
@@ -32,16 +33,14 @@ export function FindReplacePanel({
 }: FindReplacePanelProps): ReactElement {
   return (
     <div className="find-replace-panel">
-      <label className="search-field compact-find-field">
-        <Search size={14} />
-        <input
-          aria-label="Find transcript text"
-          onChange={(event) => onFindQueryChange(event.target.value)}
-          placeholder="Find"
-          type="search"
-          value={findQuery}
-        />
-      </label>
+      <SearchField
+        ariaLabel="Find transcript text"
+        className="compact-find-field"
+        iconSize={14}
+        onChange={onFindQueryChange}
+        placeholder="Find"
+        value={findQuery}
+      />
       <div className="find-nav-controls" aria-label="Find result navigation">
         <button
           aria-label="Previous match"
