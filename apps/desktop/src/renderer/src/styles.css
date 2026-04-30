@@ -1,3 +1,4 @@
+@import './fonts.css';
 @import './styles/core.css';
 @import './views/dashboard-view.css';
 @import './features/transcript/transcript.css';

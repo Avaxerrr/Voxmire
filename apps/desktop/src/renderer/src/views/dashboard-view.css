@@ -267,3 +267,58 @@
 .progress-pill.optional { color: var(--amber); background: rgba(245, 158, 11, 0.13); }
 
 .glass-bar { background: rgba(9, 9, 11, 0.76); backdrop-filter: blur(16px); }
+
+.action-tile:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.action-tile:disabled::before {
+  opacity: 0;
+}
+
+.project-skeleton-list {
+  overflow: hidden;
+}
+
+.project-row-skeleton {
+  pointer-events: none;
+}
+
+.skeleton-block,
+.skeleton-line {
+  display: block;
+  overflow: hidden;
+  border-radius: 7px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.055));
+  background-size: 220% 100%;
+  animation: skeleton-sweep 1.4s ease-in-out infinite;
+}
+
+.project-row-skeleton .project-icon {
+  flex: 0 0 auto;
+  box-shadow: none;
+}
+
+.skeleton-title {
+  width: min(360px, 68%);
+  height: 14px;
+}
+
+.skeleton-meta {
+  width: min(260px, 46%);
+  height: 11px;
+  margin-top: 8px;
+  opacity: 0.74;
+}
+
+.skeleton-action {
+  flex: 0 0 auto;
+  width: 31px;
+  height: 31px;
+}
+
+@keyframes skeleton-sweep {
+  0% { background-position: 120% 0; }
+  100% { background-position: -120% 0; }
+}

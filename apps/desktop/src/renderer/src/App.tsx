@@ -57,6 +57,8 @@ export function App(): ReactElement {
   const [jobs, setJobs] = useState<JobWithSource[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [segments, setSegments] = useState<TranscriptSegment[]>([]);
+  const [workspaceLoading, setWorkspaceLoading] = useState(() => Boolean(window.voxmire));
+  const [systemLoading, setSystemLoading] = useState(() => Boolean(window.voxmire));
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [view, setView] = useState<ViewId>('dashboard');
@@ -114,6 +116,14 @@ export function App(): ReactElement {
       };
     }
 
+    if (workspaceLoading) {
+      return { tone: 'active' as StatusTone, text: 'Loading local workspace.' };
+    }
+
+    if (systemLoading) {
+      return { tone: 'active' as StatusTone, text: 'Checking local models and runtimes.' };
+    }
+
     if (message) {
       const normalizedMessage = message.toLowerCase();
       const tone: StatusTone = normalizedMessage.includes('failed')
@@ -130,7 +140,7 @@ export function App(): ReactElement {
     }
 
     return { tone: 'ready' as StatusTone, text: 'Ready' };
-  }, [activeJob, activeJobSolverLabel, api, message, resources]);
+  }, [activeJob, activeJobSolverLabel, api, message, resources, systemLoading, workspaceLoading]);
 
   useEffect(() => {
     if (!api) {
@@ -193,23 +203,41 @@ export function App(): ReactElement {
 
   async function loadInitialState(): Promise<void> {
     if (!api) {
+      setWorkspaceLoading(false);
+      setSystemLoading(false);
       return;
     }
 
-    const [info, modelProfiles, jobList, resolvedExportDirectory] = await Promise.all([
-      api.app.getInfo(),
-      api.models.list(),
-      api.jobs.list(),
-      api.exports.getDirectory()
-    ]);
-    const systemState = await loadSystemState();
+    setWorkspaceLoading(true);
+    setSystemLoading(true);
 
-    setAppInfo(info);
-    setModels(modelProfiles);
-    setSelectedPresetId(selectUsablePreset(systemState.machineProfile.recommendedModelId, systemState.resources));
-    setJobs(jobList);
-    setSelectedJobId(jobList[0]?.job.id ?? null);
-    setExportDirectory(resolvedExportDirectory);
+    try {
+      const [info, modelProfiles, jobList, resolvedExportDirectory] = await Promise.all([
+        api.app.getInfo(),
+        api.models.list(),
+        api.jobs.list(),
+        api.exports.getDirectory()
+      ]);
+
+      setAppInfo(info);
+      setModels(modelProfiles);
+      setJobs(jobList);
+      setSelectedJobId(jobList[0]?.job.id ?? null);
+      setExportDirectory(resolvedExportDirectory);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to load Voxmire workspace.');
+    } finally {
+      setWorkspaceLoading(false);
+    }
+
+    try {
+      const systemState = await loadSystemState();
+      setSelectedPresetId(selectUsablePreset(systemState.machineProfile.recommendedModelId, systemState.resources));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to check local models and runtimes.');
+    } finally {
+      setSystemLoading(false);
+    }
   }
 
   async function loadSystemState(): Promise<{ engines: EngineAvailability[]; resources: ResourceStatus[]; machineProfile: MachineProfile; runtimeInstallStatuses: RuntimeInstallStatus[]; modelInstallStatuses: ModelInstallStatus[] }> {
@@ -307,15 +335,20 @@ export function App(): ReactElement {
   }
 
   async function createJob(): Promise<void> {
-    setBusy(true);
     setMessage(null);
 
-    try {
-      if (!api) {
-        setMessage('Desktop bridge unavailable. Open Voxmire through Electron to import media.');
-        return;
-      }
+    if (!api) {
+      setMessage('Desktop bridge unavailable. Open Voxmire through Electron to import media.');
+      return;
+    }
 
+    if (systemLoading) {
+      setMessage('Checking local models and runtimes. Try again in a moment.');
+      return;
+    }
+
+    setBusy(true);
+    try {
       const created = await api.jobs.create({
         modelId: selectedPresetResolution.modelId,
         engineBackend: selectedEngineBackend
@@ -663,7 +696,9 @@ export function App(): ReactElement {
             onRenameProject={setRenameTarget}
             selectedBackend={selectedEngineBackend}
             selectedModel={selectedModel}
+            setupLoading={systemLoading}
             solverLabelsByJobId={solverLabelsByJobId}
+            workspaceLoading={workspaceLoading}
           />
         ) : null}
 
@@ -737,6 +772,7 @@ export function App(): ReactElement {
           selectedPresetResolution={selectedPresetResolution}
           setSelectedBackendPreference={setSelectedBackendPreference}
           setSelectedPresetId={setSelectedPresetId}
+          setupLoading={systemLoading}
         />
       ) : null}
 

@@ -19,9 +19,10 @@ type ImportModalProps = {
   selectedPresetResolution: ResolvedTranscriptionPreset;
   setSelectedBackendPreference: (preference: BackendPreference) => void;
   setSelectedPresetId: (presetId: TranscriptionPresetId) => void;
+  setupLoading: boolean;
 };
 
-export function ImportModal({ busy, createJob, machineProfile, models, resources, onClose, selectedBackendPreference, selectedPresetId, selectedPresetResolution, setSelectedBackendPreference, setSelectedPresetId }: ImportModalProps): ReactElement {
+export function ImportModal({ busy, createJob, machineProfile, models, resources, onClose, selectedBackendPreference, selectedPresetId, selectedPresetResolution, setSelectedBackendPreference, setSelectedPresetId, setupLoading }: ImportModalProps): ReactElement {
   return (
     <div className="modal-backdrop" role="presentation">
       <section className="import-modal" aria-labelledby="import-title" role="dialog">
@@ -37,13 +38,13 @@ export function ImportModal({ busy, createJob, machineProfile, models, resources
         <div className="settings-field-grid modal-field-grid">
           <label>
             <span className="field-label">Transcription model</span>
-            <select value={selectedPresetId} onChange={(event) => setSelectedPresetId(event.target.value as TranscriptionPresetId)}>
+            <select disabled={setupLoading || busy} value={selectedPresetId} onChange={(event) => setSelectedPresetId(event.target.value as TranscriptionPresetId)}>
               {visiblePresetOptions(resources).map((preset) => <option key={preset.id} value={preset.id}>{presetModelOptionLabel(models, preset)}</option>)}
             </select>
           </label>
           <label>
             <span className="field-label">Backend</span>
-            <select value={selectedBackendPreference} onChange={(event) => setSelectedBackendPreference(event.target.value as BackendPreference)}>
+            <select disabled={setupLoading || busy} value={selectedBackendPreference} onChange={(event) => setSelectedBackendPreference(event.target.value as BackendPreference)}>
               <option value="auto">Auto ({selectedPresetResolution.engineBackend.toUpperCase()})</option>
               {backendOptions(machineProfile).map((backend) => (
                 <option disabled={!backend.available} key={backend.backend} value={backend.backend}>
@@ -54,9 +55,9 @@ export function ImportModal({ busy, createJob, machineProfile, models, resources
           </label>
         </div>
 
-        <button className="drop-zone" disabled={busy} onClick={() => void createJob()} type="button">
+        <button className="drop-zone" disabled={busy || setupLoading} onClick={() => void createJob()} type="button">
           <span className="drop-icon"><UploadCloud size={30} /></span>
-          <strong>{busy ? 'Opening file picker...' : 'Choose audio or video'}</strong>
+          <strong>{setupLoading ? 'Checking local setup...' : busy ? 'Opening file picker...' : 'Choose audio or video'}</strong>
           <small>MP3, WAV, M4A, FLAC, OGG, MP4, MOV, and WebM</small>
         </button>
       </section>

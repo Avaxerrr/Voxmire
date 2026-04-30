@@ -14,6 +14,8 @@ type ProjectInlineActionsProps = {
   onRename: () => void;
 };
 
+const skeletonRows = [0, 1, 2, 3];
+
 function ProjectInlineActions({ onDelete, onDetails, onRename }: ProjectInlineActionsProps): ReactElement {
   return (
     <div className="project-inline-actions" aria-label="Project actions">
@@ -30,6 +32,25 @@ function ProjectInlineActions({ onDelete, onDetails, onRename }: ProjectInlineAc
   );
 }
 
+function ProjectSkeletonList(): ReactElement {
+  return (
+    <div className="project-list project-skeleton-list" aria-busy="true" aria-label="Loading transcript projects">
+      {skeletonRows.map((row) => (
+        <div className="project-row project-row-skeleton" key={row}>
+          <span className="project-icon skeleton-block" />
+          <span className="project-main">
+            <span className="skeleton-line skeleton-title" />
+            <span className="skeleton-line skeleton-meta" />
+          </span>
+          <span className="skeleton-action skeleton-block" />
+          <span className="skeleton-action skeleton-block" />
+          <span className="skeleton-action skeleton-block" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 type DashboardViewProps = {
   jobs: JobWithSource[];
   onDeleteProject: (project: JobWithSource) => void;
@@ -40,7 +61,9 @@ type DashboardViewProps = {
   onRenameProject: (project: JobWithSource) => void;
   selectedBackend: EngineBackend;
   selectedModel: ModelProfile | null;
+  setupLoading: boolean;
   solverLabelsByJobId: SolverLabelsByJobId;
+  workspaceLoading: boolean;
 };
 
 export function DashboardView({
@@ -53,7 +76,9 @@ export function DashboardView({
   onRenameProject,
   selectedBackend,
   selectedModel,
-  solverLabelsByJobId
+  setupLoading,
+  solverLabelsByJobId,
+  workspaceLoading
 }: DashboardViewProps): ReactElement {
   return (
     <div className="view workspace-page dashboard-view">
@@ -66,12 +91,12 @@ export function DashboardView({
 
       <div className="dashboard-scroll">
         <section className="quick-actions" aria-label="Quick actions">
-          <button className="action-tile transcribe-tile" onClick={onImport} type="button">
+          <button aria-busy={setupLoading} className={`action-tile transcribe-tile ${setupLoading ? 'loading' : ''}`} disabled={setupLoading} onClick={onImport} type="button">
             <span className="tile-icon"><UploadCloud size={24} /></span>
             <span className="tile-copy">
               <strong>Transcribe Audio</strong>
               <p>Create a private transcript from an audio or video file.</p>
-              <small>{selectedModel?.label ?? 'Recommended preset'} / {selectedBackend.toUpperCase()}</small>
+              <small>{setupLoading ? 'Checking local setup' : `${selectedModel?.label ?? 'Recommended preset'} / ${selectedBackend.toUpperCase()}`}</small>
             </span>
           </button>
 
@@ -101,7 +126,9 @@ export function DashboardView({
             </div>
           </div>
 
-          {jobs.length === 0 ? (
+          {workspaceLoading ? (
+            <ProjectSkeletonList />
+          ) : jobs.length === 0 ? (
             <EmptyState title="No transcript projects yet" body="Import a recording to start building your local library." />
           ) : (
             <div className="project-list">
