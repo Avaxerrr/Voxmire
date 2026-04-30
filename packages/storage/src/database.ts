@@ -74,7 +74,19 @@ export function runMigrations(db: VoxmireDatabase): void {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       completed_at TEXT,
+      started_at TEXT,
+      runtime_id TEXT,
+      processing_duration_ms INTEGER,
       UNIQUE(job_id, chunk_index)
+    );
+
+    CREATE TABLE IF NOT EXISTS job_processing_metrics (
+      job_id TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+      processing_started_at TEXT,
+      processing_completed_at TEXT,
+      active_session_started_at TEXT,
+      active_processing_duration_ms INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS settings (
@@ -93,6 +105,9 @@ export function runMigrations(db: VoxmireDatabase): void {
   ensureColumn(db, 'transcript_segments', 'edited_at', 'TEXT');
   ensureColumn(db, 'transcript_segments', 'word_timings', 'TEXT');
   ensureColumn(db, 'transcript_segments', 'alignment_status', 'TEXT');
+  ensureColumn(db, 'transcription_chunks', 'started_at', 'TEXT');
+  ensureColumn(db, 'transcription_chunks', 'runtime_id', 'TEXT');
+  ensureColumn(db, 'transcription_chunks', 'processing_duration_ms', 'INTEGER');
 }
 
 function ensureColumn(db: VoxmireDatabase, tableName: string, columnName: string, definition: string): void {

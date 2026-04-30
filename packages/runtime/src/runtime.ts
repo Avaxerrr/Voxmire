@@ -15,11 +15,15 @@ import type {
 } from '@voxmire/contracts';
 import { defaultModelPath } from '@voxmire/engine';
 import {
+  abandonJobProcessingSession,
+  completeJobProcessing,
+  completeTranscriptionChunk,
   countTranscriptSegments,
   countTranscriptionChunks,
   createJobRecord,
   deleteProject,
   getJobWithSource,
+  getProjectProcessingStats,
   getTranscriptSegments,
   listJobs,
   mergeTranscriptSegment as mergeStoredTranscriptSegment,
@@ -29,6 +33,9 @@ import {
   resetTranscriptSegmentsToOriginal as resetStoredTranscriptSegmentsToOriginal,
   saveTranscriptSegment,
   splitTranscriptSegment as splitStoredTranscriptSegment,
+  startJobProcessingSession,
+  startTranscriptionChunk,
+  stopJobProcessingSession,
   updateJobProgress,
   updateJobStatus,
   updateTranscriptSegmentText,
@@ -170,6 +177,7 @@ export class VoxmireRuntime {
       ...current,
       segmentCount: countTranscriptSegments(this.options.db, jobId),
       chunkCount: countTranscriptionChunks(this.options.db, jobId),
+      processingStats: getProjectProcessingStats(this.options.db, jobId),
       mediaAvailable: existsSync(current.sourceFile.path)
     };
   }
@@ -257,6 +265,7 @@ export class VoxmireRuntime {
       }
 
       const resetChunkCount = resetInterruptedTranscriptionChunks(this.options.db, candidate.job.id);
+      abandonJobProcessingSession(this.options.db, candidate.job.id);
       updateJobStatus(this.options.db, candidate.job.id, 'queued');
       this.log({
         level: 'warn',
@@ -299,6 +308,7 @@ export class VoxmireRuntime {
     }
     this.activeJobs.delete(jobId);
 
+    stopJobProcessingSession(this.options.db, jobId);
     const job = updateJobStatus(this.options.db, jobId, 'canceled', { progress: 0 });
     this.log({
       level: 'warn',
@@ -336,6 +346,7 @@ export class VoxmireRuntime {
       return current.job;
     }
 
+    stopJobProcessingSession(this.options.db, jobId);
     const job = updateJobStatus(this.options.db, jobId, 'paused');
     this.log({
       level: 'warn',
@@ -410,6 +421,7 @@ export class VoxmireRuntime {
         throw new Error(`Job not found: ${jobId}`);
       }
 
+      startJobProcessingSession(this.options.db, jobId);
       this.updateAndEmit(jobId, 'preparing', 0.05, 'Preparing local transcription job.');
       this.log({
         level: 'info',
@@ -489,11 +501,15 @@ export class VoxmireRuntime {
           activeEngineIndex,
           nextSegmentIndex
         });
+        if (abortController.signal.aborted) {
+          return;
+        }
         activeEngineIndex = result.activeEngineIndex;
         nextSegmentIndex = result.nextSegmentIndex;
         currentChunk = null;
       }
 
+      completeJobProcessing(this.options.db, jobId);
       this.updateAndEmit(jobId, 'completed', 1, 'Transcription completed.');
       this.log({
         level: 'info',
@@ -512,6 +528,7 @@ export class VoxmireRuntime {
       if (currentChunk) {
         updateTranscriptionChunkStatus(this.options.db, currentChunk.id, 'failed', message);
       }
+      stopJobProcessingSession(this.options.db, jobId);
       updateJobStatus(this.options.db, jobId, 'failed', { errorMessage: message });
       this.log({
         level: 'error',
@@ -523,6 +540,7 @@ export class VoxmireRuntime {
       });
       this.emitProgress({ jobId, status: 'failed', progress: 0, message, segment: null });
     } finally {
+      stopJobProcessingSession(this.options.db, jobId);
       this.activeJobs.delete(jobId);
     }
   }
@@ -549,7 +567,7 @@ export class VoxmireRuntime {
       }
 
       let savedSegmentCount = 0;
-      updateTranscriptionChunkStatus(this.options.db, options.chunk.id, 'transcribing');
+      startTranscriptionChunk(this.options.db, options.chunk.id, candidate.engine.runtimeId);
       this.log({
         level: 'info',
         event: 'chunk.transcribe.started',
@@ -611,7 +629,7 @@ export class VoxmireRuntime {
           });
         }
 
-        updateTranscriptionChunkStatus(this.options.db, options.chunk.id, 'completed');
+        completeTranscriptionChunk(this.options.db, options.chunk.id);
         options.activeJob.currentChunkId = null;
         this.log({
           level: 'info',

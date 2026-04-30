@@ -100,7 +100,10 @@ export function parseChunkRow(row: unknown): TranscriptionChunk {
     errorMessage: value.error_message,
     createdAt: value.created_at,
     updatedAt: value.updated_at,
-    completedAt: value.completed_at
+    completedAt: value.completed_at,
+    startedAt: value.started_at,
+    runtimeId: value.runtime_id,
+    processingDurationMs: value.processing_duration_ms
   });
 }
 
@@ -143,7 +146,10 @@ export function toChunkRow(chunk: TranscriptionChunk): Record<string, SQLInputVa
     errorMessage: chunk.errorMessage,
     createdAt: chunk.createdAt,
     updatedAt: chunk.updatedAt,
-    completedAt: chunk.completedAt
+    completedAt: chunk.completedAt,
+    startedAt: chunk.startedAt ?? null,
+    runtimeId: chunk.runtimeId ?? null,
+    processingDurationMs: chunk.processingDurationMs ?? null
   };
 }
 

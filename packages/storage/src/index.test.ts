@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  completeJobProcessing,
+  completeTranscriptionChunk,
   countTranscriptSegments,
   countTranscriptionChunks,
   createJobRecord,
   deleteProject,
   getJobWithSource,
+  getProjectProcessingStats,
   getTranscriptSegments,
   getTranscriptionChunks,
   mergeTranscriptSegment,
@@ -16,6 +19,8 @@ import {
   saveTranscriptionChunk,
   saveTranscriptSegment,
   splitTranscriptSegment,
+  startJobProcessingSession,
+  startTranscriptionChunk,
   updateJobEngineBackend,
   updateTranscriptSegmentTiming,
   updateTranscriptSegmentText,
@@ -853,6 +858,57 @@ describe('storage repositories', () => {
     db.close();
   });
 
+  it('tracks job and chunk processing metrics', () => {
+    const db = openVoxmireDatabase(':memory:');
+    const created = createJobRecord(db, {
+      modelId: 'large-v3-turbo',
+      sourceFile: {
+        id: 'src_1',
+        path: 'C:/audio/example.wav',
+        name: 'example.wav',
+        extension: 'wav',
+        sizeBytes: 100,
+        durationSeconds: 1200,
+        createdAt: '2026-04-23T00:00:00.000Z'
+      }
+    });
+
+    const chunk = saveTranscriptionChunk(db, {
+      id: 'chunk_1',
+      jobId: created.job.id,
+      index: 0,
+      startSeconds: 0,
+      endSeconds: 600,
+      filePath: 'C:/audio/chunk-0000.wav',
+      status: 'queued',
+      errorMessage: null,
+      createdAt: '2026-04-23T00:00:00.000Z',
+      updatedAt: '2026-04-23T00:00:00.000Z',
+      completedAt: null
+    });
+
+    startJobProcessingSession(db, created.job.id);
+    startTranscriptionChunk(db, chunk.id, 'cpu');
+    completeTranscriptionChunk(db, chunk.id);
+    completeJobProcessing(db, created.job.id);
+
+    const stats = getProjectProcessingStats(db, created.job.id);
+
+    expect(stats?.startedAt).toEqual(expect.any(String));
+    expect(stats?.completedAt).toEqual(expect.any(String));
+    expect(stats?.activeDurationMs).toEqual(expect.any(Number));
+    expect(stats?.averageChunkDurationMs).toEqual(expect.any(Number));
+    expect(stats?.completedChunkCount).toBe(1);
+    expect(stats?.chunks).toMatchObject([
+      {
+        id: chunk.id,
+        index: 0,
+        runtimeId: 'cpu',
+        processingDurationMs: expect.any(Number)
+      }
+    ]);
+    db.close();
+  });
   it('resets interrupted chunks without touching completed chunks', () => {
     const db = openVoxmireDatabase(':memory:');
     const created = createJobRecord(db, {

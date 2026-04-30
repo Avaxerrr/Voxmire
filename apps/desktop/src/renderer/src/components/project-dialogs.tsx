@@ -2,7 +2,7 @@ import { type ReactElement, useState } from 'react';
 import { AlertTriangle, FileAudio, FileVideo, Pencil, RotateCcw, Trash2, UploadCloud, X } from 'lucide-react';
 import type { JobWithSource, MachineProfile, ModelProfile, ProjectDetails, ResourceStatus, TranscriptionPresetId } from '@voxmire/contracts';
 import { EmptyState } from './empty-state';
-import { formatDateTime, formatDuration, formatFileSize } from '../lib/format';
+import { formatDateTime, formatDuration, formatDurationMs, formatFileSize } from '../lib/format';
 import { statusLabel } from '../lib/job-status';
 import { mediaKindFromExtension, mediaKindLabel } from '../lib/media-kind';
 import { backendOptions, presetModelOptionLabel, visiblePresetOptions, type BackendPreference, type ResolvedTranscriptionPreset } from '../lib/presets';
@@ -74,9 +74,30 @@ type ProjectDetailsDrawerProps = {
   onRename: (project: JobWithSource) => void;
 };
 
+const runtimeLabels: Record<string, string> = {
+  'cuda-12.4': 'CUDA 12.4',
+  vulkan: 'Vulkan',
+  'cpu-blas': 'CPU BLAS',
+  cpu: 'CPU'
+};
+
+function chunkRuntimeSummary(details: ProjectDetails): string | null {
+  const runtimeIds: string[] = [];
+  details.processingStats?.chunks.forEach((chunk) => {
+    if (chunk.runtimeId && chunk.processingDurationMs !== null) {
+      runtimeIds.push(chunk.runtimeId);
+    }
+  });
+  const uniqueRuntimeIds = Array.from(new Set(runtimeIds));
+
+  return uniqueRuntimeIds.length > 0 ? uniqueRuntimeIds.map((runtimeId) => runtimeLabels[runtimeId] ?? runtimeId).join(', ') : null;
+}
+
 export function ProjectDetailsDrawer({ details, loading, onClose, onDelete, onRename, solverLabel }: ProjectDetailsDrawerProps): ReactElement {
   const project = details ? { job: details.job, sourceFile: details.sourceFile } : null;
   const mediaKind = details ? mediaKindFromExtension(details.sourceFile.extension) : 'audio';
+  const processingStats = details?.processingStats ?? null;
+  const runtimeSummary = details ? chunkRuntimeSummary(details) : null;
 
   return (
     <div className="details-drawer-layer" onClick={onClose} role="presentation">
@@ -108,7 +129,13 @@ export function ProjectDetailsDrawer({ details, loading, onClose, onDelete, onRe
               <div><dt>Backend</dt><dd>{details.job.engineBackend.toUpperCase()}</dd></div>
               <div><dt>Solver</dt><dd>{solverLabel ?? details.job.engineBackend.toUpperCase()}</dd></div>
               <div><dt>Transcript segments</dt><dd>{details.segmentCount.toLocaleString()}</dd></div>
-              <div><dt>Prepared chunks</dt><dd>{details.chunkCount.toLocaleString()}</dd></div>
+              <div><dt>Chunks</dt><dd>{details.chunkCount.toLocaleString()}</dd></div>
+              {processingStats && processingStats.activeDurationMs !== null && (processingStats.completedAt || processingStats.activeDurationMs > 0) ? <div><dt>Processed in</dt><dd>{formatDurationMs(processingStats.activeDurationMs)}</dd></div> : null}
+              {processingStats && processingStats.averageChunkDurationMs !== null ? <div><dt>Avg chunk</dt><dd>{formatDurationMs(processingStats.averageChunkDurationMs)}</dd></div> : null}
+              {processingStats && processingStats.completedChunkCount !== details.chunkCount ? <div><dt>Completed chunks</dt><dd>{processingStats.completedChunkCount.toLocaleString()}</dd></div> : null}
+              {runtimeSummary ? <div><dt>Chunk runtime</dt><dd>{runtimeSummary}</dd></div> : null}
+              {processingStats?.startedAt ? <div><dt>Processing started</dt><dd>{formatDateTime(processingStats.startedAt)}</dd></div> : null}
+              {processingStats?.completedAt ? <div><dt>Processing completed</dt><dd>{formatDateTime(processingStats.completedAt)}</dd></div> : null}
               <div><dt>Media source</dt><dd>{details.mediaAvailable ? 'Available' : 'Missing'}</dd></div>
               <div><dt>Size</dt><dd>{formatFileSize(details.sourceFile.sizeBytes)}</dd></div>
               <div><dt>Imported</dt><dd>{formatDateTime(details.job.createdAt)}</dd></div>
