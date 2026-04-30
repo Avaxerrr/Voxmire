@@ -82,8 +82,8 @@ export function DashboardView({
     <div className="view workspace-page dashboard-view">
       <header className="page-header dashboard-header">
         <div>
-          <p className="eyebrow">Workspace</p>
-          <h2>Good afternoon.</h2>
+          <p className="eyebrow">Library</p>
+          <h2>Transcript projects</h2>
         </div>
       </header>
 
@@ -111,8 +111,8 @@ export function DashboardView({
         <section className="library-section">
           <div className="library-toolbar">
             <div>
-              <p className="eyebrow">Library</p>
-              <h3>Transcript projects</h3>
+              <p className="eyebrow">Projects</p>
+              <h3>All transcripts</h3>
             </div>
             <div className="library-controls">
               <label className="search-field">
