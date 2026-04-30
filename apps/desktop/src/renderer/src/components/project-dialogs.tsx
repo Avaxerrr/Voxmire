@@ -227,6 +227,53 @@ export function DeleteProjectModal({ busy, project, onClose, onDelete }: DeleteP
   );
 }
 
+
+type DeleteProjectsModalProps = {
+  busy: boolean;
+  projects: JobWithSource[];
+  onClose: () => void;
+  onDelete: (jobIds: string[]) => Promise<void>;
+};
+
+export function DeleteProjectsModal({ busy, projects, onClose, onDelete }: DeleteProjectsModalProps): ReactElement {
+  const projectCount = projects.length;
+  const previewProjects = projects.slice(0, 4);
+  const remainingCount = Math.max(0, projectCount - previewProjects.length);
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="import-modal project-modal delete-project-modal" aria-labelledby="delete-projects-title" role="dialog">
+        <div className="modal-glow danger-glow" />
+        <header className="modal-header">
+          <div>
+            <p className="eyebrow">Projects</p>
+            <h2 id="delete-projects-title">Delete selected projects</h2>
+          </div>
+          <button className="icon-button" disabled={busy} onClick={onClose} title="Close" type="button"><X size={18} /></button>
+        </header>
+
+        <p className="delete-copy">
+          Delete <strong>{projectCount}</strong> selected {projectCount === 1 ? 'project' : 'projects'} from Voxmire. This removes transcript and job records only. Original media files stay on disk.
+        </p>
+
+        <div className="delete-project-list" aria-label="Selected projects">
+          {previewProjects.map((project) => (
+            <span key={project.job.id}>{project.sourceFile.name}</span>
+          ))}
+          {remainingCount > 0 ? <em>+{remainingCount} more</em> : null}
+        </div>
+
+        <footer className="modal-actions">
+          <button className="secondary-action" disabled={busy} onClick={onClose} type="button">Cancel</button>
+          <button className="secondary-action danger solid-danger" disabled={busy || projectCount === 0} onClick={() => void onDelete(projects.map((project) => project.job.id))} type="button">
+            <Trash2 size={14} />
+            Delete {projectCount === 1 ? 'project' : 'projects'}
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
 type ResetTranscriptModalProps = {
   busy: boolean;
   project: JobWithSource;

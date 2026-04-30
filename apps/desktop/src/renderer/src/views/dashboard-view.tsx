@@ -1,4 +1,4 @@
-import { type ReactElement, useMemo, useState } from 'react';
+import { type ReactElement, useEffect, useMemo, useState } from 'react';
 import { FileAudio, FileVideo, Info, MicVocal, Pencil, Trash2, UploadCloud } from 'lucide-react';
 import type { JobWithSource } from '@voxmire/contracts';
 import { EmptyState } from '../components/empty-state';
@@ -70,6 +70,7 @@ function ProjectSkeletonList(): ReactElement {
 type DashboardViewProps = {
   jobs: JobWithSource[];
   onDeleteProject: (project: JobWithSource) => void;
+  onDeleteProjects: (projects: JobWithSource[]) => void;
   onDetailsProject: (jobId: string) => void;
   onImport: () => void;
   onOpenJob: (jobId: string) => void;
@@ -84,6 +85,7 @@ type DashboardViewProps = {
 export function DashboardView({
   jobs,
   onDeleteProject,
+  onDeleteProjects,
   onDetailsProject,
   onImport,
   onOpenJob,
@@ -95,6 +97,7 @@ export function DashboardView({
   workspaceLoading
 }: DashboardViewProps): ReactElement {
   const [projectSearchQuery, setProjectSearchQuery] = useState('');
+  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
   const normalizedProjectSearchQuery = projectSearchQuery.trim().toLowerCase();
   const visibleJobs = useMemo(
     () =>
@@ -104,6 +107,48 @@ export function DashboardView({
     [jobs, normalizedProjectSearchQuery]
   );
   const hasProjectSearchQuery = normalizedProjectSearchQuery.length > 0;
+  const selectedProjectIdSet = useMemo(() => new Set(selectedProjectIds), [selectedProjectIds]);
+  const selectedProjects = useMemo(
+    () => jobs.filter((entry) => selectedProjectIdSet.has(entry.job.id)),
+    [jobs, selectedProjectIdSet]
+  );
+  const visibleProjectIds = useMemo(() => visibleJobs.map((entry) => entry.job.id), [visibleJobs]);
+  const allVisibleProjectsSelected = visibleProjectIds.length > 0 && visibleProjectIds.every((jobId) => selectedProjectIdSet.has(jobId));
+  const selectedProjectCount = selectedProjects.length;
+
+  useEffect(() => {
+    const jobIds = new Set(jobs.map((entry) => entry.job.id));
+    setSelectedProjectIds((current) => current.filter((jobId) => jobIds.has(jobId)));
+  }, [jobs]);
+
+  function toggleProjectSelection(jobId: string): void {
+    setSelectedProjectIds((current) =>
+      current.includes(jobId) ? current.filter((selectedJobId) => selectedJobId !== jobId) : [...current, jobId]
+    );
+  }
+
+  function toggleVisibleProjects(): void {
+    setSelectedProjectIds((current) => {
+      const nextSelectedIds = new Set(current);
+      if (visibleProjectIds.every((jobId) => nextSelectedIds.has(jobId))) {
+        visibleProjectIds.forEach((jobId) => nextSelectedIds.delete(jobId));
+      } else {
+        visibleProjectIds.forEach((jobId) => nextSelectedIds.add(jobId));
+      }
+
+      return Array.from(nextSelectedIds);
+    });
+  }
+
+  function clearProjectSelection(): void {
+    setSelectedProjectIds([]);
+  }
+
+  function deleteSelectedProjects(): void {
+    if (selectedProjects.length > 0) {
+      onDeleteProjects(selectedProjects);
+    }
+  }
 
   return (
     <div className="view workspace-page dashboard-view">
@@ -149,10 +194,32 @@ export function DashboardView({
                 placeholder="Search projects"
                 value={projectSearchQuery}
               />
-              <button className="secondary-action" type="button">All</button>
-              <button className="secondary-action" type="button">Active</button>
             </div>
           </div>
+
+          {!workspaceLoading && jobs.length > 0 ? (
+            <div className="library-selection-bar">
+              <label className="selection-toggle">
+                <input
+                  checked={allVisibleProjectsSelected}
+                  disabled={visibleProjectIds.length === 0}
+                  onChange={toggleVisibleProjects}
+                  type="checkbox"
+                />
+                <span>{hasProjectSearchQuery ? 'Select results' : 'Select all'}</span>
+              </label>
+              {selectedProjectCount > 0 ? (
+                <>
+                  <span className="selection-count">{selectedProjectCount} selected</span>
+                  <button className="secondary-action danger" onClick={deleteSelectedProjects} type="button">
+                    <Trash2 size={14} />
+                    Delete
+                  </button>
+                  <button className="secondary-action" onClick={clearProjectSelection} type="button">Clear</button>
+                </>
+              ) : null}
+            </div>
+          ) : null}
 
           {workspaceLoading ? (
             <ProjectSkeletonList />
@@ -166,8 +233,18 @@ export function DashboardView({
                 const isLive = activeStatuses.includes(entry.job.status);
                 const showStatus = entry.job.status !== 'completed';
 
+                const isSelected = selectedProjectIdSet.has(entry.job.id);
+
                 return (
-                  <div className={`project-row ${isLive ? 'live' : ''}`} key={entry.job.id}>
+                  <div className={`project-row ${isLive ? 'live' : ''} ${isSelected ? 'selected' : ''}`} key={entry.job.id}>
+                    <label className="project-select-control" title="Select project">
+                      <input
+                        aria-label={`Select ${entry.sourceFile.name}`}
+                        checked={isSelected}
+                        onChange={() => toggleProjectSelection(entry.job.id)}
+                        type="checkbox"
+                      />
+                    </label>
                     <button className="project-open-button" onClick={() => onOpenJob(entry.job.id)} type="button">
                       <span className="project-icon">{mediaKindFromExtension(entry.sourceFile.extension) === 'video' ? <FileVideo size={17} /> : <FileAudio size={17} />}</span>
                       <span className="project-main">

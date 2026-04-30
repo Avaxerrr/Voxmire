@@ -239,3 +239,27 @@
 .details-path p { min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--faint); font-family: "Fira Code", Consolas, monospace; font-size: 11px; line-height: 1.45; }
 .details-error { margin: 14px 0 0; }
 .details-actions { display: flex; gap: 8px; margin-top: 16px; }
+
+.delete-project-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.delete-project-list span,
+.delete-project-list em {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.delete-project-list em {
+  color: var(--cyan);
+  font-style: normal;
+  font-weight: 800;
+}
