@@ -96,6 +96,8 @@ function chunkRuntimeSummary(details: ProjectDetails): string | null {
 export function ProjectDetailsDrawer({ details, loading, onClose, onDelete, onRename, solverLabel }: ProjectDetailsDrawerProps): ReactElement {
   const project = details ? { job: details.job, sourceFile: details.sourceFile } : null;
   const mediaKind = details ? mediaKindFromExtension(details.sourceFile.extension) : 'audio';
+  const mediaExtension = details?.sourceFile.extension.replace(/^\./, '').toUpperCase() ?? '';
+  const mediaType = details ? `${mediaKind === 'video' ? 'Video' : 'Audio'}${mediaExtension ? ` (${mediaExtension})` : ''}` : null;
   const processingStats = details?.processingStats ?? null;
   const runtimeSummary = details ? chunkRuntimeSummary(details) : null;
 
@@ -137,7 +139,8 @@ export function ProjectDetailsDrawer({ details, loading, onClose, onDelete, onRe
               {processingStats?.startedAt ? <div><dt>Processing started</dt><dd>{formatDateTime(processingStats.startedAt)}</dd></div> : null}
               {processingStats?.completedAt ? <div><dt>Processing completed</dt><dd>{formatDateTime(processingStats.completedAt)}</dd></div> : null}
               <div><dt>Media source</dt><dd>{details.mediaAvailable ? 'Available' : 'Missing'}</dd></div>
-              <div><dt>Size</dt><dd>{formatFileSize(details.sourceFile.sizeBytes)}</dd></div>
+              {mediaType ? <div><dt>Media type</dt><dd>{mediaType}</dd></div> : null}
+              <div><dt>Media file size</dt><dd>{formatFileSize(details.sourceFile.sizeBytes)}</dd></div>
               <div><dt>Imported</dt><dd>{formatDateTime(details.job.createdAt)}</dd></div>
               <div><dt>Updated</dt><dd>{formatDateTime(details.job.updatedAt)}</dd></div>
               {details.job.completedAt ? <div><dt>Completed</dt><dd>{formatDateTime(details.job.completedAt)}</dd></div> : null}
