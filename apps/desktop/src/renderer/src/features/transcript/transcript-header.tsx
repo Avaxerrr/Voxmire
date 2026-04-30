@@ -97,82 +97,81 @@ export function TranscriptHeader({
               onRename={onRenameProject}
             />
           ) : null}
+          <div className="transcript-actions">
+            <button
+              aria-label="Undo transcript edit"
+              className="icon-button"
+              disabled={!selectedJob || historyBusy || !undoLabel}
+              onClick={onUndo}
+              title={undoLabel ? `Undo ${undoLabel}` : 'Undo'}
+              type="button"
+            >
+              <Undo2 size={17} />
+            </button>
+            <button
+              aria-label="Redo transcript edit"
+              className="icon-button"
+              disabled={!selectedJob || historyBusy || !redoLabel}
+              onClick={onRedo}
+              title={redoLabel ? `Redo ${redoLabel}` : 'Redo'}
+              type="button"
+            >
+              <Redo2 size={17} />
+            </button>
+            <button
+              aria-label="Reset transcript"
+              className="icon-button danger-icon-button"
+              disabled={!selectedJob || historyBusy || resettingTranscript || !hasSegments}
+              onClick={onResetTranscript}
+              title="Reset transcript"
+              type="button"
+            >
+              <RotateCcw size={16} />
+            </button>
+            <button
+              aria-expanded={findPanelOpen}
+              aria-label="Find and replace transcript"
+              className={`icon-button ${findPanelOpen ? 'active' : ''}`}
+              onClick={onToggleFindPanel}
+              title="Find and replace"
+              type="button"
+            >
+              <Search size={17} />
+            </button>
+            <div className="export-menu" ref={exportMenuRef}>
+              <button
+                aria-expanded={exportMenuOpen}
+                aria-label="Export transcript"
+                className={`icon-button export-trigger ${exportMenuOpen ? 'active' : ''}`}
+                disabled={!selectedJob || !hasSegments}
+                onClick={onToggleExportMenu}
+                title="Export transcript"
+                type="button"
+              >
+                <Download size={16} />
+              </button>
+              {exportMenuOpen ? (
+                <div className="export-menu-popover" role="menu">
+                  {exportOptions.map((option) => (
+                    <button
+                      key={`${option.format}-${option.textMode ?? 'default'}`}
+                      onClick={() => onSelectExportOption(option.format, option.textMode ?? 'plain')}
+                      role="menuitem"
+                      type="button"
+                    >
+                      <Download size={14} />
+                      <span>{option.label}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <button aria-label="Import transcript" className="primary-action icon-action" disabled={busy} onClick={onImport} title="Import transcript" type="button">
+              <Plus size={17} />
+            </button>
+          </div>
         </div>
         <span>{selectedSubtitle}</span>
-      </div>
-
-      <div className="transcript-actions">
-        <button
-          aria-label="Undo transcript edit"
-          className="icon-button"
-          disabled={!selectedJob || historyBusy || !undoLabel}
-          onClick={onUndo}
-          title={undoLabel ? `Undo ${undoLabel}` : 'Undo'}
-          type="button"
-        >
-          <Undo2 size={17} />
-        </button>
-        <button
-          aria-label="Redo transcript edit"
-          className="icon-button"
-          disabled={!selectedJob || historyBusy || !redoLabel}
-          onClick={onRedo}
-          title={redoLabel ? `Redo ${redoLabel}` : 'Redo'}
-          type="button"
-        >
-          <Redo2 size={17} />
-        </button>
-        <button
-          aria-label="Reset transcript"
-          className="icon-button danger-icon-button"
-          disabled={!selectedJob || historyBusy || resettingTranscript || !hasSegments}
-          onClick={onResetTranscript}
-          title="Reset transcript"
-          type="button"
-        >
-          <RotateCcw size={16} />
-        </button>
-        <button
-          aria-expanded={findPanelOpen}
-          aria-label="Find and replace transcript"
-          className={`icon-button ${findPanelOpen ? 'active' : ''}`}
-          onClick={onToggleFindPanel}
-          title="Find and replace"
-          type="button"
-        >
-          <Search size={17} />
-        </button>
-        <div className="export-menu" ref={exportMenuRef}>
-          <button
-            aria-expanded={exportMenuOpen}
-            aria-label="Export transcript"
-            className={`icon-button export-trigger ${exportMenuOpen ? 'active' : ''}`}
-            disabled={!selectedJob || !hasSegments}
-            onClick={onToggleExportMenu}
-            title="Export transcript"
-            type="button"
-          >
-            <Download size={16} />
-          </button>
-          {exportMenuOpen ? (
-            <div className="export-menu-popover" role="menu">
-              {exportOptions.map((option) => (
-                <button
-                  key={`${option.format}-${option.textMode ?? 'default'}`}
-                  onClick={() => onSelectExportOption(option.format, option.textMode ?? 'plain')}
-                  role="menuitem"
-                  type="button"
-                >
-                  <Download size={14} />
-                  <span>{option.label}</span>
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
-        <button aria-label="Import transcript" className="primary-action icon-action" disabled={busy} onClick={onImport} title="Import transcript" type="button">
-          <Plus size={17} />
-        </button>
       </div>
     </header>
   );

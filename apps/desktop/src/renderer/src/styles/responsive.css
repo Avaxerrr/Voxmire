@@ -7,9 +7,10 @@
   .transcript-view,
   .voice-view { padding: 0; }
   .transcript-topbar { align-items: flex-start; flex-direction: column; }
-  .transcript-actions { justify-content: flex-start; width: 100%; }
+  .transcript-actions { flex-basis: 100%; justify-content: flex-start; width: 100%; margin-left: 0; }
   .title-stack,
   .transcript-title-row { width: 100%; }
+  .transcript-title-row { flex-wrap: wrap; }
 
   .quick-actions,
   .voice-layout,
@@ -22,6 +23,7 @@
 }
 
 @media (max-width: 760px) {
+  .transcript-actions { flex-wrap: wrap; }
   .transcript-stage { padding-right: 18px; padding-left: 18px; }
   .video-preview-panel,
   .transcript-content-with-preview.side .video-preview-panel { width: min(var(--preview-width, 320px), calc(100vw - 72px)); }
