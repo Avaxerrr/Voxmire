@@ -1,4 +1,4 @@
-import { type ReactElement } from 'react';
+import { type ReactElement, useMemo, useState } from 'react';
 import { FileAudio, FileVideo, Info, MicVocal, Pencil, Search, Trash2, UploadCloud } from 'lucide-react';
 import type { JobWithSource } from '@voxmire/contracts';
 import { EmptyState } from '../components/empty-state';
@@ -15,6 +15,21 @@ type ProjectInlineActionsProps = {
 };
 
 const skeletonRows = [0, 1, 2, 3];
+
+function projectMatchesSearch(entry: JobWithSource, query: string): boolean {
+  const terms = query.split(/\s+/).filter(Boolean);
+  const searchText = [
+    entry.sourceFile.name,
+    entry.sourceFile.path,
+    entry.sourceFile.extension,
+    entry.job.status,
+    entry.job.modelId,
+    entry.job.engineBackend,
+    entry.job.createdAt
+  ].join(' ').toLowerCase();
+
+  return terms.every((term) => searchText.includes(term));
+}
 
 function ProjectInlineActions({ onDelete, onDetails, onRename }: ProjectInlineActionsProps): ReactElement {
   return (
@@ -78,6 +93,17 @@ export function DashboardView({
   solverLabelsByJobId,
   workspaceLoading
 }: DashboardViewProps): ReactElement {
+  const [projectSearchQuery, setProjectSearchQuery] = useState('');
+  const normalizedProjectSearchQuery = projectSearchQuery.trim().toLowerCase();
+  const visibleJobs = useMemo(
+    () =>
+      normalizedProjectSearchQuery
+        ? jobs.filter((entry) => projectMatchesSearch(entry, normalizedProjectSearchQuery))
+        : jobs,
+    [jobs, normalizedProjectSearchQuery]
+  );
+  const hasProjectSearchQuery = normalizedProjectSearchQuery.length > 0;
+
   return (
     <div className="view workspace-page dashboard-view">
       <header className="page-header dashboard-header">
@@ -117,7 +143,14 @@ export function DashboardView({
             <div className="library-controls">
               <label className="search-field">
                 <Search size={15} />
-                <input aria-label="Search projects" name="projectSearch" placeholder="Search projects" type="search" />
+                <input
+                  aria-label="Search projects"
+                  name="projectSearch"
+                  onChange={(event) => setProjectSearchQuery(event.target.value)}
+                  placeholder="Search projects"
+                  type="search"
+                  value={projectSearchQuery}
+                />
               </label>
               <button className="secondary-action" type="button">All</button>
               <button className="secondary-action" type="button">Active</button>
@@ -128,9 +161,11 @@ export function DashboardView({
             <ProjectSkeletonList />
           ) : jobs.length === 0 ? (
             <EmptyState title="No transcript projects yet" body="Import a recording to start building your local library." />
+          ) : hasProjectSearchQuery && visibleJobs.length === 0 ? (
+            <EmptyState title="No projects match this search" body="Try another file name, status, model, or folder path." />
           ) : (
             <div className="project-list">
-              {jobs.map((entry) => {
+              {visibleJobs.map((entry) => {
                 const isLive = activeStatuses.includes(entry.job.status);
                 const showStatus = entry.job.status !== 'completed';
 
