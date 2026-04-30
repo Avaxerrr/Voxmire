@@ -14,7 +14,6 @@ import {
   defaultModelPath,
   resolveFfmpegExecutable,
   resolveFfprobeExecutable,
-  resolveLegacyWhisperExecutable,
   resolveWhisperRuntimeDirectory,
   resolveWhisperRuntimeExecutable,
   resolveWhisperRuntimeFile,
@@ -33,20 +32,10 @@ export type WhisperRuntimeAvailability = EngineAvailability & {
 
 export function detectWhisperRuntime(paths: ResourcePaths, runtimeId: EngineRuntimeId): WhisperRuntimeAvailability {
   const definition = whisperRuntimeDefinition(runtimeId);
-  const isolatedExecutablePath = resolveWhisperRuntimeExecutable(paths, runtimeId);
-  const legacyExecutablePath = resolveLegacyWhisperExecutable(paths, runtimeId);
-  const executablePath = existsSync(isolatedExecutablePath)
-    ? isolatedExecutablePath
-    : legacyExecutablePath && existsSync(legacyExecutablePath)
-      ? legacyExecutablePath
-      : isolatedExecutablePath;
+  const executablePath = resolveWhisperRuntimeExecutable(paths, runtimeId);
   const runtimeDirectory = dirname(executablePath);
   const requiredFilePaths = definition.requiredFiles.map((fileName) => join(runtimeDirectory, fileName));
-  const legacyExecutableRequiredPath = legacyExecutablePath && executablePath === legacyExecutablePath ? legacyExecutablePath : null;
-  const requiredPaths = legacyExecutableRequiredPath
-    ? requiredFilePaths.map((filePath) => filePath.endsWith(definition.requiredFiles[0] ?? '') ? legacyExecutableRequiredPath : filePath)
-    : requiredFilePaths;
-  const missingFilePaths = requiredPaths.filter((filePath) => !existsSync(filePath));
+  const missingFilePaths = requiredFilePaths.filter((filePath) => !existsSync(filePath));
   const available = missingFilePaths.length === 0;
   const runtimeVersion = existsSync(runtimeDirectory) ? whisperRuntimeVersionFromDirectory(runtimeDirectory) : null;
 
@@ -60,7 +49,7 @@ export function detectWhisperRuntime(paths: ResourcePaths, runtimeId: EngineRunt
     available,
     executablePath: available ? executablePath : null,
     reason: available ? null : missingRuntimeReason(runtimeId, executablePath, missingFilePaths),
-    requiredFilePaths: requiredPaths,
+    requiredFilePaths,
     missingFilePaths
   };
 }

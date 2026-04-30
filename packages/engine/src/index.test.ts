@@ -250,6 +250,28 @@ describe('getMachineProfile', () => {
     expect(existsSync(staleDirectory)).toBe(false);
     expect(existsSync(freshDirectory)).toBe(true);
   });
+
+  it('ignores flat runtime files outside a versioned whisper.cpp folder', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'voxmire-engine-'));
+    const platform = process.platform === 'win32' ? 'win32' : process.platform === 'darwin' ? 'darwin' : 'linux';
+    const runtimeRoot = join(projectRoot, 'resources', 'engines', platform, 'cpu');
+    mkdirSync(runtimeRoot, { recursive: true });
+
+    for (const fileName of whisperRuntimeDefinition('cpu').requiredFiles) {
+      writeFileSync(join(runtimeRoot, fileName), '');
+    }
+
+    if (process.platform !== 'win32') {
+      writeFileSync(join(runtimeRoot, 'whisper-cli'), '');
+    }
+
+    const runtime = detectWhisperRuntime({ projectRoot }, 'cpu');
+
+    expect(runtime.available).toBe(false);
+    expect(runtime.executablePath).toBeNull();
+    expect(runtime.requiredFilePaths[0]).toContain(join('cpu', 'whispercpp-v1.8.4'));
+  });
+
   it('detects runtime files inside a versioned whisper.cpp folder', () => {
     const projectRoot = mkdtempSync(join(tmpdir(), 'voxmire-engine-'));
     const platform = process.platform === 'win32' ? 'win32' : process.platform === 'darwin' ? 'darwin' : 'linux';

@@ -9,7 +9,6 @@ export type WhisperRuntimeDefinition = {
   label: string;
   requiredFiles: readonly string[];
   extraArgs: readonly string[];
-  legacyExecutableName: string | null;
 };
 
 export const whisperCppRuntimeVersion = 'v1.8.4';
@@ -34,32 +33,28 @@ const windowsRuntimeDefinitions: readonly WhisperRuntimeDefinition[] = [
       'cublasLt64_12.dll',
       'cudart64_12.dll'
     ],
-    extraArgs: [],
-    legacyExecutableName: 'whisper-cuda.exe'
+    extraArgs: []
   },
   {
     id: 'vulkan',
     backend: 'vulkan',
     label: 'whisper.cpp Vulkan',
     requiredFiles: ['whisper-cli.exe', 'whisper.dll', 'ggml.dll', 'ggml-base.dll', 'ggml-cpu.dll', 'ggml-vulkan.dll'],
-    extraArgs: [],
-    legacyExecutableName: 'whisper-vulkan.exe'
+    extraArgs: []
   },
   {
     id: 'cpu-blas',
     backend: 'cpu',
     label: 'whisper.cpp BLAS CPU',
     requiredFiles: ['whisper-cli.exe', 'whisper.dll', 'ggml.dll', 'ggml-base.dll', 'ggml-cpu.dll', 'ggml-blas.dll', 'libopenblas.dll'],
-    extraArgs: ['--no-gpu'],
-    legacyExecutableName: 'whisper-cpu-blas.exe'
+    extraArgs: ['--no-gpu']
   },
   {
     id: 'cpu',
     backend: 'cpu',
     label: 'whisper.cpp CPU',
     requiredFiles: ['whisper-cli.exe', 'whisper.dll', 'ggml.dll', 'ggml-base.dll', 'ggml-cpu.dll'],
-    extraArgs: ['--no-gpu'],
-    legacyExecutableName: 'whisper-cpu.exe'
+    extraArgs: ['--no-gpu']
   }
 ];
 
@@ -122,11 +117,6 @@ export function resolveWhisperRuntimeDirectory(paths: ResourcePaths, runtimeId: 
     if (versionedDirectory) {
       return versionedDirectory;
     }
-
-    const flatExecutable = join(runtimeRoot, executableName('whisper-cli'));
-    if (existsSync(flatExecutable)) {
-      return runtimeRoot;
-    }
   }
 
   return resolveDefaultWhisperRuntimeDirectory(paths, runtimeId);
@@ -145,11 +135,6 @@ export function whisperRuntimeVersionFromDirectory(directoryPath: string): strin
   return directoryName.startsWith(whisperCppRuntimeDirectoryPrefix)
     ? directoryName.slice(whisperCppRuntimeDirectoryPrefix.length)
     : null;
-}
-
-export function resolveLegacyWhisperExecutable(paths: ResourcePaths, runtimeId: EngineRuntimeId): string | null {
-  const legacyExecutableName = whisperRuntimeDefinition(runtimeId).legacyExecutableName;
-  return legacyExecutableName ? join(paths.projectRoot, 'resources', 'engines', platformResourceDirectory(), legacyExecutableName) : null;
 }
 
 export function resolveWhisperExecutable(paths: ResourcePaths, backend: EngineBackend): string {
