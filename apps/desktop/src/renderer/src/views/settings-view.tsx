@@ -1,13 +1,15 @@
-﻿import { AlertTriangle, Cpu, FileText, FolderOpen, Keyboard, Lock, MicVocal, SlidersHorizontal } from 'lucide-react';
+import { AlertTriangle, Cpu, Download, FileText, FolderOpen, Keyboard, Lock, MicVocal, SlidersHorizontal } from 'lucide-react';
 import type { ReactElement } from 'react';
 import type {
   EngineAvailability,
+  EngineRuntimeId,
   MachineProfile,
   ModelProfile,
   ResourceStatus,
+  RuntimeInstallStatus,
   TranscriptionPresetId
 } from '@voxmire/contracts';
-import { formatBytes } from '../lib/format';
+import { formatBytes, formatFileSize } from '../lib/format';
 import { backendOptions, modelInstalled, modelLabel, modelResource, presetModelOptionLabel, visiblePresetOptions, type BackendPreference, type ResolvedTranscriptionPreset } from '../lib/presets';
 
 type AppInfo = {
@@ -21,11 +23,14 @@ type SettingsViewProps = {
   appInfo: AppInfo | null;
   engines: EngineAvailability[];
   exportDirectory: string | null;
+  installingRuntimeId: EngineRuntimeId | null;
   machineProfile: MachineProfile | null;
   models: ModelProfile[];
   onChooseExportDirectory: () => void;
+  onInstallRuntime: (runtimeId: EngineRuntimeId) => void;
   onResetExportDirectory: () => void;
   resources: ResourceStatus[];
+  runtimeInstallStatuses: RuntimeInstallStatus[];
   selectedBackendPreference: BackendPreference;
   selectedPresetId: TranscriptionPresetId;
   selectedPresetResolution: ResolvedTranscriptionPreset;
@@ -45,7 +50,7 @@ const transcriptShortcuts = [
   { keys: 'Ctrl/Cmd+S', action: 'Save the active segment' }
 ];
 
-export function SettingsView({ appInfo, engines, exportDirectory, machineProfile, models, onChooseExportDirectory, onResetExportDirectory, resources, selectedBackendPreference, selectedPresetId, selectedPresetResolution, setSelectedBackendPreference, setSelectedPresetId }: SettingsViewProps): ReactElement {
+export function SettingsView({ appInfo, engines, exportDirectory, installingRuntimeId, machineProfile, models, onChooseExportDirectory, onInstallRuntime, onResetExportDirectory, resources, runtimeInstallStatuses, selectedBackendPreference, selectedPresetId, selectedPresetResolution, setSelectedBackendPreference, setSelectedPresetId }: SettingsViewProps): ReactElement {
   const readyResources = resources.filter((resource) => resource.available).length;
   const selectablePresets = visiblePresetOptions(resources);
   const installedModels = models.filter((model) => modelInstalled(resources, model.id));
@@ -171,18 +176,61 @@ export function SettingsView({ appInfo, engines, exportDirectory, machineProfile
                 <strong>{machineProfile.recommendedBackend.toUpperCase()} / {modelLabel(models, machineProfile.recommendedModelId)}</strong>
               </div>
               <div className="backend-list">
-                {machineProfile.backends.map((backend) => (
-                  <div className={`backend-row ${backend.recommended ? 'recommended' : ''}`} key={backend.backend}>
-                    <strong>{backend.label}</strong>
-                    <span>{backend.executableAvailable && backend.runtimeAvailable ? 'Ready' : backend.executableAvailable ? 'Runtime missing' : 'Binary missing'}</span>
-                    <p>{backend.reason ?? 'Available for local transcription.'}</p>
-                  </div>
-                ))}
+                {machineProfile.backends.map((backend) => {
+                  const engine = backendEngine(engines, backend);
+                  const version = runtimeVersionLabel(engine?.runtimeVersion);
+
+                  return (
+                    <div className={`backend-row ${backend.recommended ? 'recommended' : ''}`} key={backend.backend}>
+                      <strong>{backend.label}</strong>
+                      <span>{backend.executableAvailable && backend.runtimeAvailable ? 'Ready' : backend.executableAvailable ? 'Runtime missing' : 'Binary missing'}</span>
+                      {version ? <small>{version}</small> : null}
+                      <p>{backend.reason ?? 'Available for local transcription.'}</p>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ) : null}
         </section>
 
+        <section className="settings-panel panel-glow">
+          <div className="settings-panel-heading">
+            <Download size={18} />
+            <div>
+              <h3>Runtime manager</h3>
+              <p>Install approved whisper.cpp runtime packages for this machine.</p>
+            </div>
+          </div>
+          <div className="runtime-manager-list">
+            {runtimeInstallStatuses.length === 0 ? (
+              <div className="runtime-row missing">
+                <span>
+                  <strong>No runtime manifest found</strong>
+                  <small>Runtime downloads are unavailable.</small>
+                </span>
+                <em>Missing</em>
+              </div>
+            ) : runtimeInstallStatuses.map((runtime) => {
+              const installing = installingRuntimeId === runtime.runtimeId;
+              const disabled = runtime.installed || !runtime.downloadable || installing;
+
+              return (
+                <div className={`runtime-row ${runtime.installed ? 'installed' : runtime.downloadable ? 'available' : 'missing'}`} key={runtime.runtimeId}>
+                  <span>
+                    <strong>{runtime.label}</strong>
+                    <small>{runtimeInstallSummary(runtime)}</small>
+                  </span>
+                  <em>{runtime.installed ? 'Installed' : runtime.downloadable ? 'Available' : 'Blocked'}</em>
+                  <p>{runtime.reason ?? 'Ready to install.'}</p>
+                  <button className="secondary-action runtime-install-action" disabled={disabled} onClick={() => onInstallRuntime(runtime.runtimeId)} type="button">
+                    {installing ? 'Installing' : runtime.installed ? 'Installed' : 'Download'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
         <section className="settings-panel panel-glow">
           <div className="settings-panel-heading">
             <MicVocal size={18} />
@@ -213,7 +261,13 @@ export function SettingsView({ appInfo, engines, exportDirectory, machineProfile
             <section>
               <h4>Engines</h4>
               {engines.map((engine) => (
-                <DiagnosticRow key={engine.id} label={engine.label} status={engine.available ? 'Ready' : 'Missing'} detail={engine.available ? engine.executablePath : engine.reason} />
+                <DiagnosticRow
+                  detail={engine.available ? engine.executablePath : engine.reason}
+                  key={engine.id}
+                  label={engine.label}
+                  meta={runtimeVersionLabel(engine.runtimeVersion)}
+                  status={engine.available ? 'Ready' : 'Missing'}
+                />
               ))}
             </section>
             <section>
@@ -229,11 +283,28 @@ export function SettingsView({ appInfo, engines, exportDirectory, machineProfile
   );
 }
 
-function DiagnosticRow({ detail, label, status }: { detail: string | null; label: string; status: string }): ReactElement {
+function backendEngine(engines: readonly EngineAvailability[], backend: MachineProfile['backends'][number]): EngineAvailability | null {
+  return engines.find((engine) => engine.backend === backend.backend && engine.available) ?? null;
+}
+
+function runtimeVersionLabel(runtimeVersion: EngineAvailability['runtimeVersion']): string | null {
+  return runtimeVersion ? `whisper.cpp ${runtimeVersion}` : null;
+}
+
+function runtimeInstallSummary(runtime: RuntimeInstallStatus): string {
+  const version = runtime.version ? `Stable ${runtime.version}` : 'No stable package';
+  const installed = runtime.installedVersion ? `installed ${runtime.installedVersion}` : 'not installed';
+  const size = runtime.sizeBytes === null ? 'size unavailable' : formatFileSize(runtime.sizeBytes);
+  const parts = runtime.partCount > 0 ? ` / ${runtime.partCount} parts` : '';
+  return `${version} / ${installed} / ${size}${parts}`;
+}
+
+function DiagnosticRow({ detail, label, meta, status }: { detail: string | null; label: string; meta?: string | null; status: string }): ReactElement {
   return (
     <div className="diagnostic-row">
       <strong>{label}</strong>
       <span>{status}</span>
+      {meta ? <small>{meta}</small> : null}
       <p>{detail ?? 'No details available.'}</p>
     </div>
   );

@@ -12,7 +12,15 @@
     "typecheck": "corepack pnpm -r typecheck",
     "lint": "corepack pnpm -r lint",
     "test": "corepack pnpm exec vitest run --exclude \"whisper-binaries/**\"",
-    "resources:check": "node scripts/check-resources.mjs"
+    "resources:check": "node scripts/check-resources.mjs",
+    "runtimes:download": "node scripts/whisper-runtime-tool.mjs download",
+    "runtimes:prepare": "node scripts/whisper-runtime-tool.mjs prepare",
+    "runtimes:promote": "node scripts/whisper-runtime-tool.mjs promote",
+    "runtimes:upload": "node scripts/whisper-runtime-tool.mjs upload",
+    "runtimes": "node scripts/whisper-runtime-tool.mjs menu",
+    "runtimes:upload:r2": "node scripts/whisper-runtime-tool.mjs upload --target r2",
+    "app:runtimes:check": "node scripts/check-app-runtime-bundle.mjs",
+    "desktop:package": "corepack pnpm --filter @voxmire/desktop package:win"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",

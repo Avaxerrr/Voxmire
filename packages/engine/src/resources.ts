@@ -1,5 +1,5 @@
 import { existsSync, readdirSync } from 'node:fs';
-import { extname, join } from 'node:path';
+import { basename, extname, join } from 'node:path';
 import type { EngineBackend, EngineRuntimeId, ModelId } from '@voxmire/contracts';
 import type { ResourcePaths } from './types';
 
@@ -87,24 +87,44 @@ export function whisperRuntimeIdsForBackend(backend: EngineBackend): readonly En
 }
 
 export function resolveWhisperRuntimeRootDirectory(paths: ResourcePaths, runtimeId: EngineRuntimeId): string {
-  return join(paths.projectRoot, 'resources', 'engines', platformResourceDirectory(), runtimeId);
+  return resolveWhisperRuntimeRootDirectories(paths, runtimeId)[0] ?? bundledWhisperRuntimeRootDirectory(paths, runtimeId);
+}
+
+export function resolveBundledWhisperRuntimeRootDirectory(paths: ResourcePaths, runtimeId: EngineRuntimeId): string {
+  return bundledWhisperRuntimeRootDirectory(paths, runtimeId);
+}
+
+export function resolveWritableWhisperRuntimeRootDirectory(paths: ResourcePaths, runtimeId: EngineRuntimeId): string {
+  return paths.userResourceRoot
+    ? join(paths.userResourceRoot, 'engines', platformResourceDirectory(), runtimeId)
+    : bundledWhisperRuntimeRootDirectory(paths, runtimeId);
+}
+
+export function resolveWhisperRuntimeRootDirectories(paths: ResourcePaths, runtimeId: EngineRuntimeId): string[] {
+  const roots = [
+    paths.userResourceRoot ? join(paths.userResourceRoot, 'engines', platformResourceDirectory(), runtimeId) : null,
+    bundledWhisperRuntimeRootDirectory(paths, runtimeId)
+  ].filter((root): root is string => Boolean(root));
+
+  return [...new Set(roots)];
 }
 
 export function resolveDefaultWhisperRuntimeDirectory(paths: ResourcePaths, runtimeId: EngineRuntimeId): string {
-  return join(resolveWhisperRuntimeRootDirectory(paths, runtimeId), `${whisperCppRuntimeDirectoryPrefix}${whisperCppRuntimeVersion}`);
+  return join(resolveWritableWhisperRuntimeRootDirectory(paths, runtimeId), `${whisperCppRuntimeDirectoryPrefix}${whisperCppRuntimeVersion}`);
 }
 
 export function resolveWhisperRuntimeDirectory(paths: ResourcePaths, runtimeId: EngineRuntimeId): string {
-  const runtimeRoot = resolveWhisperRuntimeRootDirectory(paths, runtimeId);
-  const versionedDirectory = installedWhisperRuntimeDirectories(runtimeRoot)
-    .find((directory) => existsSync(join(directory, executableName('whisper-cli'))));
-  if (versionedDirectory) {
-    return versionedDirectory;
-  }
+  for (const runtimeRoot of resolveWhisperRuntimeRootDirectories(paths, runtimeId)) {
+    const versionedDirectory = installedWhisperRuntimeDirectories(runtimeRoot)
+      .find((directory) => existsSync(join(directory, executableName('whisper-cli'))));
+    if (versionedDirectory) {
+      return versionedDirectory;
+    }
 
-  const flatExecutable = join(runtimeRoot, executableName('whisper-cli'));
-  if (existsSync(flatExecutable)) {
-    return runtimeRoot;
+    const flatExecutable = join(runtimeRoot, executableName('whisper-cli'));
+    if (existsSync(flatExecutable)) {
+      return runtimeRoot;
+    }
   }
 
   return resolveDefaultWhisperRuntimeDirectory(paths, runtimeId);
@@ -116,6 +136,13 @@ export function resolveWhisperRuntimeExecutable(paths: ResourcePaths, runtimeId:
 
 export function resolveWhisperRuntimeFile(paths: ResourcePaths, runtimeId: EngineRuntimeId, fileName: string): string {
   return join(resolveWhisperRuntimeDirectory(paths, runtimeId), fileName);
+}
+
+export function whisperRuntimeVersionFromDirectory(directoryPath: string): string | null {
+  const directoryName = basename(directoryPath);
+  return directoryName.startsWith(whisperCppRuntimeDirectoryPrefix)
+    ? directoryName.slice(whisperCppRuntimeDirectoryPrefix.length)
+    : null;
 }
 
 export function resolveLegacyWhisperExecutable(paths: ResourcePaths, runtimeId: EngineRuntimeId): string | null {
@@ -154,6 +181,11 @@ export function platformResourceDirectory(): string {
   }
 
   return 'linux';
+}
+
+
+function bundledWhisperRuntimeRootDirectory(paths: ResourcePaths, runtimeId: EngineRuntimeId): string {
+  return join(paths.projectRoot, 'resources', 'engines', platformResourceDirectory(), runtimeId);
 }
 
 function executableName(name: string): string {

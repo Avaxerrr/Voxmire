@@ -4,6 +4,7 @@ import type {
   CreateJobResult,
   EngineAvailability,
   EngineBackend,
+  EngineRuntimeId,
   ExportFormat,
   ExportTranscriptResult,
   ExportTextMode,
@@ -12,6 +13,8 @@ import type {
   ModelProfile,
   ProjectDetails,
   ResourceStatus,
+  RuntimeInstallResult,
+  RuntimeInstallStatus,
   TranscriptSegment,
   TranscriptSegmentListResult,
   TranscriptionJob,
@@ -70,6 +73,8 @@ declare global {
         getEngineAvailability: () => Promise<EngineAvailability[]>;
         getResourceStatus: () => Promise<ResourceStatus[]>;
         getMachineProfile: () => Promise<MachineProfile>;
+        getRuntimeInstallStatuses: () => Promise<RuntimeInstallStatus[]>;
+        installRuntime: (runtimeId: EngineRuntimeId) => Promise<RuntimeInstallResult>;
       };
       models: {
         list: () => Promise<ModelProfile[]>;

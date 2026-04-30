@@ -2,6 +2,7 @@ import type { EngineAvailability, EngineBackend, EngineRuntimeId, TranscriptionP
 
 export type ResourcePaths = {
   projectRoot: string;
+  userResourceRoot?: string;
 };
 
 export type ProbeResult = {

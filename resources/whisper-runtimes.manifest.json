@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-04-30T03:33:35.810Z",
+  "provider": {
+    "type": "github-release",
+    "owner": "Avaxerrr",
+    "repo": "Voxmire",
+    "publicBaseUrl": null
+  },
+  "channels": {
+    "stable": {
+      "win32": {
+        "cuda-12.4": "v1.8.4",
+        "vulkan": "v1.8.4",
+        "cpu-blas": "v1.8.4",
+        "cpu": "v1.8.4"
+      }
+    }
+  },
+  "packages": [
+    {
+      "runtimeId": "cuda-12.4",
+      "backend": "cuda",
+      "label": "whisper.cpp CUDA 12.4",
+      "platform": "win32",
+      "arch": "x64",
+      "whisperCppVersion": "v1.8.4",
+      "runtimeDirectoryName": "whispercpp-v1.8.4",
+      "objectKey": "whisper.cpp/v1.8.4/win32/cuda-12.4/whispercpp-v1.8.4.zip",
+      "url": "https://github.com/Avaxerrr/Voxmire/releases/download/whisper-runtimes-v1.8.4/voxmire-whispercpp-v1.8.4-win32-x64-cuda-12.4.zip",
+      "packagePath": ".voxmire-runtimes/packages/whisper.cpp/v1.8.4/win32/cuda-12.4/whispercpp-v1.8.4.zip",
+      "sizeBytes": 431634326,
+      "sha256": "56c7f36cc8916aae2ae642136b371e0c1207553001587c09c0103480672105f6",
+      "requiredFiles": [
+        "whisper-cli.exe",
+        "whisper.dll",
+        "ggml.dll",
+        "ggml-base.dll",
+        "ggml-cpu.dll",
+        "ggml-cuda.dll",
+        "cublas64_12.dll",
+        "cublasLt64_12.dll",
+        "cudart64_12.dll"
+      ],
+      "preparedAt": "2026-04-30T02:20:46.294Z",
+      "assetName": "voxmire-whispercpp-v1.8.4-win32-x64-cuda-12.4.zip"
+    },
+    {
+      "runtimeId": "vulkan",
+      "backend": "vulkan",
+      "label": "whisper.cpp Vulkan",
+      "platform": "win32",
+      "arch": "x64",
+      "whisperCppVersion": "v1.8.4",
+      "runtimeDirectoryName": "whispercpp-v1.8.4",
+      "objectKey": "whisper.cpp/v1.8.4/win32/vulkan/whispercpp-v1.8.4.zip",
+      "url": "https://github.com/Avaxerrr/Voxmire/releases/download/whisper-runtimes-v1.8.4/voxmire-whispercpp-v1.8.4-win32-x64-vulkan.zip",
+      "packagePath": ".voxmire-runtimes/packages/whisper.cpp/v1.8.4/win32/vulkan/whispercpp-v1.8.4.zip",
+      "sizeBytes": 17839942,
+      "sha256": "babfdeece109f953ade5323706b7b6dadd401e777b9450e665a7a92b259f4289",
+      "requiredFiles": [
+        "whisper-cli.exe",
+        "whisper.dll",
+        "ggml.dll",
+        "ggml-base.dll",
+        "ggml-cpu.dll",
+        "ggml-vulkan.dll"
+      ],
+      "preparedAt": "2026-04-29T23:16:59.615Z",
+      "assetName": "voxmire-whispercpp-v1.8.4-win32-x64-vulkan.zip"
+    },
+    {
+      "runtimeId": "cpu-blas",
+      "backend": "cpu",
+      "label": "whisper.cpp BLAS CPU",
+      "platform": "win32",
+      "arch": "x64",
+      "whisperCppVersion": "v1.8.4",
+      "runtimeDirectoryName": "whispercpp-v1.8.4",
+      "objectKey": "whisper.cpp/v1.8.4/win32/cpu-blas/whispercpp-v1.8.4.zip",
+      "url": "https://github.com/Avaxerrr/Voxmire/releases/download/whisper-runtimes-v1.8.4/voxmire-whispercpp-v1.8.4-win32-x64-cpu-blas.zip",
+      "packagePath": ".voxmire-runtimes/packages/whisper.cpp/v1.8.4/win32/cpu-blas/whispercpp-v1.8.4.zip",
+      "sizeBytes": 13465705,
+      "sha256": "8a32578592476f465c696d20aeb0ff7cf3381787da485b20a332cd93d9b5245b",
+      "requiredFiles": [
+        "whisper-cli.exe",
+        "whisper.dll",
+        "ggml.dll",
+        "ggml-base.dll",
+        "ggml-cpu.dll",
+        "ggml-blas.dll",
+        "libopenblas.dll"
+      ],
+      "preparedAt": "2026-04-29T23:17:02.059Z",
+      "assetName": "voxmire-whispercpp-v1.8.4-win32-x64-cpu-blas.zip"
+    },
+    {
+      "runtimeId": "cpu",
+      "backend": "cpu",
+      "label": "whisper.cpp CPU",
+      "platform": "win32",
+      "arch": "x64",
+      "whisperCppVersion": "v1.8.4",
+      "runtimeDirectoryName": "whispercpp-v1.8.4",
+      "objectKey": "whisper.cpp/v1.8.4/win32/cpu/whispercpp-v1.8.4.zip",
+      "url": "https://github.com/Avaxerrr/Voxmire/releases/download/whisper-runtimes-v1.8.4/voxmire-whispercpp-v1.8.4-win32-x64-cpu.zip",
+      "packagePath": ".voxmire-runtimes/packages/whisper.cpp/v1.8.4/win32/cpu/whispercpp-v1.8.4.zip",
+      "sizeBytes": 956915,
+      "sha256": "5f937d57996d0e45dad863c2c2a4e779baafd670759c795df62a88dbc725855a",
+      "requiredFiles": [
+        "whisper-cli.exe",
+        "whisper.dll",
+        "ggml.dll",
+        "ggml-base.dll",
+        "ggml-cpu.dll"
+      ],
+      "preparedAt": "2026-04-29T23:17:49.056Z",
+      "assetName": "voxmire-whispercpp-v1.8.4-win32-x64-cpu.zip"
+    }
+  ]
+}

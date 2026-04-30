@@ -1,7 +1,9 @@
 export { probeMediaFile, prepareAudioChunks } from './ffmpeg';
+export { cleanupStaleWhisperRuntimeDownloads, getWhisperRuntimeInstallStatuses, installWhisperRuntime, readWhisperRuntimeManifest } from './runtime-installer';
 export { detectWhisperEngine, detectWhisperEngines, detectWhisperRuntime, getMachineProfile, getResourceStatus } from './machine-profile';
 export {
   defaultModelPath,
+  resolveBundledWhisperRuntimeRootDirectory,
   resolveDefaultWhisperRuntimeDirectory,
   resolveFfmpegExecutable,
   resolveFfprobeExecutable,
@@ -9,12 +11,15 @@ export {
   resolveWhisperRuntimeDirectory,
   resolveWhisperRuntimeExecutable,
   resolveWhisperRuntimeRootDirectory,
+  resolveWhisperRuntimeRootDirectories,
+  resolveWritableWhisperRuntimeRootDirectory,
   resolveWhisperRuntimeFile,
   sourceExtension,
   whisperCppRuntimeVersion,
   whisperRuntimeDefinition,
   whisperRuntimeDefinitions,
-  whisperRuntimeIdsForBackend
+  whisperRuntimeIdsForBackend,
+  whisperRuntimeVersionFromDirectory
 } from './resources';
 export type { ProcessResult } from './process-runner';
 export type { WhisperRuntimeDefinition } from './resources';

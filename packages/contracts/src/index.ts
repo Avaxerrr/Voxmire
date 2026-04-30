@@ -116,11 +116,78 @@ export const engineAvailabilitySchema = z.object({
   kind: engineKindSchema,
   backend: engineBackendSchema,
   label: z.string().min(1),
+  runtimeVersion: z.string().min(1).nullable().optional(),
   available: z.boolean(),
   executablePath: z.string().nullable(),
   reason: z.string().nullable()
 });
 
+
+export const runtimePackagePartSchema = z.object({
+  index: z.number().int().positive(),
+  objectKey: z.string().min(1),
+  packagePath: z.string().min(1).optional(),
+  sizeBytes: z.number().int().nonnegative(),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/i),
+  url: z.string().url().nullable().optional()
+});
+
+export const whisperRuntimePackageSchema = z.object({
+  runtimeId: engineRuntimeIdSchema,
+  backend: engineBackendSchema,
+  label: z.string().min(1),
+  platform: z.string().min(1),
+  arch: z.string().min(1),
+  whisperCppVersion: z.string().min(1),
+  runtimeDirectoryName: z.string().min(1),
+  objectKey: z.string().min(1),
+  assetName: z.string().min(1).optional(),
+  url: z.string().url().nullable().optional(),
+  packagePath: z.string().min(1).optional(),
+  sizeBytes: z.number().int().nonnegative(),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/i),
+  parts: z.array(runtimePackagePartSchema).optional(),
+  requiredFiles: z.array(z.string().min(1)),
+  preparedAt: z.string().datetime().optional()
+});
+
+export const whisperRuntimeManifestSchema = z.object({
+  schemaVersion: z.number().int().positive(),
+  updatedAt: z.string().datetime().nullable(),
+  provider: z.object({
+    type: z.enum(['r2', 'github-release']),
+    bucket: z.string().min(1).nullable().optional(),
+    owner: z.string().min(1).optional(),
+    repo: z.string().min(1).optional(),
+    publicBaseUrl: z.string().url().nullable().optional()
+  }),
+  channels: z.record(z.string(), z.record(z.string(), z.record(engineRuntimeIdSchema, z.string().min(1)))),
+  packages: z.array(whisperRuntimePackageSchema)
+});
+
+export const runtimeInstallStatusSchema = z.object({
+  runtimeId: engineRuntimeIdSchema,
+  label: z.string().min(1),
+  platform: z.string().min(1),
+  version: z.string().min(1).nullable(),
+  installedVersion: z.string().min(1).nullable(),
+  installed: z.boolean(),
+  downloadable: z.boolean(),
+  sizeBytes: z.number().int().nonnegative().nullable(),
+  partCount: z.number().int().nonnegative(),
+  reason: z.string().nullable()
+});
+
+export const installRuntimeInputSchema = z.object({
+  runtimeId: engineRuntimeIdSchema
+});
+
+export const runtimeInstallResultSchema = z.object({
+  runtimeId: engineRuntimeIdSchema,
+  version: z.string().min(1),
+  installedDirectory: z.string().min(1),
+  installed: z.boolean()
+});
 export const machineBackendProfileSchema = z.object({
   backend: engineBackendSchema,
   label: z.string().min(1),
@@ -292,6 +359,12 @@ export type TranscriptionChunk = z.infer<typeof transcriptionChunkSchema>;
 export type ModelProfile = z.infer<typeof modelProfileSchema>;
 export type TranscriptionPresetProfile = z.infer<typeof transcriptionPresetProfileSchema>;
 export type EngineAvailability = z.infer<typeof engineAvailabilitySchema>;
+export type RuntimePackagePart = z.infer<typeof runtimePackagePartSchema>;
+export type WhisperRuntimePackage = z.infer<typeof whisperRuntimePackageSchema>;
+export type WhisperRuntimeManifest = z.infer<typeof whisperRuntimeManifestSchema>;
+export type RuntimeInstallStatus = z.infer<typeof runtimeInstallStatusSchema>;
+export type InstallRuntimeInput = z.infer<typeof installRuntimeInputSchema>;
+export type RuntimeInstallResult = z.infer<typeof runtimeInstallResultSchema>;
 export type MachineBackendProfile = z.infer<typeof machineBackendProfileSchema>;
 export type MachineProfile = z.infer<typeof machineProfileSchema>;
 export type TranscriptionProgressEvent = z.infer<typeof transcriptionProgressEventSchema>;

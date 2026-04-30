@@ -5,6 +5,7 @@ import {
   createJobInputSchema,
   deleteProjectInputSchema,
   exportTranscriptInputSchema,
+  installRuntimeInputSchema,
   mergeTranscriptSegmentInputSchema,
   renameProjectInputSchema,
   replaceTranscriptSegmentsInputSchema,
@@ -13,7 +14,7 @@ import {
   updateTranscriptSegmentInputSchema,
   updateTranscriptSegmentTimingInputSchema
 } from '@voxmire/contracts';
-import { detectWhisperEngines, getMachineProfile, getResourceStatus, type ResourcePaths } from '@voxmire/engine';
+import { detectWhisperEngines, getMachineProfile, getResourceStatus, getWhisperRuntimeInstallStatuses, installWhisperRuntime, type ResourcePaths } from '@voxmire/engine';
 import type { VoxmireRuntime } from '@voxmire/runtime';
 import { defaultExportFileName, exportSaveDialogFilters } from './export-dialogs';
 import { type MediaMetadataCache } from './media-metadata';
@@ -45,6 +46,11 @@ export function registerIpcHandlers(options: RegisterIpcHandlersOptions): void {
   ipcMain.handle('system:get-engine-availability', () => detectWhisperEngines(resources));
   ipcMain.handle('system:get-resource-status', () => getResourceStatus(resources));
   ipcMain.handle('system:get-machine-profile', () => getMachineProfile(resources));
+  ipcMain.handle('system:get-runtime-install-statuses', () => getWhisperRuntimeInstallStatuses(resources));
+  ipcMain.handle('system:install-runtime', (_event, rawInput: unknown) => {
+    const input = installRuntimeInputSchema.parse(rawInput);
+    return installWhisperRuntime(resources, input.runtimeId);
+  });
   ipcMain.handle('models:list', () => modelProfiles);
   ipcMain.handle('jobs:list', () => runtime.listJobs());
   ipcMain.handle('jobs:get', (_event, jobId: string) => runtime.getJob(jobId));

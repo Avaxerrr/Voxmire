@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { detectWhisperEngines, detectWhisperRuntime, getMachineProfile, parseWhisperJsonSegmentsPayload, parseWhisperProgressLine, whisperRuntimeDefinition } from './index';
+import { cleanupStaleWhisperRuntimeDownloads, detectWhisperEngines, detectWhisperRuntime, getMachineProfile, parseWhisperJsonSegmentsPayload, parseWhisperProgressLine, whisperRuntimeDefinition } from './index';
 
 describe('parseWhisperProgressLine', () => {
   it('parses whisper.cpp progress output', () => {
@@ -120,6 +120,51 @@ describe('getMachineProfile', () => {
     expect(engines.map((engine) => engine.backend)).toEqual(['cuda', 'vulkan', 'cpu', 'cpu']);
   });
 
+  it('prefers user-installed runtime folders over bundled runtime folders', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'voxmire-engine-'));
+    const userResourceRoot = join(projectRoot, 'user-resources');
+    const platform = process.platform === 'win32' ? 'win32' : process.platform === 'darwin' ? 'darwin' : 'linux';
+    const bundledDirectory = join(projectRoot, 'resources', 'engines', platform, 'cpu', 'whispercpp-v1.8.4');
+    const userDirectory = join(userResourceRoot, 'engines', platform, 'cpu', 'whispercpp-v1.9.0');
+
+    for (const runtimeDirectory of [bundledDirectory, userDirectory]) {
+      mkdirSync(runtimeDirectory, { recursive: true });
+      for (const fileName of whisperRuntimeDefinition('cpu').requiredFiles) {
+        writeFileSync(join(runtimeDirectory, fileName), '');
+      }
+      if (process.platform !== 'win32') {
+        writeFileSync(join(runtimeDirectory, 'whisper-cli'), '');
+      }
+    }
+
+    const runtime = detectWhisperRuntime({ projectRoot, userResourceRoot }, 'cpu');
+
+    expect(runtime.available).toBe(true);
+    expect(runtime.runtimeVersion).toBe('v1.9.0');
+    expect(runtime.executablePath).toContain(userResourceRoot);
+  });
+
+
+  it('removes stale runtime download folders but keeps fresh folders', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'voxmire-engine-'));
+    const userResourceRoot = join(projectRoot, 'user-resources');
+    const downloadRoot = join(userResourceRoot, 'runtime-downloads');
+    const staleDirectory = join(downloadRoot, 'cuda-12.4-v1.8.4-stale');
+    const freshDirectory = join(downloadRoot, 'cuda-12.4-v1.8.4-fresh');
+    const now = Date.now();
+
+    mkdirSync(staleDirectory, { recursive: true });
+    mkdirSync(freshDirectory, { recursive: true });
+    utimesSync(staleDirectory, new Date(now - 2 * 60 * 60 * 1000), new Date(now - 2 * 60 * 60 * 1000));
+    utimesSync(freshDirectory, new Date(now - 5 * 60 * 1000), new Date(now - 5 * 60 * 1000));
+
+    const removed = cleanupStaleWhisperRuntimeDownloads({ projectRoot, userResourceRoot }, { maxAgeMs: 60 * 60 * 1000, now });
+
+    expect(removed).toBe(1);
+    expect(existsSync(staleDirectory)).toBe(false);
+    expect(existsSync(freshDirectory)).toBe(true);
+  });
+
   it('detects runtime files inside a versioned whisper.cpp folder', () => {
     const projectRoot = mkdtempSync(join(tmpdir(), 'voxmire-engine-'));
     const platform = process.platform === 'win32' ? 'win32' : process.platform === 'darwin' ? 'darwin' : 'linux';
@@ -137,6 +182,7 @@ describe('getMachineProfile', () => {
     const runtime = detectWhisperRuntime({ projectRoot }, 'cuda-12.4');
 
     expect(runtime.available).toBe(true);
+    expect(runtime.runtimeVersion).toBe('v1.8.4');
     expect(runtime.executablePath).toContain(join('cuda-12.4', 'whispercpp-v1.8.4'));
   });
 });

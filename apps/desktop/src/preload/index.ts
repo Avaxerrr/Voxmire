@@ -3,6 +3,7 @@ import type {
   CreateJobResult,
   EngineAvailability,
   EngineBackend,
+  EngineRuntimeId,
   ExportFormat,
   ExportTextMode,
   ExportTranscriptResult,
@@ -11,6 +12,8 @@ import type {
   ModelProfile,
   ProjectDetails,
   ResourceStatus,
+  RuntimeInstallResult,
+  RuntimeInstallStatus,
   TranscriptSegment,
   TranscriptSegmentListResult,
   TranscriptionJob,
@@ -33,7 +36,9 @@ const api = {
   system: {
     getEngineAvailability: (): Promise<EngineAvailability[]> => ipcRenderer.invoke('system:get-engine-availability'),
     getResourceStatus: (): Promise<ResourceStatus[]> => ipcRenderer.invoke('system:get-resource-status'),
-    getMachineProfile: (): Promise<MachineProfile> => ipcRenderer.invoke('system:get-machine-profile')
+    getMachineProfile: (): Promise<MachineProfile> => ipcRenderer.invoke('system:get-machine-profile'),
+    getRuntimeInstallStatuses: (): Promise<RuntimeInstallStatus[]> => ipcRenderer.invoke('system:get-runtime-install-statuses'),
+    installRuntime: (runtimeId: EngineRuntimeId): Promise<RuntimeInstallResult> => ipcRenderer.invoke('system:install-runtime', { runtimeId })
   },
   models: {
     list: (): Promise<ModelProfile[]> => ipcRenderer.invoke('models:list')

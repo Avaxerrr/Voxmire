@@ -2,6 +2,7 @@ import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import type {
   EngineAvailability,
+  EngineRuntimeId,
   ExportFormat,
   ExportTextMode,
   JobWithSource,
@@ -9,6 +10,7 @@ import type {
   ModelProfile,
   ProjectDetails,
   ResourceStatus,
+  RuntimeInstallStatus,
   TranscriptSegment,
   TranscriptSegmentListResult,
   TranscriptionPresetId,
@@ -42,6 +44,8 @@ export function App(): ReactElement {
   const [engines, setEngines] = useState<EngineAvailability[]>([]);
   const [models, setModels] = useState<ModelProfile[]>(fallbackModels);
   const [resources, setResources] = useState<ResourceStatus[]>([]);
+  const [runtimeInstallStatuses, setRuntimeInstallStatuses] = useState<RuntimeInstallStatus[]>([]);
+  const [installingRuntimeId, setInstallingRuntimeId] = useState<EngineRuntimeId | null>(null);
   const [machineProfile, setMachineProfile] = useState<MachineProfile | null>(null);
   const [selectedPresetId, setSelectedPresetId] = useState<TranscriptionPresetId>('balanced');
   const [selectedBackendPreference, setSelectedBackendPreference] = useState<BackendPreference>('auto');
@@ -188,25 +192,64 @@ export function App(): ReactElement {
       return;
     }
 
-    const [info, engineAvailability, modelProfiles, resourceStatus, detectedMachineProfile, jobList, resolvedExportDirectory] = await Promise.all([
+    const [info, modelProfiles, jobList, resolvedExportDirectory] = await Promise.all([
       api.app.getInfo(),
-      api.system.getEngineAvailability(),
       api.models.list(),
-      api.system.getResourceStatus(),
-      api.system.getMachineProfile(),
       api.jobs.list(),
       api.exports.getDirectory()
     ]);
+    const systemState = await loadSystemState();
 
     setAppInfo(info);
-    setEngines(engineAvailability);
     setModels(modelProfiles);
-    setResources(resourceStatus);
-    setMachineProfile(detectedMachineProfile);
-    setSelectedPresetId(selectUsablePreset(detectedMachineProfile.recommendedModelId, resourceStatus));
+    setSelectedPresetId(selectUsablePreset(systemState.machineProfile.recommendedModelId, systemState.resources));
     setJobs(jobList);
     setSelectedJobId(jobList[0]?.job.id ?? null);
     setExportDirectory(resolvedExportDirectory);
+  }
+
+  async function loadSystemState(): Promise<{ engines: EngineAvailability[]; resources: ResourceStatus[]; machineProfile: MachineProfile; runtimeInstallStatuses: RuntimeInstallStatus[] }> {
+    if (!api) {
+      throw new Error('Desktop bridge unavailable.');
+    }
+
+    const [engineAvailability, resourceStatus, detectedMachineProfile, installStatuses] = await Promise.all([
+      api.system.getEngineAvailability(),
+      api.system.getResourceStatus(),
+      api.system.getMachineProfile(),
+      api.system.getRuntimeInstallStatuses()
+    ]);
+
+    setEngines(engineAvailability);
+    setResources(resourceStatus);
+    setMachineProfile(detectedMachineProfile);
+    setRuntimeInstallStatuses(installStatuses);
+
+    return {
+      engines: engineAvailability,
+      resources: resourceStatus,
+      machineProfile: detectedMachineProfile,
+      runtimeInstallStatuses: installStatuses
+    };
+  }
+
+  async function installRuntime(runtimeId: EngineRuntimeId): Promise<void> {
+    if (!api) {
+      setMessage('Desktop bridge unavailable.');
+      return;
+    }
+
+    setInstallingRuntimeId(runtimeId);
+    setMessage('Downloading runtime package.');
+    try {
+      const result = await api.system.installRuntime(runtimeId);
+      await loadSystemState();
+      setMessage(`Installed ${runtimeId} ${result.version}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : `Failed to install ${runtimeId}.`);
+    } finally {
+      setInstallingRuntimeId(null);
+    }
   }
 
   async function handleProgress(event: TranscriptionProgressEvent): Promise<void> {
@@ -637,8 +680,11 @@ export function App(): ReactElement {
             machineProfile={machineProfile}
             models={models}
             onChooseExportDirectory={() => void chooseExportDirectory()}
+            installingRuntimeId={installingRuntimeId}
+            onInstallRuntime={(runtimeId) => void installRuntime(runtimeId)}
             onResetExportDirectory={() => void resetExportDirectory()}
             resources={resources}
+            runtimeInstallStatuses={runtimeInstallStatuses}
             selectedBackendPreference={selectedBackendPreference}
             selectedPresetId={selectedPresetId}
             selectedPresetResolution={selectedPresetResolution}

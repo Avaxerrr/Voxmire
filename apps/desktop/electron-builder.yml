@@ -1,0 +1,32 @@
+appId: com.voxmire.desktop
+productName: Voxmire
+copyright: Copyright ? 2026 Voxmire
+asar: true
+beforeBuild: ../../scripts/electron-builder-before-build.cjs
+directories:
+  output: ../../dist/desktop
+files:
+  - out/**/*
+  - package.json
+extraResources:
+  - from: ../../resources/whisper-runtimes.manifest.json
+    to: resources/whisper-runtimes.manifest.json
+  - from: ../../resources/ffmpeg
+    to: resources/ffmpeg
+    filter:
+      - ffmpeg.exe
+      - ffprobe.exe
+  - from: ../../resources/models/ggml-large-v3-turbo.bin
+    to: resources/models/ggml-large-v3-turbo.bin
+  - from: ../../resources/engines/win32/vulkan
+    to: resources/engines/win32/vulkan
+  - from: ../../resources/engines/win32/cpu-blas
+    to: resources/engines/win32/cpu-blas
+  - from: ../../resources/engines/win32/cpu
+    to: resources/engines/win32/cpu
+win:
+  target:
+    - target: portable
+      arch:
+        - x64
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}

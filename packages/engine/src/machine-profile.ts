@@ -19,7 +19,8 @@ import {
   resolveWhisperRuntimeExecutable,
   resolveWhisperRuntimeFile,
   whisperRuntimeDefinition,
-  whisperRuntimeDefinitions
+  whisperRuntimeDefinitions,
+  whisperRuntimeVersionFromDirectory
 } from './resources';
 import type { ResourcePaths } from './types';
 
@@ -46,6 +47,7 @@ export function detectWhisperRuntime(paths: ResourcePaths, runtimeId: EngineRunt
     : requiredFilePaths;
   const missingFilePaths = requiredPaths.filter((filePath) => !existsSync(filePath));
   const available = missingFilePaths.length === 0;
+  const runtimeVersion = existsSync(runtimeDirectory) ? whisperRuntimeVersionFromDirectory(runtimeDirectory) : null;
 
   return {
     id: `whisper.cpp-${runtimeId}`,
@@ -53,6 +55,7 @@ export function detectWhisperRuntime(paths: ResourcePaths, runtimeId: EngineRunt
     kind: 'whisper.cpp',
     backend: definition.backend,
     label: definition.label,
+    runtimeVersion,
     available,
     executablePath: available ? executablePath : null,
     reason: available ? null : missingRuntimeReason(runtimeId, executablePath, missingFilePaths),

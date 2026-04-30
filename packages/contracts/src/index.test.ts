@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createJobInputSchema, machineProfileSchema, transcriptionChunkSchema, transcriptionPresetProfileSchema, transcriptionProgressEventSchema, transcriptSegmentSchema, transcriptWordTimingSchema, transcriptionJobSchema } from './index';
+import { createJobInputSchema, engineAvailabilitySchema, machineProfileSchema, transcriptionChunkSchema, transcriptionPresetProfileSchema, transcriptionProgressEventSchema, transcriptSegmentSchema, transcriptWordTimingSchema, transcriptionJobSchema, whisperRuntimeManifestSchema } from './index';
 
 describe('contracts', () => {
   it('validates transcription job payloads', () => {
@@ -78,6 +80,22 @@ describe('contracts', () => {
     ).not.toThrow();
   });
 
+  it('validates engine availability with runtime version metadata', () => {
+    expect(() =>
+      engineAvailabilitySchema.parse({
+        id: 'whisper.cpp-cuda-12.4',
+        runtimeId: 'cuda-12.4',
+        kind: 'whisper.cpp',
+        backend: 'cuda',
+        label: 'whisper.cpp CUDA 12.4',
+        runtimeVersion: 'v1.8.4',
+        available: true,
+        executablePath: 'C:/voxmire/resources/engines/win32/cuda-12.4/whispercpp-v1.8.4/whisper-cli.exe',
+        reason: null
+      })
+    ).not.toThrow();
+  });
+
   it('validates machine profile payloads', () => {
     expect(() =>
       machineProfileSchema.parse({
@@ -100,6 +118,16 @@ describe('contracts', () => {
         notes: ['CPU fallback remains available.']
       })
     ).not.toThrow();
+  });
+
+  it('validates the packaged whisper runtime manifest', () => {
+    const manifestPath = join(process.cwd(), 'resources', 'whisper-runtimes.manifest.json');
+    const manifest = whisperRuntimeManifestSchema.parse(JSON.parse(readFileSync(manifestPath, 'utf8')));
+    const cudaPackage = manifest.packages.find((runtimePackage) => runtimePackage.runtimeId === 'cuda-12.4');
+
+    expect(manifest.provider.type).toBe('github-release');
+    expect(manifest.channels.stable?.win32?.cpu).toBe('v1.8.4');
+    expect(cudaPackage?.sha256).toMatch(/^[a-f0-9]{64}$/i);
   });
 
   it('validates progress events with active engine runtime metadata', () => {

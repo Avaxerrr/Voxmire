@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from 'electron';
 import { join } from 'node:path';
 import type { TranscriptionProgressEvent } from '@voxmire/contracts';
+import { cleanupStaleWhisperRuntimeDownloads } from '@voxmire/engine';
 import { createJsonlRuntimeLogger, createVoxmireRuntime } from '@voxmire/runtime';
 import { openVoxmireDatabase } from '@voxmire/storage';
 import {
@@ -20,7 +21,8 @@ const isDev = !app.isPackaged;
 registerMediaSchemes();
 
 void app.whenReady().then(() => {
-  const resources = { projectRoot: getProjectRoot(isDev) };
+  const resources = { projectRoot: getProjectRoot(isDev), userResourceRoot: ensureAppDirectory('resources') };
+  cleanupStaleWhisperRuntimeDownloads(resources);
   let desktopSettings = loadDesktopSettings();
   const exportDirectory = createExportDirectoryController(() => desktopSettings, (settings) => {
     desktopSettings = settings;
