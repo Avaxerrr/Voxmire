@@ -34,6 +34,16 @@ Read `docs/HANDOFF.md` before making architectural decisions. Then check:
 - Keep transcription work outside the renderer process.
 - Store long-running job state durably so transcription can resume.
 
+## Separation of Concerns
+
+- Do not keep adding feature logic to large orchestration files just because it is faster.
+- Keep React route/view shells focused on composition. Move stateful workflows into hooks and UI subtrees into focused components.
+- Keep runtime orchestration thin. Move engine selection, chunk execution, persistence, progress reporting, and recovery into focused modules when they grow beyond simple glue code.
+- Keep Electron main-process IPC handlers narrow. Validate input, call a service/runtime function, and return typed results.
+- Keep dev tooling scripts usable from one command, but extract reusable release, packaging, upload, manifest, and prompt logic once a script becomes hard to scan.
+- When a touched file is already large or gains a second responsibility, prefer extracting the new responsibility instead of growing the file.
+- Before finishing substantial work, call out any file that became a refactor candidate and either refactor it immediately when low risk or document the follow-up.
+
 ## Commands
 
 Use:
