@@ -541,11 +541,7 @@
 .transcript-stage:not(.preview-side) .segment-text-display {
   text-align: center;
 }
-.transcript-stage:not(.preview-side) .segment-edit-stack {
-  gap: 0;
-}
 .transcript-stage:not(.preview-side) .segment-save-state {
-  order: -1;
   min-height: 0;
   padding-left: 0;
   line-height: 1.2;

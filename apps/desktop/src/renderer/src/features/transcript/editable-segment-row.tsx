@@ -240,7 +240,7 @@ export function EditableSegmentRow({
   const canSplit = editing && activeText.trim().length > 1 && cursorOffset > 0 && cursorOffset < activeText.length;
 
   return (
-    <div className={`segment-row ${active ? 'active' : ''} ${editing ? 'editing' : ''} ${searchMatch ? 'search-match' : ''} ${activeSearchMatch ? 'search-current' : ''} ${segment.editedAt ? 'edited' : ''}`} onPointerDown={handleSegmentPointerDown}>
+    <div className={`segment-row ${active ? 'active' : ''} ${editing ? 'editing' : ''} ${searchMatch ? 'search-match' : ''} ${activeSearchMatch ? 'search-current' : ''}`} onPointerDown={handleSegmentPointerDown}>
       <div className="segment-gutter">
         <div
           className="segment-time-editors"
@@ -331,9 +331,11 @@ export function EditableSegmentRow({
             <HighlightedTranscriptText query={searchQuery} text={segment.text} />
           </button>
         )}
-        <div className={`segment-save-state ${saving ? 'saving' : ''} ${saveError ? 'error' : ''}`} role="status">
-          {saveError ? 'Not saved' : saving ? 'Saving' : segment.editedAt ? 'Edited' : ''}
-        </div>
+        {saveError || saving ? (
+          <div className={`segment-save-state ${saving ? 'saving' : ''} ${saveError ? 'error' : ''}`} role="status">
+            {saveError ? 'Not saved' : 'Saving'}
+          </div>
+        ) : null}
       </div>
     </div>
   );
