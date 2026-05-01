@@ -1,4 +1,4 @@
-import { type ReactElement, useEffect, useRef } from 'react';
+import { type ReactElement, useEffect, useLayoutEffect, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { TranscriptSegment, TranscriptSegmentListResult } from '@voxmire/contracts';
 import { EditableSegmentRow } from './editable-segment-row';
@@ -63,7 +63,7 @@ export function VirtualizedSegmentList({
     segments
   });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (activeSegmentIndex >= 0 && !editor.editingSegmentId) {
       rowVirtualizer.scrollToIndex(activeSegmentIndex, { align: 'center' });
     }
