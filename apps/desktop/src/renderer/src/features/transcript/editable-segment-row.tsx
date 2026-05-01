@@ -14,6 +14,7 @@ import { HighlightedTranscriptText } from './highlighted-transcript-text';
 import { debugTranscriptInteraction } from './transcript-interaction-debug';
 
 const transcriptEditTargetSelector = '[data-transcript-edit-target="true"]';
+const transcriptTimingTargetSelector = '[data-transcript-timing-target="true"]';
 let pendingTranscriptEditTargetSegmentId: string | null = null;
 let pendingTranscriptEditTargetResetId: number | null = null;
 
@@ -54,6 +55,8 @@ type EditableSegmentRowProps = {
   onSaveTiming: (startSeconds: number, endSeconds: number) => Promise<boolean>;
   onSelectSegment: () => void;
   onSplit: (offset: number) => Promise<void>;
+  onTimingEditEnd: () => void;
+  onTimingEditStart: () => void;
   saveError: boolean;
   saving: boolean;
   savingTiming: boolean;
@@ -84,6 +87,8 @@ export function EditableSegmentRow({
   onSaveTiming,
   onSelectSegment,
   onSplit,
+  onTimingEditEnd,
+  onTimingEditStart,
   saveError,
   saving,
   savingTiming,
@@ -159,6 +164,17 @@ export function EditableSegmentRow({
     }
 
     void onSaveTiming(nextStart, nextEnd);
+  }
+
+  function handleTimingBlur(event: ReactFocusEvent<HTMLInputElement>): void {
+    saveTimingDraft();
+
+    const nextTarget = event.relatedTarget instanceof Element ? event.relatedTarget : null;
+    if (nextTarget?.closest(transcriptTimingTargetSelector)) {
+      return;
+    }
+
+    onTimingEditEnd();
   }
 
   function handleTimingKeyDown(event: ReactKeyboardEvent<HTMLInputElement>): void {
@@ -257,6 +273,7 @@ export function EditableSegmentRow({
   function handleTimestampPointerDown(event: ReactPointerEvent<HTMLInputElement>, seconds: number): void {
     event.stopPropagation();
     if (event.button === 0 && !event.defaultPrevented) {
+      onTimingEditStart();
       onSeekTime(seconds, segment.id);
     }
   }
@@ -298,9 +315,11 @@ export function EditableSegmentRow({
         >
           <input
             aria-label="Segment start time"
+            data-transcript-timing-target="true"
             disabled={savingTiming}
-            onBlur={saveTimingDraft}
+            onBlur={handleTimingBlur}
             onChange={(event) => setStartDraft(event.target.value)}
+            onFocus={onTimingEditStart}
             onKeyDown={handleTimingKeyDown}
             onPointerDown={(event) => handleTimestampPointerDown(event, segment.startSeconds)}
             title={`Seek to ${formatTime(segment.startSeconds)}`}
@@ -309,9 +328,11 @@ export function EditableSegmentRow({
           <span>-</span>
           <input
             aria-label="Segment end time"
+            data-transcript-timing-target="true"
             disabled={savingTiming}
-            onBlur={saveTimingDraft}
+            onBlur={handleTimingBlur}
             onChange={(event) => setEndDraft(event.target.value)}
+            onFocus={onTimingEditStart}
             onKeyDown={handleTimingKeyDown}
             onPointerDown={(event) => handleTimestampPointerDown(event, segment.endSeconds)}
             title={`Seek to ${formatTime(segment.endSeconds)}`}
