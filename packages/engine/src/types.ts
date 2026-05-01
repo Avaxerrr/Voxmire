@@ -34,6 +34,7 @@ export type TranscriptionInput = {
   modelPath: string;
   language?: TranscriptionLanguage;
   outputMode?: TranscriptionOutputMode;
+  cpuThreads?: number;
   outputDirectory: string;
   outputBaseName?: string;
   signal?: AbortSignal;

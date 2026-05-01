@@ -1,7 +1,10 @@
 import { AlertTriangle, Cpu, Download, FileText, FolderOpen, Keyboard, Lock, MicVocal, SlidersHorizontal } from 'lucide-react';
 import type { ReactElement } from 'react';
+import { resolveCpuThreadCount } from '@voxmire/core';
 import type {
+  CpuThreadPreference,
   EngineAvailability,
+  EngineBackend,
   EngineRuntimeId,
   MachineProfile,
   ModelId,
@@ -23,6 +26,7 @@ type AppInfo = {
 
 type SettingsViewProps = {
   appInfo: AppInfo | null;
+  cpuThreadPreference: CpuThreadPreference;
   engines: EngineAvailability[];
   exportDirectory: string | null;
   installingModelId: ModelId | null;
@@ -37,8 +41,10 @@ type SettingsViewProps = {
   resources: ResourceStatus[];
   runtimeInstallStatuses: RuntimeInstallStatus[];
   selectedBackendPreference: BackendPreference;
+  selectedEngineBackend: EngineBackend;
   selectedPresetId: TranscriptionPresetId;
   selectedPresetResolution: ResolvedTranscriptionPreset;
+  setCpuThreadPreference: (preference: CpuThreadPreference) => void;
   setSelectedBackendPreference: (preference: BackendPreference) => void;
   setSelectedPresetId: (presetId: TranscriptionPresetId) => void;
 };
@@ -55,9 +61,11 @@ const transcriptShortcuts = [
   { keys: 'Ctrl/Cmd+S', action: 'Save the active segment' }
 ];
 
-export function SettingsView({ appInfo, engines, exportDirectory, installingModelId, installingRuntimeId, machineProfile, models, modelInstallStatuses, onChooseExportDirectory, onInstallModel, onInstallRuntime, onResetExportDirectory, resources, runtimeInstallStatuses, selectedBackendPreference, selectedPresetId, selectedPresetResolution, setSelectedBackendPreference, setSelectedPresetId }: SettingsViewProps): ReactElement {
+export function SettingsView({ appInfo, cpuThreadPreference, engines, exportDirectory, installingModelId, installingRuntimeId, machineProfile, models, modelInstallStatuses, onChooseExportDirectory, onInstallModel, onInstallRuntime, onResetExportDirectory, resources, runtimeInstallStatuses, selectedBackendPreference, selectedEngineBackend, selectedPresetId, selectedPresetResolution, setCpuThreadPreference, setSelectedBackendPreference, setSelectedPresetId }: SettingsViewProps): ReactElement {
   const readyResources = resources.filter((resource) => resource.available).length;
   const selectablePresets = visiblePresetOptions(resources);
+  const cpuThreadOptions = cpuThreadManualOptions(machineProfile?.logicalCpuCores);
+  const autoCpuThreads = machineProfile ? resolveCpuThreadCount('auto', selectedEngineBackend, machineProfile.logicalCpuCores) : null;
 
   return (
     <div className="view workspace-page settings-view">
@@ -72,7 +80,7 @@ export function SettingsView({ appInfo, engines, exportDirectory, installingMode
             <SlidersHorizontal size={18} />
             <div>
               <h3>Transcription defaults</h3>
-              <p>Choose the default local model used for new imports.</p>
+              <p>Choose defaults used for new local transcription jobs.</p>
             </div>
           </div>
           <div className="settings-field-grid">
@@ -93,6 +101,14 @@ export function SettingsView({ appInfo, engines, exportDirectory, installingMode
                 ))}
               </select>
             </label>
+            <label>
+              <span className="field-label">CPU threads</span>
+              <select value={cpuThreadPreferenceValue(cpuThreadPreference)} onChange={(event) => setCpuThreadPreference(parseCpuThreadPreference(event.target.value))}>
+                <option value="auto">Auto{autoCpuThreads === null ? '' : ' (' + autoCpuThreads.toString() + ')'}</option>
+                {cpuThreadOptions.map((count) => <option key={count} value={count}>{count}</option>)}
+              </select>
+            </label>
+            <p className="modal-note">Auto uses fewer CPU threads for CUDA and Vulkan, and more for CPU fallback.</p>
           </div>
         </section>
 
@@ -296,6 +312,19 @@ export function SettingsView({ appInfo, engines, exportDirectory, installingMode
       </div>
     </div>
   );
+}
+
+function cpuThreadManualOptions(logicalCpuCores: number | undefined): number[] {
+  const maxThreads = Math.min(64, Math.max(1, Math.floor(logicalCpuCores ?? 8)));
+  return Array.from({ length: maxThreads }, (_value, index) => index + 1);
+}
+
+function cpuThreadPreferenceValue(preference: CpuThreadPreference): string {
+  return preference === 'auto' ? 'auto' : preference.toString();
+}
+
+function parseCpuThreadPreference(value: string): CpuThreadPreference {
+  return value === 'auto' ? 'auto' : Number(value);
 }
 
 function modelTranslationNote(modelId: ModelId): string | null {

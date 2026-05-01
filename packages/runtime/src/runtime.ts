@@ -1,10 +1,12 @@
 import { existsSync } from 'node:fs';
+import { cpus } from 'node:os';
 import { join } from 'node:path';
 import type {
   ExportFormat,
   ExportTextMode,
   JobStatus,
   JobWithSource,
+  CpuThreadPreference,
   ModelId,
   ProjectDetails,
   TranscriptionChunk,
@@ -15,7 +17,7 @@ import type {
   TranscriptionOutputMode,
   TranscriptSegment
 } from '@voxmire/contracts';
-import { modelSupportsTranscriptionOutputMode } from '@voxmire/core';
+import { modelSupportsTranscriptionOutputMode, resolveCpuThreadCount } from '@voxmire/core';
 import { defaultModelPath } from '@voxmire/engine';
 import {
   abandonJobProcessingSession,
@@ -39,6 +41,7 @@ import {
   startJobProcessingSession,
   startTranscriptionChunk,
   stopJobProcessingSession,
+  updateJobDetectedLanguage,
   updateJobProgress,
   updateJobStatus,
   updateTranscriptSegmentText,
@@ -491,6 +494,8 @@ export class VoxmireRuntime {
 
       let activeEngineIndex = 0;
       let nextSegmentIndex = getTranscriptSegments(this.options.db, jobId).length;
+      const cpuThreadPreference = this.cpuThreadPreference();
+      const logicalCpuCores = Math.max(1, cpus().length);
 
       for (const chunk of chunks) {
         if (chunk.status === 'completed') {
@@ -511,6 +516,8 @@ export class VoxmireRuntime {
           language: jobWithSource.job.language,
           outputMode: jobWithSource.job.outputMode,
           outputDirectory,
+          cpuThreadPreference,
+          logicalCpuCores,
           abortController,
           activeJob,
           enginePlan,
@@ -569,6 +576,8 @@ export class VoxmireRuntime {
     language: TranscriptionLanguage;
     outputMode: TranscriptionOutputMode;
     outputDirectory: string;
+    cpuThreadPreference: CpuThreadPreference;
+    logicalCpuCores: number;
     abortController: AbortController;
     activeJob: ActiveJob;
     enginePlan: WhisperEngineCandidate[];
@@ -585,6 +594,7 @@ export class VoxmireRuntime {
       }
 
       let savedSegmentCount = 0;
+      const cpuThreads = resolveCpuThreadCount(options.cpuThreadPreference, candidate.engine.backend, options.logicalCpuCores);
       startTranscriptionChunk(this.options.db, options.chunk.id, candidate.engine.runtimeId);
       this.log({
         level: 'info',
@@ -597,7 +607,8 @@ export class VoxmireRuntime {
           startSeconds: options.chunk.startSeconds,
           endSeconds: options.chunk.endSeconds,
           filePath: options.chunk.filePath,
-          runtimeId: candidate.engine.runtimeId
+          runtimeId: candidate.engine.runtimeId,
+          cpuThreads
         }
       });
 
@@ -608,6 +619,7 @@ export class VoxmireRuntime {
           modelPath: options.modelPath,
           language: options.language,
           outputMode: options.outputMode,
+          cpuThreads,
           outputDirectory: options.outputDirectory,
           outputBaseName: `${options.jobId}-chunk-${options.chunk.index.toString().padStart(4, '0')}-${candidate.engine.runtimeId}`,
           signal: options.abortController.signal
@@ -637,6 +649,10 @@ export class VoxmireRuntime {
             });
           }
 
+          if (event.detectedLanguage) {
+            updateJobDetectedLanguage(this.options.db, options.jobId, event.detectedLanguage);
+          }
+
           updateJobProgress(this.options.db, options.jobId, progress);
           this.emitProgress({
             jobId: options.jobId,
@@ -645,7 +661,8 @@ export class VoxmireRuntime {
             message: segment ? 'Transcript segment saved.' : event.message,
             segment,
             engineRuntimeId: event.engineRuntimeId ?? candidate.engine.runtimeId,
-            engineLabel: event.engineLabel ?? candidate.label
+            engineLabel: event.engineLabel ?? candidate.label,
+            detectedLanguage: event.detectedLanguage
           });
         }
 
@@ -700,6 +717,10 @@ export class VoxmireRuntime {
 
     throw new Error('No fallback whisper.cpp engine runtime could complete the transcription chunk.');
   }
+  private cpuThreadPreference(): CpuThreadPreference {
+    return this.options.getCpuThreadPreference?.() ?? 'auto';
+  }
+
   private updateAndEmit(jobId: string, status: JobStatus, progress: number, message: string): void {
     updateJobStatus(this.options.db, jobId, status, { progress });
     this.emitProgress({ jobId, status, progress, message, segment: null });

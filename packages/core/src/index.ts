@@ -1,4 +1,5 @@
 import type {
+  CpuThreadPreference,
   EngineBackend,
   JobStatus,
   MachineProfile,
@@ -48,6 +49,25 @@ export const modelProfiles: readonly ModelProfile[] = [
   }
 ];
 const translationCapableModelIds = new Set<ModelId>(['small-q8_0', 'large-v3', 'medium']);
+
+export function resolveCpuThreadCount(
+  preference: CpuThreadPreference,
+  backend: EngineBackend,
+  logicalCpuCores: number
+): number {
+  const logicalThreads = Math.max(1, Math.floor(logicalCpuCores));
+  if (preference !== 'auto') {
+    return clampInteger(preference, 1, logicalThreads);
+  }
+
+  if (backend === 'cpu') {
+    return clampInteger(logicalThreads - 2, 1, Math.min(8, logicalThreads));
+  }
+
+  const gpuMaxThreads = Math.min(4, logicalThreads);
+  const gpuMinThreads = Math.min(2, gpuMaxThreads);
+  return clampInteger(Math.floor(logicalThreads / 4), gpuMinThreads, gpuMaxThreads);
+}
 
 export function modelSupportsTranscriptionOutputMode(modelId: ModelId, outputMode: TranscriptionOutputMode): boolean {
   return outputMode === 'transcribe' || translationCapableModelIds.has(modelId);
@@ -122,6 +142,10 @@ export function resolveTranscriptionPreset(
     modelId: preset.modelId,
     engineBackend: resolvePresetBackend(preset, options)
   };
+}
+
+function clampInteger(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, Math.floor(value)));
 }
 
 function resolvePresetBackend(

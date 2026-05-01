@@ -30,3 +30,16 @@ export const transcriptionLanguageOptions: readonly TranscriptionLanguageOption[
 export function transcriptionLanguageLabel(language: TranscriptionLanguage): string {
   return transcriptionLanguageOptions.find((option) => option.id === language)?.label ?? language.toUpperCase();
 }
+
+export function detectedLanguageLabel(language: string | null): string {
+  if (!language) {
+    return 'Not detected';
+  }
+
+  const normalized = language.trim().toLowerCase();
+  if (normalized === 'multiple') {
+    return 'Multiple languages';
+  }
+
+  return transcriptionLanguageOptions.find((option) => option.id === normalized)?.label ?? normalized.toUpperCase();
+}

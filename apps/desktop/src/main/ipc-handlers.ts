@@ -12,8 +12,11 @@ import {
   replaceTranscriptSegmentsInputSchema,
   resetTranscriptSegmentsInputSchema,
   splitTranscriptSegmentInputSchema,
+  transcriptionSettingsSchema,
+  updateTranscriptionSettingsInputSchema,
   updateTranscriptSegmentInputSchema,
-  updateTranscriptSegmentTimingInputSchema
+  updateTranscriptSegmentTimingInputSchema,
+  type TranscriptionSettings
 } from '@voxmire/contracts';
 import { detectWhisperEngines, getMachineProfile, getResourceStatus, getWhisperModelInstallStatuses, getWhisperRuntimeInstallStatuses, installWhisperModel, installWhisperRuntime, type ResourcePaths } from '@voxmire/engine';
 import type { VoxmireRuntime } from '@voxmire/runtime';
@@ -27,15 +30,21 @@ export type ExportDirectoryController = {
   reset: () => string;
 };
 
+export type TranscriptionSettingsController = {
+  get: () => TranscriptionSettings;
+  update: (settings: TranscriptionSettings) => TranscriptionSettings;
+};
+
 export type RegisterIpcHandlersOptions = {
   exportDirectory: ExportDirectoryController;
   mediaMetadata: MediaMetadataCache;
   resources: ResourcePaths;
   runtime: VoxmireRuntime;
+  transcriptionSettings: TranscriptionSettingsController;
 };
 
 export function registerIpcHandlers(options: RegisterIpcHandlersOptions): void {
-  const { exportDirectory, mediaMetadata, resources, runtime } = options;
+  const { exportDirectory, mediaMetadata, resources, runtime, transcriptionSettings } = options;
 
   ipcMain.handle('app:get-info', () => ({
     name: 'Voxmire',
@@ -51,6 +60,11 @@ export function registerIpcHandlers(options: RegisterIpcHandlersOptions): void {
   ipcMain.handle('system:install-runtime', (_event, rawInput: unknown) => {
     const input = installRuntimeInputSchema.parse(rawInput);
     return installWhisperRuntime(resources, input.runtimeId);
+  });
+  ipcMain.handle('settings:get-transcription', () => transcriptionSettingsSchema.parse(transcriptionSettings.get()));
+  ipcMain.handle('settings:update-transcription', (_event, rawInput: unknown) => {
+    const input = updateTranscriptionSettingsInputSchema.parse(rawInput);
+    return transcriptionSettings.update(transcriptionSettingsSchema.parse(input));
   });
   ipcMain.handle('models:list', () => modelProfiles);
   ipcMain.handle('models:get-install-statuses', () => getWhisperModelInstallStatuses(resources));

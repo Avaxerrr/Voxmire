@@ -8,9 +8,10 @@ import {
   type DesktopSettings,
   loadDesktopSettings,
   resolveExportDirectory,
+  resolveTranscriptionSettings,
   saveDesktopSettings
 } from './desktop-settings';
-import { registerIpcHandlers, type ExportDirectoryController } from './ipc-handlers';
+import { registerIpcHandlers, type ExportDirectoryController, type TranscriptionSettingsController } from './ipc-handlers';
 import { createMainWindow } from './main-window';
 import { MediaMetadataCache } from './media-metadata';
 import { registerMediaProtocol, registerMediaSchemes } from './media-protocol';
@@ -25,10 +26,12 @@ void app.whenReady().then(() => {
   cleanupStaleWhisperRuntimeDownloads(resources);
   cleanupStaleWhisperModelDownloads(resources);
   let desktopSettings = loadDesktopSettings();
-  const exportDirectory = createExportDirectoryController(() => desktopSettings, (settings) => {
+  const updateDesktopSettings = (settings: DesktopSettings): void => {
     desktopSettings = settings;
     saveDesktopSettings(desktopSettings);
-  });
+  };
+  const exportDirectory = createExportDirectoryController(() => desktopSettings, updateDesktopSettings);
+  const transcriptionSettings = createTranscriptionSettingsController(() => desktopSettings, updateDesktopSettings);
   const db = openVoxmireDatabase(join(app.getPath('userData'), 'voxmire.sqlite'));
   const runtime = createVoxmireRuntime({
     db,
@@ -38,7 +41,8 @@ void app.whenReady().then(() => {
       exportDirectory: exportDirectory.get()
     },
     logger: createJsonlRuntimeLogger(join(ensureAppDirectory('logs'), 'voxmire.jsonl')),
-    onProgress: broadcastProgress
+    onProgress: broadcastProgress,
+    getCpuThreadPreference: () => resolveTranscriptionSettings(desktopSettings).cpuThreadPreference
   });
   const mediaMetadata = new MediaMetadataCache(resources);
 
@@ -47,7 +51,8 @@ void app.whenReady().then(() => {
     exportDirectory,
     mediaMetadata,
     resources,
-    runtime
+    runtime,
+    transcriptionSettings
   });
   createMainWindow({ isDev, rendererUrl: process.env.ELECTRON_RENDERER_URL });
   void runtime.recoverInterruptedJobs();
@@ -64,6 +69,19 @@ app.on('window-all-closed', () => {
     app.quit();
   }
 });
+
+function createTranscriptionSettingsController(
+  getSettings: () => DesktopSettings,
+  updateSettings: (settings: DesktopSettings) => void
+): TranscriptionSettingsController {
+  return {
+    get: () => resolveTranscriptionSettings(getSettings()),
+    update: (settings) => {
+      updateSettings({ ...getSettings(), ...settings });
+      return resolveTranscriptionSettings(getSettings());
+    }
+  };
+}
 
 function createExportDirectoryController(
   getSettings: () => DesktopSettings,

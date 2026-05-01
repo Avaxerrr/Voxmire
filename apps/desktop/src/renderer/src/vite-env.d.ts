@@ -2,6 +2,7 @@
 
 import type {
   CreateJobResult,
+  CpuThreadPreference,
   EngineAvailability,
   EngineBackend,
   EngineRuntimeId,
@@ -21,6 +22,7 @@ import type {
   TranscriptSegment,
   TranscriptSegmentListResult,
   TranscriptionJob,
+  TranscriptionSettings,
   TranscriptionLanguage,
   TranscriptionOutputMode,
   TranscriptionPresetId,
@@ -73,6 +75,10 @@ declare global {
         toggleMaximize: () => Promise<boolean>;
         close: () => Promise<void>;
         isMaximized: () => Promise<boolean>;
+      };
+      settings: {
+        getTranscription: () => Promise<TranscriptionSettings>;
+        updateTranscription: (input: { cpuThreadPreference: CpuThreadPreference }) => Promise<TranscriptionSettings>;
       };
       system: {
         getEngineAvailability: () => Promise<EngineAvailability[]>;

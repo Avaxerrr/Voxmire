@@ -21,6 +21,7 @@ import {
   splitTranscriptSegment,
   startJobProcessingSession,
   startTranscriptionChunk,
+  updateJobDetectedLanguage,
   updateJobEngineBackend,
   updateTranscriptSegmentTiming,
   updateTranscriptSegmentText,
@@ -56,6 +57,28 @@ describe('storage repositories', () => {
 
     expect(created.job.status).toBe('queued');
     expect(getTranscriptSegments(db, created.job.id)).toHaveLength(1);
+    db.close();
+  });
+
+  it('stores detected language and marks mixed-language jobs', () => {
+    const db = openVoxmireDatabase(':memory:');
+    const created = createJobRecord(db, {
+      modelId: 'large-v3-turbo',
+      sourceFile: {
+        id: 'src_1',
+        path: 'C:/audio/example.wav',
+        name: 'example.wav',
+        extension: 'wav',
+        sizeBytes: 100,
+        durationSeconds: 5,
+        createdAt: '2026-04-23T00:00:00.000Z'
+      }
+    });
+
+    expect(updateJobDetectedLanguage(db, created.job.id, 'ES')?.detectedLanguage).toBe('es');
+    expect(updateJobDetectedLanguage(db, created.job.id, 'es')?.detectedLanguage).toBe('es');
+    expect(updateJobDetectedLanguage(db, created.job.id, 'en')?.detectedLanguage).toBe('multiple');
+    expect(getJobWithSource(db, created.job.id)?.job.detectedLanguage).toBe('multiple');
     db.close();
   });
 

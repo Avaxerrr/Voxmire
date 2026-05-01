@@ -6,6 +6,7 @@ import {
   getTranscriptionPreset,
   modelSupportsTranscriptionOutputMode,
   mapTranscriptWordTimingsToTextRanges,
+  resolveCpuThreadCount,
   resolveTranscriptionPreset,
   shouldChunkAudio,
   transcriptionPresets
@@ -26,6 +27,22 @@ describe('chunk policy', () => {
   it('chunks multi-hour audio', () => {
     expect(shouldChunkAudio(10_800)).toBe(true);
     expect(estimateChunkCount(10_800)).toBe(18);
+  });
+});
+
+describe('cpu thread resolution', () => {
+  it('uses backend-aware automatic thread counts', () => {
+    expect(resolveCpuThreadCount('auto', 'cpu', 8)).toBe(6);
+    expect(resolveCpuThreadCount('auto', 'cpu', 16)).toBe(8);
+    expect(resolveCpuThreadCount('auto', 'cuda', 8)).toBe(2);
+    expect(resolveCpuThreadCount('auto', 'vulkan', 16)).toBe(4);
+    expect(resolveCpuThreadCount('auto', 'cuda', 1)).toBe(1);
+  });
+
+  it('clamps manual thread counts to the available logical CPU threads', () => {
+    expect(resolveCpuThreadCount(4, 'cuda', 16)).toBe(4);
+    expect(resolveCpuThreadCount(32, 'cpu', 16)).toBe(16);
+    expect(resolveCpuThreadCount(1, 'cpu', 16)).toBe(1);
   });
 });
 

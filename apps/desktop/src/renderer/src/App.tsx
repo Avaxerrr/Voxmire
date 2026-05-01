@@ -1,6 +1,7 @@
 import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import type {
+  CpuThreadPreference,
   EngineAvailability,
   EngineRuntimeId,
   ExportFormat,
@@ -59,6 +60,7 @@ export function App(): ReactElement {
   const [selectedBackendPreference, setSelectedBackendPreference] = useState<BackendPreference>('auto');
   const [selectedLanguage, setSelectedLanguage] = useState<TranscriptionLanguage>('auto');
   const [selectedOutputMode, setSelectedOutputMode] = useState<TranscriptionOutputMode>('transcribe');
+  const [cpuThreadPreference, setCpuThreadPreferenceState] = useState<CpuThreadPreference>('auto');
   const [solverLabelsByJobId, setSolverLabelsByJobId] = useState<SolverLabelsByJobId>({});
   const [jobs, setJobs] = useState<JobWithSource[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -235,11 +237,12 @@ export function App(): ReactElement {
     let modelProfilesForSetup = models;
 
     try {
-      const [info, modelProfiles, jobList, resolvedExportDirectory] = await Promise.all([
+      const [info, modelProfiles, jobList, resolvedExportDirectory, transcriptionSettings] = await Promise.all([
         api.app.getInfo(),
         api.models.list(),
         api.jobs.list(),
-        api.exports.getDirectory()
+        api.exports.getDirectory(),
+        api.settings.getTranscription()
       ]);
 
       modelProfilesForSetup = modelProfiles;
@@ -248,6 +251,7 @@ export function App(): ReactElement {
       setJobs(jobList);
       setSelectedJobId(jobList[0]?.job.id ?? null);
       setExportDirectory(resolvedExportDirectory);
+      setCpuThreadPreferenceState(transcriptionSettings.cpuThreadPreference);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Failed to load Voxmire workspace.');
     } finally {
@@ -486,6 +490,21 @@ export function App(): ReactElement {
     const defaultDirectory = await api.exports.resetDirectory();
     setExportDirectory(defaultDirectory);
     setMessage(`Default export folder reset to ${defaultDirectory}`);
+  }
+
+  async function updateCpuThreadPreference(preference: CpuThreadPreference): Promise<void> {
+    setCpuThreadPreferenceState(preference);
+    if (!api) {
+      return;
+    }
+
+    try {
+      const settings = await api.settings.updateTranscription({ cpuThreadPreference: preference });
+      setCpuThreadPreferenceState(settings.cpuThreadPreference);
+      setMessage('CPU thread setting updated.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to update CPU thread setting.');
+    }
   }
 
   async function updateTranscriptSegment(segmentId: string, text: string): Promise<TranscriptSegment | null> {
@@ -826,6 +845,7 @@ export function App(): ReactElement {
         {view === 'settings' ? (
           <SettingsView
             appInfo={appInfo}
+            cpuThreadPreference={cpuThreadPreference}
             engines={engines}
             exportDirectory={exportDirectory}
             machineProfile={machineProfile}
@@ -840,8 +860,10 @@ export function App(): ReactElement {
             resources={resources}
             runtimeInstallStatuses={runtimeInstallStatuses}
             selectedBackendPreference={selectedBackendPreference}
+            selectedEngineBackend={selectedEngineBackend}
             selectedPresetId={selectedPresetId}
             selectedPresetResolution={selectedPresetResolution}
+            setCpuThreadPreference={(preference) => void updateCpuThreadPreference(preference)}
             setSelectedBackendPreference={setSelectedBackendPreference}
             setSelectedPresetId={setSelectedPresetId}
           />

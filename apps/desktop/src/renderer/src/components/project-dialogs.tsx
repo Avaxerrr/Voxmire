@@ -6,7 +6,7 @@ import { formatDateTime, formatDuration, formatDurationMs, formatFileSize } from
 import { jobProgressLabel, statusLabel } from '../lib/job-status';
 import { mediaKindFromExtension, mediaKindLabel } from '../lib/media-kind';
 import { backendOptions, presetModelOptionLabel, visiblePresetOptions, type BackendPreference, type ResolvedTranscriptionPreset } from '../lib/presets';
-import { transcriptionLanguageLabel, transcriptionLanguageOptions } from '../lib/transcription-languages';
+import { detectedLanguageLabel, transcriptionLanguageLabel, transcriptionLanguageOptions } from '../lib/transcription-languages';
 import { transcriptionOutputModeLabel, transcriptionOutputModeOptions } from '../lib/transcription-output-modes';
 
 type ImportModalProps = {
@@ -156,6 +156,7 @@ export function ProjectDetailsDrawer({ details, loading, onClose, onDelete, onRe
               <div><dt>Progress</dt><dd>{jobProgressLabel(details.job.status, details.job.progress)}</dd></div>
               <div><dt>Model</dt><dd>{details.job.modelId}</dd></div>
               <div><dt>Language</dt><dd>{transcriptionLanguageLabel(details.job.language)}</dd></div>
+              <div><dt>Detected</dt><dd>{detectedLanguageLabel(details.job.detectedLanguage)}</dd></div>
               <div><dt>Output</dt><dd>{transcriptionOutputModeLabel(details.job.outputMode)}</dd></div>
               <div><dt>Backend</dt><dd>{details.job.engineBackend.toUpperCase()}</dd></div>
               <div><dt>Solver</dt><dd>{solverLabel ?? details.job.engineBackend.toUpperCase()}</dd></div>

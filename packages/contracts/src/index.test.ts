@@ -1,30 +1,38 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createJobInputSchema, engineAvailabilitySchema, machineProfileSchema, transcriptionChunkSchema, transcriptionPresetProfileSchema, transcriptionProgressEventSchema, transcriptSegmentSchema, transcriptWordTimingSchema, transcriptionJobSchema, whisperRuntimeManifestSchema } from './index';
+import { createJobInputSchema, engineAvailabilitySchema, machineProfileSchema, transcriptionChunkSchema, transcriptionPresetProfileSchema, transcriptionProgressEventSchema, transcriptionSettingsSchema, transcriptSegmentSchema, transcriptWordTimingSchema, transcriptionJobSchema, updateTranscriptionSettingsInputSchema, whisperRuntimeManifestSchema } from './index';
 
 describe('contracts', () => {
   it('validates transcription job payloads', () => {
-    expect(() =>
-      transcriptionJobSchema.parse({
-        id: 'job_1',
-        sourceFileId: 'src_1',
-        status: 'queued',
-        modelId: 'large-v3-turbo',
-        engineBackend: 'cpu',
-        progress: 0,
-        errorMessage: null,
-        createdAt: '2026-04-23T00:00:00.000Z',
-        updatedAt: '2026-04-23T00:00:00.000Z',
-        completedAt: null
-      })
-    ).not.toThrow();
+    const parsed = transcriptionJobSchema.parse({
+      id: 'job_1',
+      sourceFileId: 'src_1',
+      status: 'queued',
+      modelId: 'large-v3-turbo',
+      engineBackend: 'cpu',
+      progress: 0,
+      errorMessage: null,
+      createdAt: '2026-04-23T00:00:00.000Z',
+      updatedAt: '2026-04-23T00:00:00.000Z',
+      completedAt: null
+    });
+
+    expect(parsed.language).toBe('auto');
+    expect(parsed.outputMode).toBe('transcribe');
+    expect(parsed.detectedLanguage).toBeNull();
   });
 
   it('defaults create job input to CPU backend', () => {
     expect(createJobInputSchema.parse({})).toEqual({ modelId: 'large-v3-turbo', engineBackend: 'cpu', language: 'auto', outputMode: 'transcribe' });
     expect(createJobInputSchema.parse({ presetId: 'balanced' }).presetId).toBe('balanced');
     expect(createJobInputSchema.parse({ engineBackend: 'cuda' }).engineBackend).toBe('cuda');
+  });
+
+  it('validates transcription settings', () => {
+    expect(transcriptionSettingsSchema.parse({})).toEqual({ cpuThreadPreference: 'auto' });
+    expect(updateTranscriptionSettingsInputSchema.parse({ cpuThreadPreference: 6 })).toEqual({ cpuThreadPreference: 6 });
+    expect(() => updateTranscriptionSettingsInputSchema.parse({ cpuThreadPreference: 0 })).toThrow();
   });
 
   it('rejects invalid segment timing confidence', () => {
@@ -139,7 +147,8 @@ describe('contracts', () => {
         message: 'Whisper progress 42%.',
         segment: null,
         engineRuntimeId: 'cuda-12.4',
-        engineLabel: 'whisper.cpp CUDA 12.4'
+        engineLabel: 'whisper.cpp CUDA 12.4',
+        detectedLanguage: 'es'
       })
     ).not.toThrow();
   });

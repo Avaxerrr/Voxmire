@@ -40,5 +40,6 @@ export type {
   TranscriptionInput
 } from './types';
 export { WhisperCppCpuEngine, WhisperCppEngine } from './whisper-cpp';
-export { parseWhisperJsonSegmentsPayload } from './whisper-json';
+export { parseWhisperJsonOutputPayload, parseWhisperJsonSegmentsPayload } from './whisper-json';
+export type { WhisperJsonOutput } from './whisper-json';
 export { parseWhisperProgressLine } from './whisper-progress';

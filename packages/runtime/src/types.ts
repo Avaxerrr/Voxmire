@@ -1,4 +1,4 @@
-import type { EngineBackend, ExportTextMode, ModelId, TranscriptionLanguage, TranscriptionOutputMode, TranscriptionProgressEvent } from '@voxmire/contracts';
+import type { CpuThreadPreference, EngineBackend, ExportTextMode, ModelId, TranscriptionLanguage, TranscriptionOutputMode, TranscriptionProgressEvent } from '@voxmire/contracts';
 import type { ResourcePaths } from '@voxmire/engine';
 import type { VoxmireDatabase } from '@voxmire/storage';
 
@@ -13,6 +13,7 @@ export type VoxmireRuntimeOptions = {
   directories: RuntimeDirectories;
   logger?: VoxmireRuntimeLogger;
   onProgress?: (event: TranscriptionProgressEvent) => void;
+  getCpuThreadPreference?: () => CpuThreadPreference;
 };
 
 export type VoxmireRuntimeLogLevel = 'info' | 'warn' | 'error';

@@ -1,9 +1,11 @@
 import { app } from 'electron';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { cpuThreadPreferenceSchema, type CpuThreadPreference, type TranscriptionSettings } from '@voxmire/contracts';
 
 export type DesktopSettings = {
   exportDirectory?: string;
+  cpuThreadPreference?: CpuThreadPreference;
 };
 
 export function defaultExportDirectory(): string {
@@ -14,12 +16,26 @@ export function resolveExportDirectory(settings: DesktopSettings): string {
   return settings.exportDirectory ?? defaultExportDirectory();
 }
 
+export function resolveTranscriptionSettings(settings: DesktopSettings): TranscriptionSettings {
+  return {
+    cpuThreadPreference: settings.cpuThreadPreference ?? 'auto'
+  };
+}
+
 export function loadDesktopSettings(): DesktopSettings {
   try {
     const parsed = JSON.parse(readFileSync(desktopSettingsPath(), 'utf8')) as Partial<DesktopSettings>;
-    return typeof parsed.exportDirectory === 'string' && parsed.exportDirectory.trim().length > 0
-      ? { exportDirectory: parsed.exportDirectory }
-      : {};
+    const settings: DesktopSettings = {};
+    if (typeof parsed.exportDirectory === 'string' && parsed.exportDirectory.trim().length > 0) {
+      settings.exportDirectory = parsed.exportDirectory;
+    }
+
+    const cpuThreadPreference = cpuThreadPreferenceSchema.safeParse(parsed.cpuThreadPreference);
+    if (cpuThreadPreference.success) {
+      settings.cpuThreadPreference = cpuThreadPreference.data;
+    }
+
+    return settings;
   } catch {
     return {};
   }

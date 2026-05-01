@@ -17,7 +17,7 @@ import {
 
 export function jobColumns(): string {
   return `j.id AS job_id, j.source_file_id AS job_source_file_id, j.status AS job_status, j.model_id AS job_model_id,
-    j.engine_backend AS job_engine_backend, j.language AS job_language, j.output_mode AS job_output_mode, j.progress AS job_progress, j.error_message AS job_error_message,
+    j.engine_backend AS job_engine_backend, j.language AS job_language, j.output_mode AS job_output_mode, j.detected_language AS job_detected_language, j.progress AS job_progress, j.error_message AS job_error_message,
     j.created_at AS job_created_at, j.updated_at AS job_updated_at, j.completed_at AS job_completed_at`;
 }
 
@@ -37,6 +37,7 @@ export function parseJobWithSourceRow(row: unknown): JobWithSource {
       engineBackend: value.job_engine_backend,
       language: value.job_language ?? 'auto',
       outputMode: value.job_output_mode ?? 'transcribe',
+      detectedLanguage: value.job_detected_language ?? null,
       progress: value.job_progress,
       errorMessage: value.job_error_message,
       createdAt: value.job_created_at,
@@ -65,6 +66,7 @@ export function parseJobRow(row: unknown): TranscriptionJob {
     engineBackend: value.engine_backend,
     language: value.language ?? 'auto',
     outputMode: value.output_mode ?? 'transcribe',
+    detectedLanguage: value.detected_language ?? null,
     progress: value.progress,
     errorMessage: value.error_message,
     createdAt: value.created_at,
@@ -132,6 +134,7 @@ export function toJobRow(job: TranscriptionJob): Record<string, SQLInputValue> {
     engineBackend: job.engineBackend,
     language: job.language,
     outputMode: job.outputMode,
+    detectedLanguage: job.detectedLanguage,
     progress: job.progress,
     errorMessage: job.errorMessage,
     createdAt: job.createdAt,

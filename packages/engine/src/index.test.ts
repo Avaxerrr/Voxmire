@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { runProcess } from './process-runner';
+import { buildWhisperCppArgs } from './whisper-cpp';
 import {
   cleanupStaleWhisperModelDownloads,
   cleanupStaleWhisperRuntimeDownloads,
@@ -10,11 +11,40 @@ import {
   detectWhisperRuntime,
   getMachineProfile,
   getWhisperModelInstallStatuses,
+  parseWhisperJsonOutputPayload,
   parseWhisperJsonSegmentsPayload,
   parseWhisperProgressLine,
   resolveModelPath,
   whisperRuntimeDefinition
 } from './index';
+
+describe('buildWhisperCppArgs', () => {
+  it('passes the resolved CPU thread count to whisper.cpp', () => {
+    const args = buildWhisperCppArgs({
+      jobId: 'job_1',
+      sourcePath: 'C:/audio/example.wav',
+      modelPath: 'C:/models/ggml-large-v3.bin',
+      language: 'es',
+      outputMode: 'translate',
+      cpuThreads: 6,
+      outputDirectory: 'C:/output'
+    }, 'C:/output/job_1', 'cuda-12.4');
+
+    expect(args).toContain('-tr');
+    expect(args.slice(args.indexOf('-t'), args.indexOf('-t') + 2)).toEqual(['-t', '6']);
+  });
+
+  it('omits the thread flag when no resolved thread count is provided', () => {
+    const args = buildWhisperCppArgs({
+      jobId: 'job_1',
+      sourcePath: 'C:/audio/example.wav',
+      modelPath: 'C:/models/ggml-large-v3.bin',
+      outputDirectory: 'C:/output'
+    }, 'C:/output/job_1', 'cpu');
+
+    expect(args).not.toContain('-t');
+  });
+});
 
 describe('parseWhisperProgressLine', () => {
   it('parses whisper.cpp progress output', () => {
@@ -42,6 +72,24 @@ describe('parseWhisperProgressLine', () => {
 });
 
 describe('parseWhisperJsonSegmentsPayload', () => {
+  it('preserves detected language metadata from whisper.cpp JSON', () => {
+    const output = parseWhisperJsonOutputPayload({
+      result: { language: 'ES' },
+      transcription: [
+        { text: ' Hola mundo', offsets: { from: 0, to: 1200 } }
+      ]
+    }, 'job_1');
+
+    expect(output.detectedLanguage).toBe('es');
+    expect(output.segments[0]).toMatchObject({
+      jobId: 'job_1',
+      index: 0,
+      startSeconds: 0,
+      endSeconds: 1.2,
+      text: 'Hola mundo'
+    });
+  });
+
   it('preserves word timing metadata from whisper.cpp JSON', () => {
     const segments = parseWhisperJsonSegmentsPayload({
       transcription: [

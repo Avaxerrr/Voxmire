@@ -23,6 +23,18 @@ export const transcriptionLanguageSchema = z.enum(['auto', 'en', 'es', 'fr', 'de
 
 export const transcriptionOutputModeSchema = z.enum(['transcribe', 'translate']);
 
+export const cpuThreadPreferenceSchema = z.union([z.literal('auto'), z.number().int().min(1).max(64)]);
+
+export const transcriptionSettingsSchema = z.object({
+  cpuThreadPreference: cpuThreadPreferenceSchema.default('auto')
+});
+
+export const updateTranscriptionSettingsInputSchema = z.object({
+  cpuThreadPreference: cpuThreadPreferenceSchema
+});
+
+export const detectedLanguageSchema = z.string().trim().min(1).nullable();
+
 export const modelIdSchema = z.enum(['small-q8_0', 'large-v3-turbo', 'large-v3', 'distil-large-v3.5', 'medium']);
 
 export const transcriptionPresetIdSchema = z.enum(['balanced', 'fast', 'quality', 'low-memory']);
@@ -57,6 +69,7 @@ export const transcriptionJobSchema = z.object({
   engineBackend: engineBackendSchema,
   language: transcriptionLanguageSchema.default('auto'),
   outputMode: transcriptionOutputModeSchema.default('transcribe'),
+  detectedLanguage: detectedLanguageSchema.default(null),
   progress: z.number().min(0).max(1),
   errorMessage: z.string().nullable(),
   createdAt: z.string().datetime(),
@@ -293,7 +306,8 @@ export const transcriptionProgressEventSchema = z.object({
   message: z.string().nullable(),
   segment: transcriptSegmentSchema.nullable(),
   engineRuntimeId: engineRuntimeIdSchema.nullable().optional(),
-  engineLabel: z.string().min(1).nullable().optional()
+  engineLabel: z.string().min(1).nullable().optional(),
+  detectedLanguage: detectedLanguageSchema.optional()
 });
 
 export const createJobInputSchema = z.object({
@@ -429,6 +443,10 @@ export type EngineBackend = z.infer<typeof engineBackendSchema>;
 export type EngineRuntimeId = z.infer<typeof engineRuntimeIdSchema>;
 export type TranscriptionLanguage = z.infer<typeof transcriptionLanguageSchema>;
 export type TranscriptionOutputMode = z.infer<typeof transcriptionOutputModeSchema>;
+export type CpuThreadPreference = z.infer<typeof cpuThreadPreferenceSchema>;
+export type TranscriptionSettings = z.infer<typeof transcriptionSettingsSchema>;
+export type UpdateTranscriptionSettingsInput = z.input<typeof updateTranscriptionSettingsInputSchema>;
+export type DetectedLanguage = z.infer<typeof detectedLanguageSchema>;
 export type ModelId = z.infer<typeof modelIdSchema>;
 export type TranscriptionPresetId = z.infer<typeof transcriptionPresetIdSchema>;
 export type TranscriptionPresetBackendPreference = z.infer<typeof transcriptionPresetBackendPreferenceSchema>;

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
   CreateJobResult,
+  CpuThreadPreference,
   EngineAvailability,
   EngineBackend,
   EngineRuntimeId,
@@ -20,6 +21,7 @@ import type {
   TranscriptSegment,
   TranscriptSegmentListResult,
   TranscriptionJob,
+  TranscriptionSettings,
   TranscriptionLanguage,
   TranscriptionOutputMode,
   TranscriptionPresetId,
@@ -37,6 +39,11 @@ const api = {
     toggleMaximize: (): Promise<boolean> => ipcRenderer.invoke('window:toggle-maximize'),
     close: (): Promise<void> => ipcRenderer.invoke('window:close'),
     isMaximized: (): Promise<boolean> => ipcRenderer.invoke('window:is-maximized')
+  },
+  settings: {
+    getTranscription: (): Promise<TranscriptionSettings> => ipcRenderer.invoke('settings:get-transcription'),
+    updateTranscription: (input: { cpuThreadPreference: CpuThreadPreference }): Promise<TranscriptionSettings> =>
+      ipcRenderer.invoke('settings:update-transcription', input)
   },
   system: {
     getEngineAvailability: (): Promise<EngineAvailability[]> => ipcRenderer.invoke('system:get-engine-availability'),

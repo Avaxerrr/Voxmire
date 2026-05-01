@@ -11,7 +11,7 @@ import { detectWhisperRuntime } from './machine-profile';
 import { AsyncValueQueue, runProcess } from './process-runner';
 import { whisperRuntimeDefinition } from './resources';
 import type { ResourcePaths, TranscriptionEngine, TranscriptionInput } from './types';
-import { readWhisperJsonSegments } from './whisper-json';
+import { readWhisperJsonOutput } from './whisper-json';
 import { parseWhisperProgressLine } from './whisper-progress';
 
 export class WhisperCppEngine implements TranscriptionEngine {
@@ -54,12 +54,7 @@ export class WhisperCppEngine implements TranscriptionEngine {
     };
 
     const outputBase = join(input.outputDirectory, input.outputBaseName ?? input.jobId);
-    const runtimeArgs = whisperRuntimeDefinition(this.runtimeId).extraArgs;
-    const args = ['-m', input.modelPath, '-f', input.sourcePath, '-l', input.language ?? 'auto', '-of', outputBase, '-oj', '-ojf', '-osrt', '-ovtt', '-pp'];
-    if ((input.outputMode ?? 'transcribe') === 'translate') {
-      args.push('-tr');
-    }
-    args.push(...runtimeArgs);
+    const args = buildWhisperCppArgs(input, outputBase, this.runtimeId);
     const progressQueue = new AsyncValueQueue<number>();
     let lastWhisperProgress = 0;
     const resultPromise = runProcess(
@@ -91,7 +86,8 @@ export class WhisperCppEngine implements TranscriptionEngine {
 
     const result = await resultPromise;
 
-    const parsedSegments = readWhisperJsonSegments(`${outputBase}.json`, input.jobId);
+    const parsedOutput = readWhisperJsonOutput(`${outputBase}.json`, input.jobId);
+    const parsedSegments = parsedOutput.segments;
     const fallbackSegment: TranscriptSegment = {
       id: `seg_${crypto.randomUUID()}`,
       jobId: input.jobId,
@@ -124,9 +120,23 @@ export class WhisperCppEngine implements TranscriptionEngine {
       message: 'Transcription completed.',
       segment: null,
       engineRuntimeId: this.runtimeId,
-      engineLabel: availability.label
+      engineLabel: availability.label,
+      detectedLanguage: parsedOutput.detectedLanguage
     };
   }
+}
+
+export function buildWhisperCppArgs(input: TranscriptionInput, outputBase: string, runtimeId: EngineRuntimeId): string[] {
+  const runtimeArgs = whisperRuntimeDefinition(runtimeId).extraArgs;
+  const args = ['-m', input.modelPath, '-f', input.sourcePath, '-l', input.language ?? 'auto', '-of', outputBase, '-oj', '-ojf', '-osrt', '-ovtt', '-pp'];
+  if ((input.outputMode ?? 'transcribe') === 'translate') {
+    args.push('-tr');
+  }
+  if (input.cpuThreads !== undefined) {
+    args.push('-t', input.cpuThreads.toString());
+  }
+  args.push(...runtimeArgs);
+  return args;
 }
 
 export class WhisperCppCpuEngine extends WhisperCppEngine {

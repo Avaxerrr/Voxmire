@@ -7,6 +7,7 @@ export {
   getJobWithSource,
   listJobs,
   renameProject,
+  updateJobDetectedLanguage,
   updateJobEngineBackend,
   updateJobProgress,
   updateJobStatus

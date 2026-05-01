@@ -21,6 +21,7 @@ export function createJobRecord(db: VoxmireDatabase, input: CreateJobRecordInput
     engineBackend: input.engineBackend ?? 'cpu',
     language: input.language ?? 'auto',
     outputMode: input.outputMode ?? 'transcribe',
+    detectedLanguage: null,
     progress: 0,
     errorMessage: null,
     createdAt: now,
@@ -37,8 +38,8 @@ export function createJobRecord(db: VoxmireDatabase, input: CreateJobRecordInput
     `).run(toSourceRow(sourceFile));
 
     db.prepare(`
-      INSERT INTO jobs (id, source_file_id, status, model_id, engine_backend, language, output_mode, progress, error_message, created_at, updated_at, completed_at)
-      VALUES (@id, @sourceFileId, @status, @modelId, @engineBackend, @language, @outputMode, @progress, @errorMessage, @createdAt, @updatedAt, @completedAt)
+      INSERT INTO jobs (id, source_file_id, status, model_id, engine_backend, language, output_mode, detected_language, progress, error_message, created_at, updated_at, completed_at)
+      VALUES (@id, @sourceFileId, @status, @modelId, @engineBackend, @language, @outputMode, @detectedLanguage, @progress, @errorMessage, @createdAt, @updatedAt, @completedAt)
     `).run(toJobRow(parsedJob));
     db.exec('COMMIT');
   } catch (error) {
@@ -139,6 +140,29 @@ export function updateJobStatus(
   return getJob(db, jobId);
 }
 
+export function updateJobDetectedLanguage(db: VoxmireDatabase, jobId: string, detectedLanguage: string): TranscriptionJob | null {
+  const normalized = normalizeDetectedLanguage(detectedLanguage);
+  if (!normalized) {
+    return getJob(db, jobId);
+  }
+
+  const current = getJob(db, jobId);
+  if (!current) {
+    return null;
+  }
+
+  const nextDetectedLanguage = current.detectedLanguage === null || current.detectedLanguage === normalized
+    ? normalized
+    : 'multiple';
+  db.prepare('UPDATE jobs SET detected_language = ?, updated_at = ? WHERE id = ?').run(
+    nextDetectedLanguage,
+    new Date().toISOString(),
+    jobId
+  );
+
+  return getJob(db, jobId);
+}
+
 export function updateJobEngineBackend(db: VoxmireDatabase, jobId: string, engineBackend: EngineBackend): TranscriptionJob | null {
   db.prepare('UPDATE jobs SET engine_backend = ?, updated_at = ? WHERE id = ?').run(
     engineBackend,
@@ -162,6 +186,11 @@ export function updateJobProgress(db: VoxmireDatabase, jobId: string, progress: 
 export function getJob(db: VoxmireDatabase, jobId: string): TranscriptionJob | null {
   const row = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
   return row ? parseJobRow(row) : null;
+}
+
+function normalizeDetectedLanguage(value: string): string | null {
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
 }
 
 function clampProgress(value: number): number {

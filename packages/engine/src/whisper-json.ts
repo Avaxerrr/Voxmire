@@ -26,17 +26,42 @@ type WhisperJsonToken = {
   t1?: number;
 };
 
-export function readWhisperJsonSegments(jsonPath: string, jobId: string): TranscriptSegment[] {
+type WhisperJsonPayload = {
+  result?: { language?: string };
+  transcription?: WhisperJsonSegment[];
+};
+
+export type WhisperJsonOutput = {
+  detectedLanguage: string | null;
+  segments: TranscriptSegment[];
+};
+
+export function readWhisperJsonOutput(jsonPath: string, jobId: string): WhisperJsonOutput {
   if (!existsSync(jsonPath)) {
-    return [];
+    return { detectedLanguage: null, segments: [] };
   }
 
-  return parseWhisperJsonSegmentsPayload(JSON.parse(readFileSync(jsonPath, 'utf8')), jobId);
+  return parseWhisperJsonOutputPayload(JSON.parse(readFileSync(jsonPath, 'utf8')), jobId);
+}
+
+export function readWhisperJsonSegments(jsonPath: string, jobId: string): TranscriptSegment[] {
+  return readWhisperJsonOutput(jsonPath, jobId).segments;
+}
+
+export function parseWhisperJsonOutputPayload(payload: unknown, jobId: string): WhisperJsonOutput {
+  const parsed = payload as WhisperJsonPayload;
+  return {
+    detectedLanguage: parseDetectedLanguage(parsed),
+    segments: parseWhisperJsonSegments(parsed.transcription, jobId)
+  };
 }
 
 export function parseWhisperJsonSegmentsPayload(payload: unknown, jobId: string): TranscriptSegment[] {
-  const parsed = payload as { transcription?: WhisperJsonSegment[] };
-  return (parsed.transcription ?? []).map((segment, index) => {
+  return parseWhisperJsonOutputPayload(payload, jobId).segments;
+}
+
+function parseWhisperJsonSegments(segments: WhisperJsonSegment[] | undefined, jobId: string): TranscriptSegment[] {
+  return (segments ?? []).map((segment, index) => {
     const wordTimings = parseWhisperWordTimings(segment);
     return {
       id: `seg_${crypto.randomUUID()}`,
@@ -51,6 +76,11 @@ export function parseWhisperJsonSegmentsPayload(payload: unknown, jobId: string)
       createdAt: new Date().toISOString()
     };
   });
+}
+
+function parseDetectedLanguage(payload: WhisperJsonPayload): string | null {
+  const language = payload.result?.language;
+  return typeof language === 'string' && language.trim() ? language.trim().toLowerCase() : null;
 }
 
 function parseWhisperWordTimings(segment: WhisperJsonSegment): TranscriptWordTiming[] {
