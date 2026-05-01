@@ -1,4 +1,4 @@
-import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
+import { type Dispatch, type ReactElement, type SetStateAction, useEffect, useMemo, useRef, useState } from 'react';
 import type { ExportFormat, ExportTextMode, JobWithSource, TranscriptSegment, TranscriptSegmentListResult } from '@voxmire/contracts';
 import { FindReplacePanel } from '../features/transcript/find-replace-panel';
 import { TranscriptHeader } from '../features/transcript/transcript-header';
@@ -8,6 +8,7 @@ import { TranscriptSwitcherDrawer } from '../features/transcript/transcript-swit
 import { useTranscriptHistory } from '../features/transcript/use-transcript-history';
 import { useTranscriptSearchReplace } from '../features/transcript/use-transcript-search-replace';
 import { ResetTranscriptModal } from '../components/project-dialogs';
+import type { TranscriptWorkspaceState } from '../features/transcript/transcript-workspace-state';
 import { applyMediaSeek } from '../features/media/media-seek';
 import { solverLabelForJob, type SolverLabelsByJobId } from '../lib/engines';
 import { buildPlaybackTimingDiagnostic, logPlaybackDiagnostic, logWordTimingDiagnostic, recordPlaybackTimingDiagnostic, usePlaybackDiagnosticsEnabled } from '../features/media/playback-diagnostics';
@@ -24,6 +25,7 @@ type MediaInfo = {
 };
 
 type TranscriptViewProps = {
+  active: boolean;
   busy: boolean;
   exportTranscript: (format: ExportFormat, textMode?: ExportTextMode) => Promise<void>;
   jobs: JobWithSource[];
@@ -41,6 +43,8 @@ type TranscriptViewProps = {
   segments: TranscriptSegment[];
   solverLabelsByJobId: SolverLabelsByJobId;
   setPlaying: (playing: boolean) => void;
+  setTranscriptWorkspaceState: Dispatch<SetStateAction<TranscriptWorkspaceState>>;
+  transcriptWorkspaceState: TranscriptWorkspaceState;
   splitSegment: (segmentId: string, offset: number) => Promise<TranscriptSegment[] | null>;
   mergeSegment: (segmentId: string, direction: 'previous' | 'next') => Promise<TranscriptSegment[] | null>;
   replaceSegments: (segments: TranscriptSegment[]) => Promise<TranscriptSegment[] | null>;
@@ -50,6 +54,7 @@ type TranscriptViewProps = {
 };
 
 export function TranscriptView({
+  active,
   busy,
   exportTranscript,
   jobs,
@@ -67,6 +72,8 @@ export function TranscriptView({
   segments,
   solverLabelsByJobId,
   setPlaying,
+  setTranscriptWorkspaceState,
+  transcriptWorkspaceState,
   splitSegment,
   mergeSegment,
   replaceSegments,
@@ -425,6 +432,7 @@ export function TranscriptView({
 
         <div className="transcript-main">
           <TranscriptStage
+            active={active}
             activeSearchSegmentId={activeFindSegment?.id ?? null}
             activeSegmentIndex={transcriptActiveSegmentIndex}
             busy={busy}
@@ -455,9 +463,11 @@ export function TranscriptView({
             progress={progress}
             resetSignal={editorResetSignal}
             searchQuery={findQuery}
+            setTranscriptWorkspaceState={setTranscriptWorkspaceState}
             selectedJob={selectedJob}
             selectedMediaKind={selectedMediaKind}
             solverLabel={selectedSolverLabel}
+            transcriptWorkspaceState={transcriptWorkspaceState}
             segments={segments}
             setPlaying={setPlaying}
             setVideoPreviewDock={setVideoPreviewDock}

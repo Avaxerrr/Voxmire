@@ -30,7 +30,7 @@ export type SegmentEditorController = {
   setCursorOffset: (offset: number) => void;
   setDraftText: (text: string) => void;
   splitSegment: (segment: TranscriptSegment, offset: number, currentIndex: number) => Promise<void>;
-  startEditing: (segment: TranscriptSegment) => void;
+  startEditing: (segment: TranscriptSegment, options?: { seek?: boolean }) => void;
 };
 
 export function useSegmentEditor({
@@ -45,6 +45,7 @@ export function useSegmentEditor({
 }: UseSegmentEditorOptions): SegmentEditorController {
   const [editingSegmentId, setEditingSegmentId] = useState<string | null>(null);
   const editingSegmentIdRef = useRef<string | null>(null);
+  const previousResetSignalRef = useRef(resetSignal);
   const [draftText, setDraftText] = useState('');
   const [savingSegmentId, setSavingSegmentId] = useState<string | null>(null);
   const [savingTimingSegmentId, setSavingTimingSegmentId] = useState<string | null>(null);
@@ -60,18 +61,20 @@ export function useSegmentEditor({
     setEditingSegmentId(nextSegmentId);
   }
 
-  function startEditing(segment: TranscriptSegment): void {
+  function startEditing(segment: TranscriptSegment, options: { seek?: boolean } = {}): void {
     if (editingSegmentIdRef.current === segment.id) {
       debugTranscriptInteraction('editor-start-existing', { segmentId: segment.id });
       return;
     }
 
-    debugTranscriptInteraction('editor-start', { segmentId: segment.id });
+    debugTranscriptInteraction('editor-start', { segmentId: segment.id, seek: options.seek !== false });
     setSaveErrorSegmentId(null);
     updateEditingSegmentId(segment.id);
     setDraftText(segment.text);
     setCursorOffset(segment.text.length);
-    onSeek(segment);
+    if (options.seek !== false) {
+      onSeek(segment);
+    }
   }
 
   function cancelEditing(): void {
@@ -227,6 +230,11 @@ export function useSegmentEditor({
   }
 
   useEffect(() => {
+    if (previousResetSignalRef.current === resetSignal) {
+      return;
+    }
+
+    previousResetSignalRef.current = resetSignal;
     updateEditingSegmentId(null);
     setDraftText('');
     setCursorOffset(0);

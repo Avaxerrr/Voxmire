@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TranscriptSegment, TranscriptSegmentListResult } from '@voxmire/contracts';
 import { isEditableHistoryShortcutTarget } from '../../lib/keyboard';
 import { replaceSegmentInTranscriptSnapshot, transcriptSegmentsEqual, type TranscriptHistoryEntry } from '../../lib/transcript-history';
@@ -49,6 +49,7 @@ export function useTranscriptHistory({
   const [redoStack, setRedoStack] = useState<TranscriptHistoryEntry[]>([]);
   const [historyBusy, setHistoryBusy] = useState(false);
   const [editorResetSignal, setEditorResetSignal] = useState(0);
+  const previousSelectedJobIdRef = useRef(selectedJobId);
 
   const rememberTranscriptHistory = useCallback((label: string, before: TranscriptSegment[], after: TranscriptSegment[]): void => {
     if (transcriptSegmentsEqual(before, after)) {
@@ -164,6 +165,11 @@ export function useTranscriptHistory({
   }, [rememberTranscriptHistory, resetSegments, resettingTranscript, segments]);
 
   useEffect(() => {
+    if (previousSelectedJobIdRef.current === selectedJobId) {
+      return;
+    }
+
+    previousSelectedJobIdRef.current = selectedJobId;
     setUndoStack([]);
     setRedoStack([]);
     setEditorResetSignal((value) => value + 1);
