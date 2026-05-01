@@ -422,13 +422,13 @@ export class VoxmireRuntime {
       }
 
       startJobProcessingSession(this.options.db, jobId);
-      this.updateAndEmit(jobId, 'preparing', 0.05, 'Preparing local transcription job.');
+      this.updateAndEmit(jobId, 'preparing', 0, 'Preparing audio...');
       this.log({
         level: 'info',
         event: 'job.prepare.started',
         jobId,
         chunkId: null,
-        message: 'Preparing local transcription job.',
+        message: 'Preparing audio...',
         details: { sourcePath: jobWithSource.sourceFile.path }
       });
 
@@ -453,7 +453,7 @@ export class VoxmireRuntime {
         details: { chunkCount: chunks.length }
       });
 
-      this.updateAndEmit(jobId, 'transcribing', 0.1, 'Starting local transcription engine.');
+      this.updateAndEmit(jobId, 'transcribing', 0, 'Starting local transcription engine.');
       this.log({
         level: 'info',
         event: 'job.transcribe.started',

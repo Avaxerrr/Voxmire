@@ -29,7 +29,7 @@ import { SettingsView } from './views/settings-view';
 import { TranscriptView } from './views/transcript-view';
 import { exportResultLabel, extractDirectoryPath } from './lib/format';
 import { progressEventSolverLabel, solverLabelForJob, type SolverLabelsByJobId } from './lib/engines';
-import { activeStatuses } from './lib/job-status';
+import { activeStatuses, jobProgressLabel } from './lib/job-status';
 import { readCachedSetupSummary, writeCachedSetupSummary, type CachedSetupSummary } from './lib/setup-cache';
 import { fallbackModels, modelLabel, resolveBackendPreference, resolvePresetSelection, selectUsablePreset, type BackendPreference } from './lib/presets';
 
@@ -129,7 +129,7 @@ export function App(): ReactElement {
     if (activeJob) {
       return {
         tone: 'active' as StatusTone,
-        text: `${activeJob.sourceFile.name} / ${Math.round(activeJob.job.progress * 100)}%${activeJobSolverLabel ? ` / ${activeJobSolverLabel}` : ''}`
+        text: `${activeJob.sourceFile.name} / ${jobProgressLabel(activeJob.job.status, activeJob.job.progress)}${activeJobSolverLabel ? ` / ${activeJobSolverLabel}` : ''}`
       };
     }
 
@@ -347,7 +347,7 @@ export function App(): ReactElement {
     if (solverLabel) {
       setSolverLabelsByJobId((current) => current[event.jobId] === solverLabel ? current : { ...current, [event.jobId]: solverLabel });
     }
-    setMessage(event.message);
+    setMessage(shouldShowProgressToast(event) ? event.message : null);
     if (!api) {
       return;
     }
@@ -901,6 +901,11 @@ export function App(): ReactElement {
   );
 }
 
+function shouldShowProgressToast(event: TranscriptionProgressEvent): boolean {
+  return event.status !== 'queued' && event.status !== 'preparing' && event.status !== 'transcribing' && Boolean(event.message);
+}
+
 function setupSummaryLabel(summary: CachedSetupSummary): string {
   return `${summary.modelLabel} / ${summary.backend.toUpperCase()}`;
 }
+

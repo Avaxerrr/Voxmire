@@ -46,8 +46,10 @@ export async function prepareJobChunks(
 
 export function calculateChunkedProgress(chunkIndex: number, chunkCount: number, chunkProgress: number): number {
   const safeChunkCount = Math.max(1, chunkCount);
-  const transcribeProgress = (chunkIndex + Math.max(0, Math.min(1, chunkProgress))) / safeChunkCount;
-  return Math.max(0.1, Math.min(0.99, 0.1 + transcribeProgress * 0.89));
+  const safeChunkIndex = Math.max(0, Math.min(safeChunkCount - 1, chunkIndex));
+  const safeChunkProgress = Math.max(0, Math.min(1, chunkProgress));
+  const transcribeProgress = (safeChunkIndex + safeChunkProgress) / safeChunkCount;
+  return Math.max(0, Math.min(0.99, transcribeProgress));
 }
 
 export function offsetSegment(segment: TranscriptSegment, chunk: TranscriptionChunk, index: number): TranscriptSegment {

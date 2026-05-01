@@ -3,7 +3,7 @@ import { AlertTriangle, FileAudio, FileVideo, Pencil, RotateCcw, Trash2, UploadC
 import type { JobWithSource, MachineProfile, ModelProfile, ProjectDetails, ResourceStatus, TranscriptionPresetId } from '@voxmire/contracts';
 import { EmptyState } from './empty-state';
 import { formatDateTime, formatDuration, formatDurationMs, formatFileSize } from '../lib/format';
-import { statusLabel } from '../lib/job-status';
+import { jobProgressLabel, statusLabel } from '../lib/job-status';
 import { mediaKindFromExtension, mediaKindLabel } from '../lib/media-kind';
 import { backendOptions, presetModelOptionLabel, visiblePresetOptions, type BackendPreference, type ResolvedTranscriptionPreset } from '../lib/presets';
 
@@ -126,7 +126,7 @@ export function ProjectDetailsDrawer({ details, loading, onClose, onDelete, onRe
 
             <dl className="details-grid">
               <div><dt>Status</dt><dd>{statusLabel(details.job.status)}</dd></div>
-              <div><dt>Progress</dt><dd>{Math.round(details.job.progress * 100)}%</dd></div>
+              <div><dt>Progress</dt><dd>{jobProgressLabel(details.job.status, details.job.progress)}</dd></div>
               <div><dt>Model</dt><dd>{details.job.modelId}</dd></div>
               <div><dt>Backend</dt><dd>{details.job.engineBackend.toUpperCase()}</dd></div>
               <div><dt>Solver</dt><dd>{solverLabel ?? details.job.engineBackend.toUpperCase()}</dd></div>

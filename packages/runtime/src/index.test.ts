@@ -10,6 +10,21 @@ import {
   updateJobStatus
 } from '@voxmire/storage';
 import { createVoxmireRuntime } from './index';
+import { calculateChunkedProgress } from './transcription-chunks';
+
+describe('calculateChunkedProgress', () => {
+  it('maps single-chunk whisper progress across the transcription range', () => {
+    expect(calculateChunkedProgress(0, 1, 0)).toBe(0);
+    expect(calculateChunkedProgress(0, 1, 0.5)).toBe(0.5);
+    expect(calculateChunkedProgress(0, 1, 1)).toBe(0.99);
+  });
+
+  it('combines chunk index and current whisper progress for long jobs', () => {
+    expect(calculateChunkedProgress(0, 6, 0.5)).toBeCloseTo(0.083333, 5);
+    expect(calculateChunkedProgress(3, 6, 0)).toBe(0.5);
+    expect(calculateChunkedProgress(5, 6, 1)).toBe(0.99);
+  });
+});
 
 describe('VoxmireRuntime', () => {
   it('creates jobs and exports transcripts without Electron', async () => {

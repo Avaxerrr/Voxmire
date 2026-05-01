@@ -1,6 +1,6 @@
 import type { JobWithSource, TranscriptSegment } from '@voxmire/contracts';
 import { formatDuration } from '../../lib/format';
-import { activeStatuses, statusLabel } from '../../lib/job-status';
+import { activeStatuses, jobProgressLabel } from '../../lib/job-status';
 import { mediaKindLabel, type MediaKind } from '../../lib/media-kind';
 
 const timestampSeekPreferenceToleranceSeconds = 0.05;
@@ -63,9 +63,9 @@ export function findActiveSegmentIndex(segments: TranscriptSegment[], time: numb
   return candidate;
 }
 
-export function transcriptSubtitle(job: JobWithSource, progress: number, mediaKind: MediaKind, solverLabel: string | null = null): string {
+export function transcriptSubtitle(job: JobWithSource, mediaKind: MediaKind, solverLabel: string | null = null): string {
   if (activeStatuses.includes(job.job.status) || job.job.status === 'paused') {
-    return `${statusLabel(job.job.status)} / ${progress}%${solverLabel ? ` / ${solverLabel}` : ''}`;
+    return `${jobProgressLabel(job.job.status, job.job.progress)}${solverLabel ? ` / ${solverLabel}` : ''}`;
   }
 
   if (job.job.status === 'failed') {

@@ -1,7 +1,7 @@
 import { type ReactElement } from 'react';
 import { AlertTriangle, Pause, Play, Square } from 'lucide-react';
 import type { JobWithSource } from '@voxmire/contracts';
-import { activeStatuses, statusLabel } from '../../lib/job-status';
+import { activeStatuses, jobProgressLabel, shouldShowTranscriptionProgress } from '../../lib/job-status';
 
 type TranscriptJobStatusProps = {
   job: JobWithSource;
@@ -18,6 +18,8 @@ export function TranscriptJobStatus({ job, onCancel, onPause, onResume, progress
   const isResumable = job.job.status === 'paused';
   const isWorking = activeStatuses.includes(job.job.status);
   const showJobProgressRow = isWorking || isResumable;
+  const showProgressBar = shouldShowTranscriptionProgress(job.job.status, job.job.progress);
+  const showPartialTranscriptNote = job.job.status === 'transcribing';
 
   return (
     <>
@@ -25,12 +27,15 @@ export function TranscriptJobStatus({ job, onCancel, onPause, onResume, progress
         <div className="job-progress-row">
           <div className="job-progress-stack">
             <div className="job-progress-meta">
-              <span>{statusLabel(job.job.status)} / {progress}%</span>
+              <span>{jobProgressLabel(job.job.status, job.job.progress)}</span>
               {solverLabel ? <strong>{solverLabel}</strong> : null}
             </div>
-            <div className={`progress-track ${isWorking ? 'working' : ''}`} aria-label="Progress">
-              <div style={{ width: `${progress}%` }} />
-            </div>
+            {showProgressBar ? (
+              <div className={`progress-track ${isWorking ? 'working' : ''}`} aria-label="Transcription progress">
+                <div style={{ width: `${progress}%` }} />
+              </div>
+            ) : null}
+            {showPartialTranscriptNote ? <p className="job-progress-note">Transcript text below is partial until transcription completes.</p> : null}
           </div>
           <div className="job-inline-actions" aria-label="Transcription controls">
             {isPausable ? (
@@ -58,3 +63,4 @@ export function TranscriptJobStatus({ job, onCancel, onPause, onResume, progress
     </>
   );
 }
+

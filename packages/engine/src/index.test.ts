@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { runProcess } from './process-runner';
 import {
   cleanupStaleWhisperModelDownloads,
   cleanupStaleWhisperRuntimeDownloads,
@@ -23,6 +24,20 @@ describe('parseWhisperProgressLine', () => {
 
   it('ignores unrelated output', () => {
     expect(parseWhisperProgressLine('whisper_init_from_file_with_params: loading model')).toBeNull();
+  });
+
+  it('parses progress when process output arrives in partial chunks', async () => {
+    const tempDirectory = mkdtempSync(join(tmpdir(), 'voxmire-progress-'));
+    const scriptPath = join(tempDirectory, 'progress.cjs');
+    writeFileSync(
+      scriptPath,
+      "process.stderr.write('whisper_full_with_state: progress =  ');\nsetTimeout(() => { process.stderr.write('14%\\n'); }, 10);\n"
+    );
+    const lines: string[] = [];
+
+    await runProcess(process.execPath, [scriptPath], (line) => lines.push(line));
+
+    expect(lines.map(parseWhisperProgressLine).filter((progress) => progress !== null)).toEqual([0.14]);
   });
 });
 

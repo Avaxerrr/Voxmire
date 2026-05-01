@@ -100,15 +100,17 @@ export function runProcess(
     signal?.addEventListener('abort', abort, { once: true });
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
+    const stdoutLines = createLineEmitter(onLine);
+    const stderrLines = createLineEmitter(onLine);
 
     child.stdout.on('data', (chunk: string) => {
       stdoutChunks.push(chunk);
-      emitLines(chunk, onLine);
+      stdoutLines.push(chunk);
     });
 
     child.stderr.on('data', (chunk: string) => {
       stderrChunks.push(chunk);
-      emitLines(chunk, onLine);
+      stderrLines.push(chunk);
     });
 
     child.on('error', (error) => {
@@ -118,6 +120,8 @@ export function runProcess(
 
     child.on('close', (code: number | null) => {
       signal?.removeEventListener('abort', abort);
+      stdoutLines.flush();
+      stderrLines.flush();
       const stdout = stdoutChunks.join('');
       const stderr = stderrChunks.join('');
 
@@ -136,14 +140,33 @@ export function runProcess(
   });
 }
 
-function emitLines(chunk: string, onLine?: (line: string) => void): void {
-  if (!onLine) {
-    return;
-  }
+function createLineEmitter(onLine?: (line: string) => void): { push: (chunk: string) => void; flush: () => void } {
+  let pending = '';
 
-  for (const line of chunk.split(/\r\n|\n|\r/)) {
-    if (line.trim()) {
-      onLine(line);
+  return {
+    push(chunk: string): void {
+      if (!onLine) {
+        return;
+      }
+
+      pending += chunk;
+      const lines = pending.split(/\r\n|\n|\r/);
+      pending = lines.pop() ?? '';
+
+      for (const line of lines) {
+        if (line.trim()) {
+          onLine(line);
+        }
+      }
+    },
+    flush(): void {
+      if (!onLine || !pending.trim()) {
+        pending = '';
+        return;
+      }
+
+      onLine(pending);
+      pending = '';
     }
-  }
+  };
 }

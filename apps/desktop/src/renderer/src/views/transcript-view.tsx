@@ -106,7 +106,7 @@ export function TranscriptView({
   const progress = selectedJob ? Math.round(selectedJob.job.progress * 100) : 0;
   const selectedMediaKind = selectedJob ? mediaInfo?.kind ?? mediaKindFromExtension(selectedJob.sourceFile.extension) : 'audio';
   const selectedSolverLabel = selectedJob ? solverLabelForJob(selectedJob, solverLabelsByJobId[selectedJob.job.id]) : null;
-  const selectedSubtitle = selectedJob ? transcriptSubtitle(selectedJob, progress, selectedMediaKind, selectedSolverLabel) : 'Choose a project from Library or import a recording.';
+  const selectedSubtitle = selectedJob ? transcriptSubtitle(selectedJob, selectedMediaKind, selectedSolverLabel) : 'Choose a project from Library or import a recording.';
   const activeSegmentIndex = useMemo(() => findActiveSegmentIndex(segments, playbackTime), [playbackTime, segments]);
   const preferredActiveSegmentIndex = useMemo(
     () => preferredActiveSegmentIndexForPlayback(segments, playbackTime, preferredActiveSegment),

@@ -273,6 +273,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.job-progress-note {
+  margin: -1px 0 0;
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.35;
+}
 .job-inline-actions {
   display: inline-flex;
   align-items: center;
@@ -598,3 +604,4 @@
 .segment-save-state.error {
   color: #fca5a5;
 }
+
