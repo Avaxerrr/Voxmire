@@ -17,7 +17,7 @@ import {
 
 export function jobColumns(): string {
   return `j.id AS job_id, j.source_file_id AS job_source_file_id, j.status AS job_status, j.model_id AS job_model_id,
-    j.engine_backend AS job_engine_backend, j.progress AS job_progress, j.error_message AS job_error_message,
+    j.engine_backend AS job_engine_backend, j.language AS job_language, j.progress AS job_progress, j.error_message AS job_error_message,
     j.created_at AS job_created_at, j.updated_at AS job_updated_at, j.completed_at AS job_completed_at`;
 }
 
@@ -35,6 +35,7 @@ export function parseJobWithSourceRow(row: unknown): JobWithSource {
       status: value.job_status,
       modelId: value.job_model_id,
       engineBackend: value.job_engine_backend,
+      language: value.job_language ?? 'auto',
       progress: value.job_progress,
       errorMessage: value.job_error_message,
       createdAt: value.job_created_at,
@@ -61,6 +62,7 @@ export function parseJobRow(row: unknown): TranscriptionJob {
     status: value.status,
     modelId: value.model_id,
     engineBackend: value.engine_backend,
+    language: value.language ?? 'auto',
     progress: value.progress,
     errorMessage: value.error_message,
     createdAt: value.created_at,
@@ -126,6 +128,7 @@ export function toJobRow(job: TranscriptionJob): Record<string, SQLInputValue> {
     status: job.status,
     modelId: job.modelId,
     engineBackend: job.engineBackend,
+    language: job.language,
     progress: job.progress,
     errorMessage: job.errorMessage,
     createdAt: job.createdAt,

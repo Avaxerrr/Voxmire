@@ -19,6 +19,7 @@ export function createJobRecord(db: VoxmireDatabase, input: CreateJobRecordInput
     status: 'queued',
     modelId: input.modelId,
     engineBackend: input.engineBackend ?? 'cpu',
+    language: input.language ?? 'auto',
     progress: 0,
     errorMessage: null,
     createdAt: now,
@@ -35,8 +36,8 @@ export function createJobRecord(db: VoxmireDatabase, input: CreateJobRecordInput
     `).run(toSourceRow(sourceFile));
 
     db.prepare(`
-      INSERT INTO jobs (id, source_file_id, status, model_id, engine_backend, progress, error_message, created_at, updated_at, completed_at)
-      VALUES (@id, @sourceFileId, @status, @modelId, @engineBackend, @progress, @errorMessage, @createdAt, @updatedAt, @completedAt)
+      INSERT INTO jobs (id, source_file_id, status, model_id, engine_backend, language, progress, error_message, created_at, updated_at, completed_at)
+      VALUES (@id, @sourceFileId, @status, @modelId, @engineBackend, @language, @progress, @errorMessage, @createdAt, @updatedAt, @completedAt)
     `).run(toJobRow(parsedJob));
     db.exec('COMMIT');
   } catch (error) {

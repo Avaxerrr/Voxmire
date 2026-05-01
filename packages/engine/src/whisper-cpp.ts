@@ -55,7 +55,7 @@ export class WhisperCppEngine implements TranscriptionEngine {
 
     const outputBase = join(input.outputDirectory, input.outputBaseName ?? input.jobId);
     const runtimeArgs = whisperRuntimeDefinition(this.runtimeId).extraArgs;
-    const args = ['-m', input.modelPath, '-f', input.sourcePath, '-of', outputBase, '-oj', '-ojf', '-osrt', '-ovtt', '-pp', ...runtimeArgs];
+    const args = ['-m', input.modelPath, '-f', input.sourcePath, '-l', input.language ?? 'auto', '-of', outputBase, '-oj', '-ojf', '-osrt', '-ovtt', '-pp', ...runtimeArgs];
     const progressQueue = new AsyncValueQueue<number>();
     let lastWhisperProgress = 0;
     const resultPromise = runProcess(

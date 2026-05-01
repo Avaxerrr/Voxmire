@@ -27,6 +27,7 @@ export function runMigrations(db: VoxmireDatabase): void {
       status TEXT NOT NULL,
       model_id TEXT NOT NULL,
       engine_backend TEXT NOT NULL,
+      language TEXT NOT NULL DEFAULT 'auto',
       progress REAL NOT NULL,
       error_message TEXT,
       created_at TEXT NOT NULL,
@@ -105,6 +106,7 @@ export function runMigrations(db: VoxmireDatabase): void {
   ensureColumn(db, 'transcript_segments', 'edited_at', 'TEXT');
   ensureColumn(db, 'transcript_segments', 'word_timings', 'TEXT');
   ensureColumn(db, 'transcript_segments', 'alignment_status', 'TEXT');
+  ensureColumn(db, 'jobs', 'language', "TEXT NOT NULL DEFAULT 'auto'");
   ensureColumn(db, 'transcription_chunks', 'started_at', 'TEXT');
   ensureColumn(db, 'transcription_chunks', 'runtime_id', 'TEXT');
   ensureColumn(db, 'transcription_chunks', 'processing_duration_ms', 'INTEGER');

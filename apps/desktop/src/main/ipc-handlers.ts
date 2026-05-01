@@ -134,7 +134,8 @@ export function registerIpcHandlers(options: RegisterIpcHandlersOptions): void {
     return runtime.createTranscriptionJob({
       sourcePath: selectedPath,
       modelId: selection.modelId,
-      engineBackend: selection.engineBackend
+      engineBackend: selection.engineBackend,
+      language: input.language
     });
   });
 

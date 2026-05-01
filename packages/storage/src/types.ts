@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import type { EngineBackend, ModelId, SourceFile, TranscriptSegment } from '@voxmire/contracts';
+import type { EngineBackend, ModelId, SourceFile, TranscriptionLanguage, TranscriptSegment } from '@voxmire/contracts';
 
 export type VoxmireDatabase = DatabaseSync;
 
@@ -7,6 +7,7 @@ export type CreateJobRecordInput = {
   sourceFile: SourceFile;
   modelId: ModelId;
   engineBackend?: EngineBackend;
+  language?: TranscriptionLanguage;
 };
 
 export type TranscriptSegmentListUpdate = {

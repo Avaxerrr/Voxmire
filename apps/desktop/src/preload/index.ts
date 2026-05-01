@@ -20,6 +20,7 @@ import type {
   TranscriptSegment,
   TranscriptSegmentListResult,
   TranscriptionJob,
+  TranscriptionLanguage,
   TranscriptionPresetId,
   TranscriptionProgressEvent
 } from '@voxmire/contracts';
@@ -49,7 +50,7 @@ const api = {
     install: (modelId: ModelId): Promise<ModelInstallResult> => ipcRenderer.invoke('models:install', { modelId })
   },
   jobs: {
-    create: (input?: { presetId?: TranscriptionPresetId; modelId?: string; engineBackend?: EngineBackend }): Promise<CreateJobResult | null> => ipcRenderer.invoke('jobs:create', input ?? {}),
+    create: (input?: { presetId?: TranscriptionPresetId; modelId?: string; engineBackend?: EngineBackend; language?: TranscriptionLanguage }): Promise<CreateJobResult | null> => ipcRenderer.invoke('jobs:create', input ?? {}),
     list: (): Promise<JobWithSource[]> => ipcRenderer.invoke('jobs:list'),
     get: (jobId: string): Promise<JobWithSource | null> => ipcRenderer.invoke('jobs:get', jobId),
     cancel: (jobId: string): Promise<TranscriptionJob | null> => ipcRenderer.invoke('jobs:cancel', jobId),

@@ -1,4 +1,4 @@
-import type { EngineBackend, ExportTextMode, ModelId, TranscriptionProgressEvent } from '@voxmire/contracts';
+import type { EngineBackend, ExportTextMode, ModelId, TranscriptionLanguage, TranscriptionProgressEvent } from '@voxmire/contracts';
 import type { ResourcePaths } from '@voxmire/engine';
 import type { VoxmireDatabase } from '@voxmire/storage';
 
@@ -37,6 +37,7 @@ export type CreateTranscriptionJobInput = {
   sourcePath: string;
   modelId: ModelId;
   engineBackend?: EngineBackend;
+  language?: TranscriptionLanguage;
   startImmediately?: boolean;
 };
 

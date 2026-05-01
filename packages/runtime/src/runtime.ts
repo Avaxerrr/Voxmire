@@ -11,6 +11,7 @@ import type {
   TranscriptionChunkStatus,
   TranscriptionJob,
   TranscriptionProgressEvent,
+  TranscriptionLanguage,
   TranscriptSegment
 } from '@voxmire/contracts';
 import { defaultModelPath } from '@voxmire/engine';
@@ -226,7 +227,8 @@ export class VoxmireRuntime {
     const created = createJobRecord(this.options.db, {
       sourceFile,
       modelId: input.modelId,
-      engineBackend: input.engineBackend ?? 'cpu'
+      engineBackend: input.engineBackend ?? 'cpu',
+      language: input.language ?? 'auto'
     });
     this.log({
       level: 'info',
@@ -237,7 +239,8 @@ export class VoxmireRuntime {
       details: {
         sourcePath: sourceFile.path,
         modelId: input.modelId,
-        engineBackend: input.engineBackend ?? 'cpu'
+        engineBackend: input.engineBackend ?? 'cpu',
+        language: input.language ?? 'auto'
       }
     });
 
@@ -494,6 +497,7 @@ export class VoxmireRuntime {
           chunk,
           chunks,
           modelPath,
+          language: jobWithSource.job.language,
           outputDirectory,
           abortController,
           activeJob,
@@ -550,6 +554,7 @@ export class VoxmireRuntime {
     chunk: TranscriptionChunk;
     chunks: TranscriptionChunk[];
     modelPath: string;
+    language: TranscriptionLanguage;
     outputDirectory: string;
     abortController: AbortController;
     activeJob: ActiveJob;
@@ -588,6 +593,7 @@ export class VoxmireRuntime {
           jobId: options.jobId,
           sourcePath: options.chunk.filePath,
           modelPath: options.modelPath,
+          language: options.language,
           outputDirectory: options.outputDirectory,
           outputBaseName: `${options.jobId}-chunk-${options.chunk.index.toString().padStart(4, '0')}-${candidate.engine.runtimeId}`,
           signal: options.abortController.signal

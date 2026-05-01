@@ -15,6 +15,7 @@ import type {
   RuntimeInstallStatus,
   TranscriptSegment,
   TranscriptSegmentListResult,
+  TranscriptionLanguage,
   TranscriptionPresetId,
   TranscriptionProgressEvent
 } from '@voxmire/contracts';
@@ -55,6 +56,7 @@ export function App(): ReactElement {
   const [machineProfile, setMachineProfile] = useState<MachineProfile | null>(null);
   const [selectedPresetId, setSelectedPresetId] = useState<TranscriptionPresetId>('balanced');
   const [selectedBackendPreference, setSelectedBackendPreference] = useState<BackendPreference>('auto');
+  const [selectedLanguage, setSelectedLanguage] = useState<TranscriptionLanguage>('auto');
   const [solverLabelsByJobId, setSolverLabelsByJobId] = useState<SolverLabelsByJobId>({});
   const [jobs, setJobs] = useState<JobWithSource[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -387,7 +389,8 @@ export function App(): ReactElement {
     try {
       const created = await api.jobs.create({
         modelId: selectedPresetResolution.modelId,
-        engineBackend: selectedEngineBackend
+        engineBackend: selectedEngineBackend,
+        language: selectedLanguage
       });
       if (created) {
         const updated = await api.jobs.list();
@@ -853,9 +856,11 @@ export function App(): ReactElement {
           onClose={() => setImportOpen(false)}
           machineProfile={machineProfile}
           selectedBackendPreference={selectedBackendPreference}
+          selectedLanguage={selectedLanguage}
           selectedPresetId={selectedPresetId}
           selectedPresetResolution={selectedPresetResolution}
           setSelectedBackendPreference={setSelectedBackendPreference}
+          setSelectedLanguage={setSelectedLanguage}
           setSelectedPresetId={setSelectedPresetId}
           setupLoading={systemLoading}
         />
@@ -908,4 +913,3 @@ function shouldShowProgressToast(event: TranscriptionProgressEvent): boolean {
 function setupSummaryLabel(summary: CachedSetupSummary): string {
   return `${summary.modelLabel} / ${summary.backend.toUpperCase()}`;
 }
-
