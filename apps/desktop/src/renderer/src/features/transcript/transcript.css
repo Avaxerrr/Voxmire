@@ -386,7 +386,7 @@
   width: 100%;
   padding-bottom: 18px;
 }
-.segment-row { position: relative; display: grid; grid-template-columns: 184px minmax(0, 1fr); align-items: start; gap: 20px; width: 100%; padding: 15px 16px; border: 0; border-left: 2px solid transparent; border-radius: 8px; color: inherit; background: transparent; text-align: left; }
+.segment-row { position: relative; display: grid; grid-template-columns: 184px minmax(0, 1fr); align-items: start; gap: 20px; width: 100%; padding: 15px 16px; border: 0; border-left: 2px solid transparent; border-radius: 8px; color: inherit; background: transparent; text-align: left; transition: border-color 140ms ease, background 140ms ease; }
 .transcript-stage:not(.preview-side) .segment-row {
   grid-template-columns: minmax(0, 1fr);
   justify-items: center;
@@ -410,20 +410,19 @@
 .transcript-stage:not(.preview-side) .segment-structure-tools {
   justify-content: center;
 }
-.transcript-stage:not(.preview-side) .segment-row.active,
-.transcript-stage:not(.preview-side) .segment-row:hover,
-.transcript-stage:not(.preview-side) .segment-row.search-current,
-.transcript-stage:not(.preview-side) .segment-row.editing {
-  border: 1px solid rgba(168, 85, 247, 0.42);
-  background: linear-gradient(90deg, rgba(168, 85, 247, 0.12), rgba(34, 211, 238, 0.055));
-  box-shadow: inset 0 0 0 1px rgba(168, 85, 247, 0.08);
+
+.segment-row.active {
+  background: rgba(168, 85, 247, 0.032);
 }
-.segment-row.active,
-.segment-row:hover { border-left-color: var(--violet); background: linear-gradient(90deg, rgba(168, 85, 247, 0.09), transparent 72%); }
-.segment-row.search-match { border-left-color: var(--cyan); background: linear-gradient(90deg, rgba(34, 211, 238, 0.08), transparent 72%); }
+.segment-row.search-match {
+  background: rgba(34, 211, 238, 0.035);
+}
 .segment-row.search-current {
-  border-left-color: var(--violet-strong);
-  background: linear-gradient(90deg, rgba(168, 85, 247, 0.18), rgba(34, 211, 238, 0.08) 70%, transparent);
+  border-left-color: var(--cyan);
+  background: linear-gradient(90deg, rgba(34, 211, 238, 0.08), rgba(168, 85, 247, 0.045) 52%, rgba(34, 211, 238, 0.025));
+}
+.segment-row:hover {
+  background: rgba(168, 85, 247, 0.12);
 }
 .segment-row:focus-visible { outline: 2px solid rgba(34, 211, 238, 0.5); outline-offset: 2px; }
 .segment-row time { color: var(--faint); font-family: "Fira Code", Consolas, monospace; font-size: 11px; font-weight: 500; }
@@ -503,7 +502,7 @@
   opacity: 0.28;
 }
 .segment-row.editing {
-  background: linear-gradient(90deg, rgba(168, 85, 247, 0.12), rgba(34, 211, 238, 0.04) 72%);
+  background: rgba(168, 85, 247, 0.04);
 }
 .segment-edit-stack {
   display: grid;
@@ -557,11 +556,6 @@
   border-color: rgba(168, 85, 247, 0.28);
   background: linear-gradient(90deg, rgba(168, 85, 247, 0.18), rgba(34, 211, 238, 0.055));
   box-shadow: inset 0 0 0 1px rgba(168, 85, 247, 0.16), 0 0 18px rgba(168, 85, 247, 0.12);
-}
-.transcript-stage:not(.preview-side) .segment-text-display.playback-active {
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
 }
 .segment-text-display:focus-visible {
   outline: none;
