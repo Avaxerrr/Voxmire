@@ -2,6 +2,7 @@ import { type ReactElement, useState } from 'react';
 import { AlertTriangle, FileAudio, FileVideo, Pencil, RotateCcw, Trash2, UploadCloud, X } from 'lucide-react';
 import type { JobWithSource, MachineProfile, ModelProfile, ProjectDetails, ResourceStatus, TranscriptionLanguage, TranscriptionOutputMode, TranscriptionPresetId } from '@voxmire/contracts';
 import { EmptyState } from './empty-state';
+import { SelectField, type SelectOption } from './select-field';
 import { formatDateTime, formatDuration, formatDurationMs, formatFileSize } from '../lib/format';
 import { jobProgressLabel, statusLabel } from '../lib/job-status';
 import { mediaKindFromExtension, mediaKindLabel } from '../lib/media-kind';
@@ -36,6 +37,27 @@ export function ImportModal({ busy, createJob, machineProfile, models, resources
   const outputModeNote = selectedOutputMode === 'translate'
     ? 'Translate to English outputs English only. Turbo is disabled here because it returns source-language text instead of translation.'
     : 'Auto detects one dominant language per job. Original-language transcription is usually more accurate than translation.';
+  const fieldsDisabled = setupLoading || busy;
+  const modelSelectOptions: Array<SelectOption<TranscriptionPresetId>> = presetOptions.map((preset) => ({
+    label: presetModelOptionLabel(models, preset),
+    value: preset.id
+  }));
+  const backendSelectOptions: Array<SelectOption<BackendPreference>> = [
+    { label: `Auto (${selectedPresetResolution.engineBackend.toUpperCase()})`, value: 'auto' },
+    ...backendOptions(machineProfile).map((backend) => ({
+      disabled: !backend.available,
+      label: `${backend.label}${backend.available ? '' : ' unavailable'}`,
+      value: backend.backend
+    }))
+  ];
+  const languageSelectOptions: Array<SelectOption<TranscriptionLanguage>> = transcriptionLanguageOptions.map((language) => ({
+    label: language.label,
+    value: language.id
+  }));
+  const outputSelectOptions: Array<SelectOption<TranscriptionOutputMode>> = transcriptionOutputModeOptions.map((mode) => ({
+    label: mode.selectLabel ?? mode.label,
+    value: mode.id
+  }));
 
   return (
     <div className="modal-backdrop" role="presentation">
@@ -50,35 +72,10 @@ export function ImportModal({ busy, createJob, machineProfile, models, resources
         </header>
 
         <div className="settings-field-grid modal-field-grid">
-          <label>
-            <span className="field-label">Transcription model</span>
-            <select disabled={setupLoading || busy} value={selectedPresetValue} onChange={(event) => setSelectedPresetId(event.target.value as TranscriptionPresetId)}>
-              {presetOptions.map((preset) => <option key={preset.id} value={preset.id}>{presetModelOptionLabel(models, preset)}</option>)}
-            </select>
-          </label>
-          <label>
-            <span className="field-label">Backend</span>
-            <select disabled={setupLoading || busy} value={selectedBackendPreference} onChange={(event) => setSelectedBackendPreference(event.target.value as BackendPreference)}>
-              <option value="auto">Auto ({selectedPresetResolution.engineBackend.toUpperCase()})</option>
-              {backendOptions(machineProfile).map((backend) => (
-                <option disabled={!backend.available} key={backend.backend} value={backend.backend}>
-                  {backend.label}{backend.available ? '' : ' unavailable'}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span className="field-label">Language</span>
-            <select disabled={setupLoading || busy} value={selectedLanguage} onChange={(event) => setSelectedLanguage(event.target.value as TranscriptionLanguage)}>
-              {transcriptionLanguageOptions.map((language) => <option key={language.id} value={language.id}>{language.label}</option>)}
-            </select>
-          </label>
-          <label>
-            <span className="field-label">Output</span>
-            <select disabled={setupLoading || busy} value={selectedOutputMode} onChange={(event) => setSelectedOutputMode(event.target.value as TranscriptionOutputMode)}>
-              {transcriptionOutputModeOptions.map((mode) => <option key={mode.id} value={mode.id}>{mode.label}</option>)}
-            </select>
-          </label>
+          <SelectField disabled={fieldsDisabled} label="Transcription model" onChange={setSelectedPresetId} options={modelSelectOptions} value={selectedPresetValue} />
+          <SelectField disabled={fieldsDisabled} label="Backend" onChange={setSelectedBackendPreference} options={backendSelectOptions} value={selectedBackendPreference} />
+          <SelectField disabled={fieldsDisabled} label="Language" onChange={setSelectedLanguage} options={languageSelectOptions} value={selectedLanguage} />
+          <SelectField disabled={fieldsDisabled} label="Output" onChange={setSelectedOutputMode} options={outputSelectOptions} value={selectedOutputMode} />
           <p className="modal-note">{outputModeNote}</p>
         </div>
 

@@ -14,6 +14,7 @@ import type {
   RuntimeInstallStatus,
   TranscriptionPresetId
 } from '@voxmire/contracts';
+import { SelectField, type SelectOption } from '../components/select-field';
 import { formatBytes, formatFileSize } from '../lib/format';
 import { backendOptions, modelLabel, presetModelOptionLabel, visiblePresetOptions, type BackendPreference, type ResolvedTranscriptionPreset } from '../lib/presets';
 
@@ -66,6 +67,25 @@ export function SettingsView({ appInfo, cpuThreadPreference, engines, exportDire
   const selectablePresets = visiblePresetOptions(resources);
   const cpuThreadOptions = cpuThreadManualOptions(machineProfile?.logicalCpuCores);
   const autoCpuThreads = machineProfile ? resolveCpuThreadCount('auto', selectedEngineBackend, machineProfile.logicalCpuCores) : null;
+  const modelSelectOptions: Array<SelectOption<TranscriptionPresetId>> = selectablePresets.map((preset) => ({
+    label: presetModelOptionLabel(models, preset),
+    value: preset.id
+  }));
+  const backendSelectOptions: Array<SelectOption<BackendPreference>> = [
+    { label: `Auto (${selectedPresetResolution.engineBackend.toUpperCase()})`, value: 'auto' },
+    ...backendOptions(machineProfile).map((backend) => ({
+      disabled: !backend.available,
+      label: `${backend.label}${backend.available ? '' : ' unavailable'}`,
+      value: backend.backend
+    }))
+  ];
+  const cpuThreadSelectOptions: Array<SelectOption<CpuThreadPreference>> = [
+    { label: `Auto${autoCpuThreads === null ? '' : ` (${autoCpuThreads.toString()})`}`, value: 'auto' },
+    ...cpuThreadOptions.map((count) => ({
+      label: count.toString(),
+      value: count
+    }))
+  ];
 
   return (
     <div className="view workspace-page settings-view">
@@ -84,30 +104,9 @@ export function SettingsView({ appInfo, cpuThreadPreference, engines, exportDire
             </div>
           </div>
           <div className="settings-field-grid">
-            <label>
-              <span className="field-label">Default model</span>
-              <select value={selectedPresetId} onChange={(event) => setSelectedPresetId(event.target.value as TranscriptionPresetId)}>
-                {selectablePresets.map((preset) => <option key={preset.id} value={preset.id}>{presetModelOptionLabel(models, preset)}</option>)}
-              </select>
-            </label>
-            <label>
-              <span className="field-label">Backend</span>
-              <select value={selectedBackendPreference} onChange={(event) => setSelectedBackendPreference(event.target.value as BackendPreference)}>
-                <option value="auto">Auto ({selectedPresetResolution.engineBackend.toUpperCase()})</option>
-                {backendOptions(machineProfile).map((backend) => (
-                  <option disabled={!backend.available} key={backend.backend} value={backend.backend}>
-                    {backend.label}{backend.available ? '' : ' unavailable'}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span className="field-label">CPU threads</span>
-              <select value={cpuThreadPreferenceValue(cpuThreadPreference)} onChange={(event) => setCpuThreadPreference(parseCpuThreadPreference(event.target.value))}>
-                <option value="auto">Auto{autoCpuThreads === null ? '' : ' (' + autoCpuThreads.toString() + ')'}</option>
-                {cpuThreadOptions.map((count) => <option key={count} value={count}>{count}</option>)}
-              </select>
-            </label>
+            <SelectField label="Default model" onChange={setSelectedPresetId} options={modelSelectOptions} value={selectedPresetId} />
+            <SelectField label="Backend" onChange={setSelectedBackendPreference} options={backendSelectOptions} value={selectedBackendPreference} />
+            <SelectField label="CPU threads" onChange={setCpuThreadPreference} options={cpuThreadSelectOptions} value={cpuThreadPreference} />
             <p className="modal-note">Auto uses fewer CPU threads for CUDA and Vulkan, and more for CPU fallback.</p>
           </div>
         </section>
@@ -319,13 +318,6 @@ function cpuThreadManualOptions(logicalCpuCores: number | undefined): number[] {
   return Array.from({ length: maxThreads }, (_value, index) => index + 1);
 }
 
-function cpuThreadPreferenceValue(preference: CpuThreadPreference): string {
-  return preference === 'auto' ? 'auto' : preference.toString();
-}
-
-function parseCpuThreadPreference(value: string): CpuThreadPreference {
-  return value === 'auto' ? 'auto' : Number(value);
-}
 
 function modelTranslationNote(modelId: ModelId): string | null {
   if (modelId === 'large-v3-turbo') {
