@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { TranscriptSegment, TranscriptSegmentListResult } from '@voxmire/contracts';
+import { debugTranscriptInteraction } from './transcript-interaction-debug';
 
 type UseSegmentEditorOptions = {
   onMergeSegment: (segmentId: string, direction: 'previous' | 'next') => Promise<TranscriptSegment[] | null>;
@@ -43,22 +44,38 @@ export function useSegmentEditor({
   segments
 }: UseSegmentEditorOptions): SegmentEditorController {
   const [editingSegmentId, setEditingSegmentId] = useState<string | null>(null);
+  const editingSegmentIdRef = useRef<string | null>(null);
   const [draftText, setDraftText] = useState('');
   const [savingSegmentId, setSavingSegmentId] = useState<string | null>(null);
   const [savingTimingSegmentId, setSavingTimingSegmentId] = useState<string | null>(null);
   const [saveErrorSegmentId, setSaveErrorSegmentId] = useState<string | null>(null);
   const [cursorOffset, setCursorOffset] = useState(0);
 
+  function updateEditingSegmentId(nextSegmentId: string | null): void {
+    debugTranscriptInteraction('editor-set-editing', {
+      fromSegmentId: editingSegmentIdRef.current,
+      toSegmentId: nextSegmentId
+    });
+    editingSegmentIdRef.current = nextSegmentId;
+    setEditingSegmentId(nextSegmentId);
+  }
+
   function startEditing(segment: TranscriptSegment): void {
+    if (editingSegmentIdRef.current === segment.id) {
+      debugTranscriptInteraction('editor-start-existing', { segmentId: segment.id });
+      return;
+    }
+
+    debugTranscriptInteraction('editor-start', { segmentId: segment.id });
     setSaveErrorSegmentId(null);
-    setEditingSegmentId(segment.id);
+    updateEditingSegmentId(segment.id);
     setDraftText(segment.text);
     setCursorOffset(segment.text.length);
     onSeek(segment);
   }
 
   function cancelEditing(): void {
-    setEditingSegmentId(null);
+    updateEditingSegmentId(null);
     setDraftText('');
     setCursorOffset(0);
   }
@@ -87,8 +104,17 @@ export function useSegmentEditor({
 
   async function saveAndClose(segment: TranscriptSegment, nextText: string): Promise<void> {
     const saved = await saveSegmentText(segment, nextText);
-    if (saved && editingSegmentId === segment.id) {
+    if (saved && editingSegmentIdRef.current === segment.id) {
+      debugTranscriptInteraction('editor-save-close-clear', { segmentId: segment.id });
       cancelEditing();
+      return;
+    }
+
+    if (saved) {
+      debugTranscriptInteraction('editor-save-close-preserve-current', {
+        savedSegmentId: segment.id,
+        currentEditingSegmentId: editingSegmentIdRef.current
+      });
     }
   }
 
@@ -104,7 +130,7 @@ export function useSegmentEditor({
       return true;
     }
 
-    setEditingSegmentId(nextSegment.id);
+    updateEditingSegmentId(nextSegment.id);
     setDraftText(nextSegment.text);
     setCursorOffset(nextSegment.text.length);
     onSeek(nextSegment);
@@ -123,7 +149,7 @@ export function useSegmentEditor({
       return true;
     }
 
-    setEditingSegmentId(previousSegment.id);
+    updateEditingSegmentId(previousSegment.id);
     setDraftText(previousSegment.text);
     setCursorOffset(previousSegment.text.length);
     onSeek(previousSegment);
@@ -147,7 +173,7 @@ export function useSegmentEditor({
 
     const nextSegment = updatedSegments[currentIndex + 1] ?? updatedSegments[currentIndex];
     if (nextSegment) {
-      setEditingSegmentId(nextSegment.id);
+      updateEditingSegmentId(nextSegment.id);
       setDraftText(nextSegment.text);
       setCursorOffset(0);
       onSeek(nextSegment);
@@ -171,7 +197,7 @@ export function useSegmentEditor({
     const nextIndex = direction === 'previous' ? Math.max(currentIndex - 1, 0) : currentIndex;
     const mergedSegment = updatedSegments[nextIndex];
     if (mergedSegment) {
-      setEditingSegmentId(mergedSegment.id);
+      updateEditingSegmentId(mergedSegment.id);
       setDraftText(mergedSegment.text);
       setCursorOffset(mergedSegment.text.length);
       onSeek(mergedSegment);
@@ -201,7 +227,7 @@ export function useSegmentEditor({
   }
 
   useEffect(() => {
-    setEditingSegmentId(null);
+    updateEditingSegmentId(null);
     setDraftText('');
     setCursorOffset(0);
     setSaveErrorSegmentId(null);

@@ -86,7 +86,28 @@ export const transcriptionChunkSchema = z.object({
   errorMessage: z.string().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
-  completedAt: z.string().datetime().nullable()
+  completedAt: z.string().datetime().nullable(),
+  startedAt: z.string().datetime().nullable().optional(),
+  runtimeId: engineRuntimeIdSchema.nullable().optional(),
+  processingDurationMs: z.number().int().nonnegative().nullable().optional()
+});
+
+export const transcriptionChunkProcessingStatsSchema = z.object({
+  id: z.string().min(1),
+  index: z.number().int().nonnegative(),
+  startedAt: z.string().datetime().nullable(),
+  completedAt: z.string().datetime().nullable(),
+  runtimeId: engineRuntimeIdSchema.nullable(),
+  processingDurationMs: z.number().int().nonnegative().nullable()
+});
+
+export const transcriptionJobProcessingStatsSchema = z.object({
+  startedAt: z.string().datetime().nullable(),
+  completedAt: z.string().datetime().nullable(),
+  activeDurationMs: z.number().int().nonnegative().nullable(),
+  averageChunkDurationMs: z.number().int().nonnegative().nullable(),
+  completedChunkCount: z.number().int().nonnegative(),
+  chunks: z.array(transcriptionChunkProcessingStatsSchema)
 });
 
 export const modelProfileSchema = z.object({
@@ -290,6 +311,7 @@ export const projectDetailsSchema = z.object({
   sourceFile: sourceFileSchema,
   segmentCount: z.number().int().nonnegative(),
   chunkCount: z.number().int().nonnegative(),
+  processingStats: transcriptionJobProcessingStatsSchema.nullable(),
   mediaAvailable: z.boolean()
 });
 
@@ -407,6 +429,8 @@ export type TranscriptionJob = z.infer<typeof transcriptionJobSchema>;
 export type TranscriptSegment = z.infer<typeof transcriptSegmentSchema>;
 export type TranscriptionChunkStatus = z.infer<typeof transcriptionChunkStatusSchema>;
 export type TranscriptionChunk = z.infer<typeof transcriptionChunkSchema>;
+export type TranscriptionChunkProcessingStats = z.infer<typeof transcriptionChunkProcessingStatsSchema>;
+export type TranscriptionJobProcessingStats = z.infer<typeof transcriptionJobProcessingStatsSchema>;
 export type ModelProfile = z.infer<typeof modelProfileSchema>;
 export type TranscriptionPresetProfile = z.infer<typeof transcriptionPresetProfileSchema>;
 export type EngineAvailability = z.infer<typeof engineAvailabilitySchema>;

@@ -60,6 +60,11 @@ npm run typecheck
 
 Root scripts should call `corepack pnpm` so the repo does not depend on a global pnpm shim.
 
+## Git
+
+- When committing changes, write a descriptive commit message with a concise subject and a body that states the exact changes made and the verification run.
+- Do not use empty, vague, or placeholder commit messages.
+
 ## Guardrails
 
 - Do not add cloud transcription unless explicitly requested.

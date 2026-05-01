@@ -3,6 +3,7 @@ import { Search, X } from 'lucide-react';
 import type { JobWithSource } from '@voxmire/contracts';
 import { EmptyState } from '../../components/empty-state';
 import { ProgressPill } from '../../components/progress-pill';
+import { ProjectActionsMenu } from '../../components/project-actions-menu';
 import { solverLabelForJob, type SolverLabelsByJobId } from '../../lib/engines';
 import { formatDate, formatDuration } from '../../lib/format';
 import { activeStatuses } from '../../lib/job-status';
@@ -10,6 +11,9 @@ import { activeStatuses } from '../../lib/job-status';
 type TranscriptSwitcherDrawerProps = {
   jobs: JobWithSource[];
   onClose: () => void;
+  onDeleteProject: (project: JobWithSource) => void;
+  onDetailsProject: (jobId: string) => void;
+  onRenameProject: (project: JobWithSource) => void;
   onSelectJob: (jobId: string) => void;
   query: string;
   selectedJobId: string | null;
@@ -17,7 +21,18 @@ type TranscriptSwitcherDrawerProps = {
   solverLabelsByJobId: SolverLabelsByJobId;
 };
 
-export function TranscriptSwitcherDrawer({ jobs, onClose, onSelectJob, query, selectedJobId, setQuery, solverLabelsByJobId }: TranscriptSwitcherDrawerProps): ReactElement {
+export function TranscriptSwitcherDrawer({
+  jobs,
+  onClose,
+  onDeleteProject,
+  onDetailsProject,
+  onRenameProject,
+  onSelectJob,
+  query,
+  selectedJobId,
+  setQuery,
+  solverLabelsByJobId
+}: TranscriptSwitcherDrawerProps): ReactElement {
   const visibleJobs = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
@@ -65,21 +80,40 @@ export function TranscriptSwitcherDrawer({ jobs, onClose, onSelectJob, query, se
               const showStatus = entry.job.status !== 'completed';
 
               return (
-                <button
+                <div
                   className={`transcript-switcher-row ${isSelected ? 'selected' : ''} ${isLive ? 'live' : ''}`}
                   key={entry.job.id}
-                  onClick={() => {
-                    onSelectJob(entry.job.id);
-                    onClose();
-                  }}
-                  type="button"
                 >
-                  <span className="project-main">
-                    <strong>{entry.sourceFile.name}</strong>
-                    <small>{formatDuration(entry.sourceFile.durationSeconds)} / {formatDate(entry.job.createdAt)}</small>
-                  </span>
-                  {showStatus ? <ProgressPill job={entry} solverLabel={solverLabelForJob(entry, solverLabelsByJobId[entry.job.id])} /> : null}
-                </button>
+                  <button
+                    className="transcript-switcher-open"
+                    onClick={() => {
+                      onSelectJob(entry.job.id);
+                      onClose();
+                    }}
+                    type="button"
+                  >
+                    <span className="project-main">
+                      <strong>{entry.sourceFile.name}</strong>
+                      <small>{formatDuration(entry.sourceFile.durationSeconds)} / {formatDate(entry.job.createdAt)}</small>
+                    </span>
+                    {showStatus ? <ProgressPill job={entry} solverLabel={solverLabelForJob(entry, solverLabelsByJobId[entry.job.id])} /> : null}
+                  </button>
+                  <ProjectActionsMenu
+                    onDelete={() => {
+                      onClose();
+                      onDeleteProject(entry);
+                    }}
+                    onDetails={() => {
+                      onClose();
+                      onDetailsProject(entry.job.id);
+                    }}
+                    onRename={() => {
+                      onClose();
+                      onRenameProject(entry);
+                    }}
+                    renderInPortal
+                  />
+                </div>
               );
             })
           )}

@@ -61,7 +61,52 @@
 .library-toolbar h3 { margin-top: 4px; color: var(--text); font-family: "Space Grotesk", Inter, sans-serif; font-size: 22px; }
 .library-controls { display: flex; align-items: center; gap: 8px; }
 .search-field { display: flex; align-items: center; gap: 8px; min-height: 36px; width: 240px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--muted); background: rgba(255, 255, 255, 0.04); }
-.search-field input { width: 100%; min-width: 0; border: 0; padding: 0; background: transparent; box-shadow: none; font-size: 13px; }
+.search-field input { width: 100%; min-width: 0; border: 0; padding: 0 1px 0 4px; background: transparent; box-shadow: none; font-size: 13px; }
+.library-selection-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  margin: -2px 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.selection-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.selection-toggle input,
+.project-select-control input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--cyan);
+  cursor: pointer;
+}
+.selection-toggle input:disabled {
+  cursor: not-allowed;
+}
+.selection-count {
+  color: var(--cyan);
+  font-family: "Fira Code", Consolas, monospace;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.project-select-control {
+  display: grid;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 36px;
+  place-items: center;
+  cursor: pointer;
+}
 .find-replace-panel {
   position: absolute;
   top: 12px;
@@ -138,6 +183,7 @@
   text-align: left;
 }
 .project-row:hover { border-color: rgba(34, 211, 238, 0.34); background: rgba(34, 211, 238, 0.06); }
+.project-row.selected { border-color: rgba(34, 211, 238, 0.42); background: rgba(34, 211, 238, 0.08); }
 .project-open-button {
   display: flex;
   align-items: center;

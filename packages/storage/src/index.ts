@@ -26,11 +26,20 @@ export {
   updateTranscriptSegmentTiming
 } from './transcript-segments';
 export {
+  completeTranscriptionChunk,
   countTranscriptionChunks,
   getTranscriptionChunk,
   getTranscriptionChunks,
   resetInterruptedTranscriptionChunks,
   saveTranscriptionChunk,
+  startTranscriptionChunk,
   updateTranscriptionChunkStatus
 } from './transcription-chunks';
+export {
+  abandonJobProcessingSession,
+  completeJobProcessing,
+  getProjectProcessingStats,
+  startJobProcessingSession,
+  stopJobProcessingSession
+} from './job-processing-metrics';
 export type { CreateJobRecordInput, TranscriptSegmentListUpdate, VoxmireDatabase } from './types';

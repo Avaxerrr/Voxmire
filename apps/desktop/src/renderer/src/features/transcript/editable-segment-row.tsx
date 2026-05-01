@@ -11,6 +11,26 @@ import { ArrowDownToLine, ArrowUpToLine, Scissors } from 'lucide-react';
 import type { TranscriptSegment } from '@voxmire/contracts';
 import { formatEditableTime, formatTime, parseEditableTime } from '../../lib/format';
 import { HighlightedTranscriptText } from './highlighted-transcript-text';
+import { debugTranscriptInteraction } from './transcript-interaction-debug';
+
+const transcriptEditTargetSelector = '[data-transcript-edit-target="true"]';
+const transcriptTimingTargetSelector = '[data-transcript-timing-target="true"]';
+let pendingTranscriptEditTargetSegmentId: string | null = null;
+let pendingTranscriptEditTargetResetId: number | null = null;
+
+function rememberPendingTranscriptEditTarget(segmentId: string): void {
+  pendingTranscriptEditTargetSegmentId = segmentId;
+  if (pendingTranscriptEditTargetResetId !== null) {
+    window.clearTimeout(pendingTranscriptEditTargetResetId);
+  }
+
+  pendingTranscriptEditTargetResetId = window.setTimeout(() => {
+    if (pendingTranscriptEditTargetSegmentId === segmentId) {
+      pendingTranscriptEditTargetSegmentId = null;
+    }
+    pendingTranscriptEditTargetResetId = null;
+  }, 250);
+}
 
 type EditableSegmentRowProps = {
   active: boolean;
@@ -35,6 +55,8 @@ type EditableSegmentRowProps = {
   onSaveTiming: (startSeconds: number, endSeconds: number) => Promise<boolean>;
   onSelectSegment: () => void;
   onSplit: (offset: number) => Promise<void>;
+  onTimingEditEnd: () => void;
+  onTimingEditStart: () => void;
   saveError: boolean;
   saving: boolean;
   savingTiming: boolean;
@@ -65,6 +87,8 @@ export function EditableSegmentRow({
   onSaveTiming,
   onSelectSegment,
   onSplit,
+  onTimingEditEnd,
+  onTimingEditStart,
   saveError,
   saving,
   savingTiming,
@@ -93,7 +117,7 @@ export function EditableSegmentRow({
     }
 
     if (document.activeElement !== textArea) {
-      textArea.focus();
+      textArea.focus({ preventScroll: true });
       textArea.setSelectionRange(textArea.value.length, textArea.value.length);
     }
   }, [editing]);
@@ -114,6 +138,21 @@ export function EditableSegmentRow({
       return;
     }
 
+    const nextTarget = event.relatedTarget instanceof Element ? event.relatedTarget : null;
+    const nextEditTarget = nextTarget?.closest(transcriptEditTargetSelector);
+    const pendingEditTargetSegmentId = pendingTranscriptEditTargetSegmentId;
+    if (nextEditTarget || pendingEditTargetSegmentId) {
+      debugTranscriptInteraction('text-blur-save-transfer', {
+        fromSegmentId: segment.id,
+        toSegmentId: nextEditTarget?.getAttribute('data-segment-id') ?? pendingEditTargetSegmentId,
+        viaRelatedTarget: Boolean(nextEditTarget)
+      });
+      pendingTranscriptEditTargetSegmentId = null;
+      void onSave(event.currentTarget.value);
+      return;
+    }
+
+    debugTranscriptInteraction('text-blur-save-close', { segmentId: segment.id });
     void onSaveAndClose(event.currentTarget.value);
   }
 
@@ -125,6 +164,17 @@ export function EditableSegmentRow({
     }
 
     void onSaveTiming(nextStart, nextEnd);
+  }
+
+  function handleTimingBlur(event: ReactFocusEvent<HTMLInputElement>): void {
+    saveTimingDraft();
+
+    const nextTarget = event.relatedTarget instanceof Element ? event.relatedTarget : null;
+    if (nextTarget?.closest(transcriptTimingTargetSelector)) {
+      return;
+    }
+
+    onTimingEditEnd();
   }
 
   function handleTimingKeyDown(event: ReactKeyboardEvent<HTMLInputElement>): void {
@@ -210,9 +260,20 @@ export function EditableSegmentRow({
     event.preventDefault();
   }
 
+  function handleTextEditPointerDown(event: ReactPointerEvent<HTMLButtonElement | HTMLTextAreaElement>): void {
+    if (event.button !== 0) {
+      return;
+    }
+
+    event.stopPropagation();
+    rememberPendingTranscriptEditTarget(segment.id);
+    debugTranscriptInteraction('text-pointer-down', { segmentId: segment.id });
+  }
+
   function handleTimestampPointerDown(event: ReactPointerEvent<HTMLInputElement>, seconds: number): void {
     event.stopPropagation();
     if (event.button === 0 && !event.defaultPrevented) {
+      onTimingEditStart();
       onSeekTime(seconds, segment.id);
     }
   }
@@ -223,10 +284,15 @@ export function EditableSegmentRow({
     }
 
     const target = event.target instanceof Element ? event.target : null;
-    if (target?.closest('.segment-structure-tools, .segment-time-editors')) {
+    if (target?.closest('button, input, textarea, .segment-structure-tools, .segment-time-editors')) {
+      debugTranscriptInteraction('row-pointer-skip-interactive', {
+        segmentId: segment.id,
+        target: target.tagName.toLowerCase()
+      });
       return;
     }
 
+    debugTranscriptInteraction('row-pointer-select', { segmentId: segment.id });
     onSelectSegment();
   }
 
@@ -240,7 +306,7 @@ export function EditableSegmentRow({
   const canSplit = editing && activeText.trim().length > 1 && cursorOffset > 0 && cursorOffset < activeText.length;
 
   return (
-    <div className={`segment-row ${active ? 'active' : ''} ${editing ? 'editing' : ''} ${searchMatch ? 'search-match' : ''} ${activeSearchMatch ? 'search-current' : ''} ${segment.editedAt ? 'edited' : ''}`} onPointerDown={handleSegmentPointerDown}>
+    <div className={`segment-row ${active ? 'active' : ''} ${editing ? 'editing' : ''} ${searchMatch ? 'search-match' : ''} ${activeSearchMatch ? 'search-current' : ''}`} onPointerDown={handleSegmentPointerDown}>
       <div className="segment-gutter">
         <div
           className="segment-time-editors"
@@ -249,9 +315,11 @@ export function EditableSegmentRow({
         >
           <input
             aria-label="Segment start time"
+            data-transcript-timing-target="true"
             disabled={savingTiming}
-            onBlur={saveTimingDraft}
+            onBlur={handleTimingBlur}
             onChange={(event) => setStartDraft(event.target.value)}
+            onFocus={onTimingEditStart}
             onKeyDown={handleTimingKeyDown}
             onPointerDown={(event) => handleTimestampPointerDown(event, segment.startSeconds)}
             title={`Seek to ${formatTime(segment.startSeconds)}`}
@@ -260,9 +328,11 @@ export function EditableSegmentRow({
           <span>-</span>
           <input
             aria-label="Segment end time"
+            data-transcript-timing-target="true"
             disabled={savingTiming}
-            onBlur={saveTimingDraft}
+            onBlur={handleTimingBlur}
             onChange={(event) => setEndDraft(event.target.value)}
+            onFocus={onTimingEditStart}
             onKeyDown={handleTimingKeyDown}
             onPointerDown={(event) => handleTimestampPointerDown(event, segment.endSeconds)}
             title={`Seek to ${formatTime(segment.endSeconds)}`}
@@ -307,15 +377,17 @@ export function EditableSegmentRow({
           <textarea
             aria-label="Transcript segment text"
             className="segment-text-input"
+            data-segment-id={segment.id}
+            data-transcript-edit-target="true"
             onBlur={handleEditBlur}
             onChange={(event) => {
               onDraftChange(event.target.value);
               onCursorOffsetChange(event.target.selectionStart);
             }}
             onClick={syncCursorOffset}
-            onFocus={onFocus}
             onKeyDown={handleEditKeyDown}
             onKeyUp={syncCursorOffset}
+            onPointerDown={handleTextEditPointerDown}
             onSelect={syncCursorOffset}
             ref={textAreaRef}
             spellCheck
@@ -325,15 +397,20 @@ export function EditableSegmentRow({
           <button
             aria-label="Edit transcript segment text"
             className={active ? 'segment-text-display playback-active' : 'segment-text-display'}
+            data-segment-id={segment.id}
+            data-transcript-edit-target="true"
             onClick={onFocus}
+            onPointerDown={handleTextEditPointerDown}
             type="button"
           >
             <HighlightedTranscriptText query={searchQuery} text={segment.text} />
           </button>
         )}
-        <div className={`segment-save-state ${saving ? 'saving' : ''} ${saveError ? 'error' : ''}`} role="status">
-          {saveError ? 'Not saved' : saving ? 'Saving' : segment.editedAt ? 'Edited' : ''}
-        </div>
+        {saveError || saving ? (
+          <div className={`segment-save-state ${saving ? 'saving' : ''} ${saveError ? 'error' : ''}`} role="status">
+            {saveError ? 'Not saved' : 'Saving'}
+          </div>
+        ) : null}
       </div>
     </div>
   );

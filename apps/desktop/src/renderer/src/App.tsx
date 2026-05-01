@@ -18,7 +18,7 @@ import type {
   TranscriptionPresetId,
   TranscriptionProgressEvent
 } from '@voxmire/contracts';
-import { DeleteProjectModal, ImportModal, ProjectDetailsDrawer, RenameProjectModal, ResetTranscriptModal } from './components/project-dialogs';
+import { DeleteProjectModal, DeleteProjectsModal, ImportModal, ProjectDetailsDrawer, RenameProjectModal, ResetTranscriptModal } from './components/project-dialogs';
 import { AppSidebar } from './components/app-sidebar';
 import { StatusBar } from './components/status-bar';
 import { WindowFrameControls } from './components/window-frame-controls';
@@ -71,6 +71,7 @@ export function App(): ReactElement {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [renameTarget, setRenameTarget] = useState<JobWithSource | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<JobWithSource | null>(null);
+  const [bulkDeleteTargets, setBulkDeleteTargets] = useState<JobWithSource[]>([]);
   const [projectBusy, setProjectBusy] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [exportDirectory, setExportDirectory] = useState<string | null>(null);
@@ -694,6 +695,52 @@ export function App(): ReactElement {
     }
   }
 
+  async function deleteProjects(jobIds: string[]): Promise<void> {
+    if (!api) {
+      setMessage('Desktop bridge unavailable.');
+      return;
+    }
+
+    const uniqueJobIds = Array.from(new Set(jobIds));
+    if (uniqueJobIds.length === 0) {
+      setBulkDeleteTargets([]);
+      return;
+    }
+
+    setProjectBusy(true);
+    try {
+      let deletedCount = 0;
+      for (const jobId of uniqueJobIds) {
+        const result = await api.projects.delete(jobId);
+        if (result.deleted) {
+          deletedCount += 1;
+        }
+      }
+
+      const updated = await api.jobs.list();
+      const deletedSelectedJob = selectedJobIdRef.current ? uniqueJobIds.includes(selectedJobIdRef.current) : false;
+      const nextSelectedId = deletedSelectedJob ? updated[0]?.job.id ?? null : selectedJobIdRef.current;
+
+      setJobs(updated);
+      setSelectedJobId(nextSelectedId);
+      if (deletedSelectedJob) {
+        setSegments([]);
+        setPlaying(false);
+        if (!nextSelectedId) {
+          setView('dashboard');
+        }
+      }
+      if (detailsJobId && uniqueJobIds.includes(detailsJobId)) {
+        setDetailsJobId(null);
+      }
+      setBulkDeleteTargets([]);
+      setMessage(`${deletedCount} ${deletedCount === 1 ? 'project' : 'projects'} deleted. Original media files were not deleted.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to delete selected projects.');
+    } finally {
+      setProjectBusy(false);
+    }
+  }
   function openJob(jobId: string): void {
     setSelectedJobId(jobId);
     setView('transcript');
@@ -722,6 +769,7 @@ export function App(): ReactElement {
           <DashboardView
             jobs={jobs}
             onDeleteProject={setDeleteTarget}
+            onDeleteProjects={setBulkDeleteTargets}
             onDetailsProject={openProjectDetails}
             onImport={() => setImportOpen(true)}
             onOpenJob={openJob}
@@ -828,6 +876,14 @@ export function App(): ReactElement {
         />
       ) : null}
 
+      {bulkDeleteTargets.length > 0 ? (
+        <DeleteProjectsModal
+          busy={projectBusy}
+          projects={bulkDeleteTargets}
+          onClose={() => setBulkDeleteTargets([])}
+          onDelete={deleteProjects}
+        />
+      ) : null}
       {deleteTarget ? (
         <DeleteProjectModal
           busy={projectBusy}

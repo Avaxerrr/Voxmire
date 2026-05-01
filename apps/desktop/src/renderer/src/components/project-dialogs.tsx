@@ -2,7 +2,7 @@ import { type ReactElement, useState } from 'react';
 import { AlertTriangle, FileAudio, FileVideo, Pencil, RotateCcw, Trash2, UploadCloud, X } from 'lucide-react';
 import type { JobWithSource, MachineProfile, ModelProfile, ProjectDetails, ResourceStatus, TranscriptionPresetId } from '@voxmire/contracts';
 import { EmptyState } from './empty-state';
-import { formatDateTime, formatDuration, formatFileSize } from '../lib/format';
+import { formatDateTime, formatDuration, formatDurationMs, formatFileSize } from '../lib/format';
 import { statusLabel } from '../lib/job-status';
 import { mediaKindFromExtension, mediaKindLabel } from '../lib/media-kind';
 import { backendOptions, presetModelOptionLabel, visiblePresetOptions, type BackendPreference, type ResolvedTranscriptionPreset } from '../lib/presets';
@@ -74,9 +74,32 @@ type ProjectDetailsDrawerProps = {
   onRename: (project: JobWithSource) => void;
 };
 
+const runtimeLabels: Record<string, string> = {
+  'cuda-12.4': 'CUDA 12.4',
+  vulkan: 'Vulkan',
+  'cpu-blas': 'CPU BLAS',
+  cpu: 'CPU'
+};
+
+function chunkRuntimeSummary(details: ProjectDetails): string | null {
+  const runtimeIds: string[] = [];
+  details.processingStats?.chunks.forEach((chunk) => {
+    if (chunk.runtimeId && chunk.processingDurationMs !== null) {
+      runtimeIds.push(chunk.runtimeId);
+    }
+  });
+  const uniqueRuntimeIds = Array.from(new Set(runtimeIds));
+
+  return uniqueRuntimeIds.length > 0 ? uniqueRuntimeIds.map((runtimeId) => runtimeLabels[runtimeId] ?? runtimeId).join(', ') : null;
+}
+
 export function ProjectDetailsDrawer({ details, loading, onClose, onDelete, onRename, solverLabel }: ProjectDetailsDrawerProps): ReactElement {
   const project = details ? { job: details.job, sourceFile: details.sourceFile } : null;
   const mediaKind = details ? mediaKindFromExtension(details.sourceFile.extension) : 'audio';
+  const mediaExtension = details?.sourceFile.extension.replace(/^\./, '').toUpperCase() ?? '';
+  const mediaType = details ? `${mediaKind === 'video' ? 'Video' : 'Audio'}${mediaExtension ? ` (${mediaExtension})` : ''}` : null;
+  const processingStats = details?.processingStats ?? null;
+  const runtimeSummary = details ? chunkRuntimeSummary(details) : null;
 
   return (
     <div className="details-drawer-layer" onClick={onClose} role="presentation">
@@ -108,9 +131,16 @@ export function ProjectDetailsDrawer({ details, loading, onClose, onDelete, onRe
               <div><dt>Backend</dt><dd>{details.job.engineBackend.toUpperCase()}</dd></div>
               <div><dt>Solver</dt><dd>{solverLabel ?? details.job.engineBackend.toUpperCase()}</dd></div>
               <div><dt>Transcript segments</dt><dd>{details.segmentCount.toLocaleString()}</dd></div>
-              <div><dt>Prepared chunks</dt><dd>{details.chunkCount.toLocaleString()}</dd></div>
+              <div><dt>Chunks</dt><dd>{details.chunkCount.toLocaleString()}</dd></div>
+              {processingStats && processingStats.activeDurationMs !== null && (processingStats.completedAt || processingStats.activeDurationMs > 0) ? <div><dt>Processed in</dt><dd>{formatDurationMs(processingStats.activeDurationMs)}</dd></div> : null}
+              {processingStats && processingStats.averageChunkDurationMs !== null ? <div><dt>Avg chunk</dt><dd>{formatDurationMs(processingStats.averageChunkDurationMs)}</dd></div> : null}
+              {processingStats && processingStats.completedChunkCount !== details.chunkCount ? <div><dt>Completed chunks</dt><dd>{processingStats.completedChunkCount.toLocaleString()}</dd></div> : null}
+              {runtimeSummary ? <div><dt>Chunk runtime</dt><dd>{runtimeSummary}</dd></div> : null}
+              {processingStats?.startedAt ? <div><dt>Processing started</dt><dd>{formatDateTime(processingStats.startedAt)}</dd></div> : null}
+              {processingStats?.completedAt ? <div><dt>Processing completed</dt><dd>{formatDateTime(processingStats.completedAt)}</dd></div> : null}
               <div><dt>Media source</dt><dd>{details.mediaAvailable ? 'Available' : 'Missing'}</dd></div>
-              <div><dt>Size</dt><dd>{formatFileSize(details.sourceFile.sizeBytes)}</dd></div>
+              {mediaType ? <div><dt>Media type</dt><dd>{mediaType}</dd></div> : null}
+              <div><dt>Media file size</dt><dd>{formatFileSize(details.sourceFile.sizeBytes)}</dd></div>
               <div><dt>Imported</dt><dd>{formatDateTime(details.job.createdAt)}</dd></div>
               <div><dt>Updated</dt><dd>{formatDateTime(details.job.updatedAt)}</dd></div>
               {details.job.completedAt ? <div><dt>Completed</dt><dd>{formatDateTime(details.job.completedAt)}</dd></div> : null}
@@ -227,6 +257,53 @@ export function DeleteProjectModal({ busy, project, onClose, onDelete }: DeleteP
   );
 }
 
+
+type DeleteProjectsModalProps = {
+  busy: boolean;
+  projects: JobWithSource[];
+  onClose: () => void;
+  onDelete: (jobIds: string[]) => Promise<void>;
+};
+
+export function DeleteProjectsModal({ busy, projects, onClose, onDelete }: DeleteProjectsModalProps): ReactElement {
+  const projectCount = projects.length;
+  const previewProjects = projects.slice(0, 4);
+  const remainingCount = Math.max(0, projectCount - previewProjects.length);
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="import-modal project-modal delete-project-modal" aria-labelledby="delete-projects-title" role="dialog">
+        <div className="modal-glow danger-glow" />
+        <header className="modal-header">
+          <div>
+            <p className="eyebrow">Projects</p>
+            <h2 id="delete-projects-title">Delete selected projects</h2>
+          </div>
+          <button className="icon-button" disabled={busy} onClick={onClose} title="Close" type="button"><X size={18} /></button>
+        </header>
+
+        <p className="delete-copy">
+          Delete <strong>{projectCount}</strong> selected {projectCount === 1 ? 'project' : 'projects'} from Voxmire. This removes transcript and job records only. Original media files stay on disk.
+        </p>
+
+        <div className="delete-project-list" aria-label="Selected projects">
+          {previewProjects.map((project) => (
+            <span key={project.job.id}>{project.sourceFile.name}</span>
+          ))}
+          {remainingCount > 0 ? <em>+{remainingCount} more</em> : null}
+        </div>
+
+        <footer className="modal-actions">
+          <button className="secondary-action" disabled={busy} onClick={onClose} type="button">Cancel</button>
+          <button className="secondary-action danger solid-danger" disabled={busy || projectCount === 0} onClick={() => void onDelete(projects.map((project) => project.job.id))} type="button">
+            <Trash2 size={14} />
+            Delete {projectCount === 1 ? 'project' : 'projects'}
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
 type ResetTranscriptModalProps = {
   busy: boolean;
   project: JobWithSource;

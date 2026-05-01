@@ -1,9 +1,10 @@
-import { type ReactElement, useEffect, useRef } from 'react';
+import { type ReactElement, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { TranscriptSegment, TranscriptSegmentListResult } from '@voxmire/contracts';
 import { EditableSegmentRow } from './editable-segment-row';
 import { useSegmentEditor } from './use-segment-editor';
 import { getPlaybackWordState, type PlaybackWordState } from './word-timing';
+import { debugTranscriptInteraction } from './transcript-interaction-debug';
 
 type VirtualizedSegmentListProps = {
   activeSegmentIndex: number;
@@ -45,6 +46,9 @@ export function VirtualizedSegmentList({
 }: VirtualizedSegmentListProps): ReactElement {
   const scrollParentRef = useRef<HTMLDivElement | null>(null);
   const lastWordDiagnosticKeyRef = useRef('');
+  const suppressNextActiveScrollRef = useRef(false);
+  const explicitSegmentSelectionRef = useRef(false);
+  const [timingEditSegmentId, setTimingEditSegmentId] = useState<string | null>(null);
   const rowVirtualizer = useVirtualizer({
     count: segments.length,
     estimateSize: () => 108,
@@ -63,11 +67,48 @@ export function VirtualizedSegmentList({
     segments
   });
 
-  useEffect(() => {
-    if (activeSegmentIndex >= 0 && !editor.editingSegmentId) {
+  useLayoutEffect(() => {
+    if (activeSegmentIndex >= 0 && !editor.editingSegmentId && !timingEditSegmentId) {
+      if (suppressNextActiveScrollRef.current) {
+        suppressNextActiveScrollRef.current = false;
+        return;
+      }
+      const scrollElement = scrollParentRef.current;
+      debugTranscriptInteraction('active-scroll-center', {
+        activeSegmentIndex,
+        beforeScrollTop: scrollElement?.scrollTop ?? null
+      });
       rowVirtualizer.scrollToIndex(activeSegmentIndex, { align: 'center' });
+      window.requestAnimationFrame(() => {
+        debugTranscriptInteraction('active-scroll-center-after-paint', {
+          activeSegmentIndex,
+          afterScrollTop: scrollElement?.scrollTop ?? null
+        });
+      });
     }
-  }, [activeSegmentIndex, editor.editingSegmentId]);
+  }, [activeSegmentIndex, editor.editingSegmentId, timingEditSegmentId]);
+
+  function startTimingEdit(segmentId: string): void {
+    suppressNextActiveScrollRef.current = true;
+    setTimingEditSegmentId(segmentId);
+  }
+
+  function endTimingEdit(segmentId: string): void {
+    if (!explicitSegmentSelectionRef.current) {
+      suppressNextActiveScrollRef.current = true;
+    }
+    setTimingEditSegmentId((current) => (current === segmentId ? null : current));
+  }
+
+  function selectSegment(segment: TranscriptSegment): void {
+    explicitSegmentSelectionRef.current = true;
+    suppressNextActiveScrollRef.current = false;
+    setTimingEditSegmentId(null);
+    onSeek(segment);
+    window.setTimeout(() => {
+      explicitSegmentSelectionRef.current = false;
+    }, 0);
+  }
 
   useEffect(() => {
     if (!activeSearchSegmentId) {
@@ -151,8 +192,10 @@ export function VirtualizedSegmentList({
                 onSaveAndMoveNext={(nextText) => editor.saveAndMoveToNext(segment, nextText, virtualRow.index)}
                 onSaveAndMovePrevious={(nextText) => editor.saveAndMoveToPrevious(segment, nextText, virtualRow.index)}
                 onSaveTiming={(startSeconds, endSeconds) => editor.saveSegmentTiming(segment, startSeconds, endSeconds)}
-                onSelectSegment={() => onSeek(segment)}
+                onSelectSegment={() => selectSegment(segment)}
                 onSplit={(offset) => editor.splitSegment(segment, offset, virtualRow.index)}
+                onTimingEditEnd={() => endTimingEdit(segment.id)}
+                onTimingEditStart={() => startTimingEdit(segment.id)}
                 saveError={saveError}
                 saving={saving}
                 savingTiming={savingTiming}
