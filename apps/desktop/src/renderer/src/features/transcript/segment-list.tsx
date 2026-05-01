@@ -7,7 +7,13 @@ import { getPlaybackWordState, type PlaybackWordState } from './word-timing';
 import { debugTranscriptInteraction } from './transcript-interaction-debug';
 import type { TranscriptFocusTarget, TranscriptWorkspaceState } from './transcript-workspace-state';
 
+type RememberedTranscriptFocus = {
+  focusTarget: TranscriptFocusTarget;
+  segmentId: string;
+};
+
 type VirtualizedSegmentListProps = {
+  active: boolean;
   activeSegmentIndex: number;
   diagnosticsEnabled: boolean;
   onWordTimingDiagnostic: (details: {
@@ -33,6 +39,7 @@ type VirtualizedSegmentListProps = {
 };
 
 export function VirtualizedSegmentList({
+  active: listActive,
   activeSegmentIndex,
   diagnosticsEnabled,
   onWordTimingDiagnostic,
@@ -57,7 +64,11 @@ export function VirtualizedSegmentList({
   const explicitSegmentSelectionRef = useRef(false);
   const restoredWorkspaceJobIdRef = useRef<string | null>(null);
   const scrollPersistFrameRef = useRef<number | null>(null);
+  const leavingTranscriptPointerRef = useRef(false);
+  const leavingTranscriptPointerTimeoutRef = useRef<number | null>(null);
   const latestScrollTopRef = useRef(0);
+  const latestFocusRef = useRef<RememberedTranscriptFocus | null>(null);
+  const wasActiveRef = useRef(listActive);
   const [timingEditSegmentId, setTimingEditSegmentId] = useState<string | null>(null);
   const rowVirtualizer = useVirtualizer({
     count: segments.length,
@@ -143,9 +154,10 @@ export function VirtualizedSegmentList({
       scrollPersistFrameRef.current = null;
       const patch: Partial<TranscriptWorkspaceState> = { scrollTop: latestScrollTopRef.current };
 
-      if (!hasActiveTranscriptTarget()) {
+      if (!hasActiveTranscriptTarget() && !leavingTranscriptPointerRef.current) {
         const visibleSegment = getFirstVisibleSegment();
         if (visibleSegment) {
+          latestFocusRef.current = null;
           patch.focusTarget = null;
           patch.segmentId = visibleSegment.id;
         }
@@ -156,8 +168,36 @@ export function VirtualizedSegmentList({
   }
 
   function rememberSegmentFocus(segment: TranscriptSegment, focusTarget: TranscriptFocusTarget): void {
+    latestFocusRef.current = { focusTarget, segmentId: segment.id };
     persistWorkspaceState({ focusTarget, scrollTop: currentScrollTop(), segmentId: segment.id });
   }
+
+  useEffect(() => {
+    if (!listActive) {
+      return;
+    }
+
+    function handleDocumentPointerDown(event: PointerEvent): void {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('.transcript-view')) {
+        return;
+      }
+
+      leavingTranscriptPointerRef.current = true;
+      if (leavingTranscriptPointerTimeoutRef.current !== null) {
+        window.clearTimeout(leavingTranscriptPointerTimeoutRef.current);
+      }
+      leavingTranscriptPointerTimeoutRef.current = window.setTimeout(() => {
+        leavingTranscriptPointerRef.current = false;
+        leavingTranscriptPointerTimeoutRef.current = null;
+      }, 750);
+    }
+
+    document.addEventListener('pointerdown', handleDocumentPointerDown, true);
+    return () => {
+      document.removeEventListener('pointerdown', handleDocumentPointerDown, true);
+    };
+  }, [listActive]);
 
   useEffect(() => {
     const scrollElement = scrollParentRef.current;
@@ -178,6 +218,11 @@ export function VirtualizedSegmentList({
 
   useEffect(() => {
     return () => {
+      if (leavingTranscriptPointerTimeoutRef.current !== null) {
+        window.clearTimeout(leavingTranscriptPointerTimeoutRef.current);
+        leavingTranscriptPointerTimeoutRef.current = null;
+      }
+
       if (scrollPersistFrameRef.current !== null) {
         window.cancelAnimationFrame(scrollPersistFrameRef.current);
         scrollPersistFrameRef.current = null;
@@ -200,6 +245,7 @@ export function VirtualizedSegmentList({
     const scrollElement = scrollParentRef.current;
     if (
       !scrollElement ||
+      !listActive ||
       !jobId ||
       workspaceState.jobId !== jobId ||
       segments.length === 0 ||
@@ -216,7 +262,6 @@ export function VirtualizedSegmentList({
       : -1;
     const segment = segmentIndex >= 0 ? segments[segmentIndex] : null;
     const restoredScrollTop = Math.max(0, workspaceState.scrollTop);
-
 
     if (segmentIndex >= 0) {
       rowVirtualizer.scrollToIndex(segmentIndex, { align: workspaceState.focusTarget ? 'center' : 'start' });
@@ -258,9 +303,71 @@ export function VirtualizedSegmentList({
         }
       });
     });
-  }, [jobId, rowVirtualizer, segments, workspaceState.focusTarget, workspaceState.jobId, workspaceState.scrollTop, workspaceState.segmentId]);
+  }, [listActive, jobId, rowVirtualizer, segments, workspaceState.focusTarget, workspaceState.jobId, workspaceState.scrollTop, workspaceState.segmentId]);
 
   useLayoutEffect(() => {
+    const wasActive = wasActiveRef.current;
+    wasActiveRef.current = listActive;
+    if (listActive) {
+      leavingTranscriptPointerRef.current = false;
+    }
+
+    const rememberedFocus = workspaceState.segmentId && workspaceState.focusTarget
+      ? { focusTarget: workspaceState.focusTarget, segmentId: workspaceState.segmentId }
+      : latestFocusRef.current;
+
+    if (
+      wasActive ||
+      !listActive ||
+      !jobId ||
+      workspaceState.jobId !== jobId ||
+      !rememberedFocus ||
+      segments.length === 0
+    ) {
+      return;
+    }
+
+    const scrollElement = scrollParentRef.current;
+    if (!scrollElement) {
+      return;
+    }
+
+    const segmentIndex = segments.findIndex((segment) => segment.id === rememberedFocus.segmentId);
+    const segment = segmentIndex >= 0 ? segments[segmentIndex] : null;
+    if (!segment) {
+      return;
+    }
+
+    if (rememberedFocus.focusTarget === 'text') {
+      editor.startEditing(segment, { seek: false });
+    } else {
+      setTimingEditSegmentId(segment.id);
+    }
+
+    window.requestAnimationFrame(() => {
+      const target = scrollElement.querySelector<HTMLElement>(
+        focusTargetSelector(rememberedFocus.segmentId, rememberedFocus.focusTarget)
+      );
+      if (target) {
+        target.focus({ preventScroll: true });
+        return;
+      }
+
+      rowVirtualizer.scrollToIndex(segmentIndex, { align: 'center' });
+      window.requestAnimationFrame(() => {
+        const retryTarget = scrollElement.querySelector<HTMLElement>(
+          focusTargetSelector(rememberedFocus.segmentId, rememberedFocus.focusTarget)
+        );
+        retryTarget?.focus({ preventScroll: true });
+      });
+    });
+  }, [editor, jobId, listActive, rowVirtualizer, segments, workspaceState.focusTarget, workspaceState.jobId, workspaceState.segmentId]);
+
+  useLayoutEffect(() => {
+    if (!listActive) {
+      return;
+    }
+
     if (activeSegmentIndex >= 0 && !editor.editingSegmentId && !timingEditSegmentId) {
       if (suppressActiveScrollCountRef.current > 0) {
         suppressActiveScrollCountRef.current -= 1;
@@ -279,7 +386,7 @@ export function VirtualizedSegmentList({
         });
       });
     }
-  }, [activeSegmentIndex, editor.editingSegmentId, timingEditSegmentId]);
+  }, [listActive, activeSegmentIndex, editor.editingSegmentId, timingEditSegmentId]);
 
   function startTimingEdit(segmentId: string): void {
     suppressActiveScroll(2);
@@ -297,6 +404,7 @@ export function VirtualizedSegmentList({
     explicitSegmentSelectionRef.current = true;
     suppressActiveScrollCountRef.current = 0;
     setTimingEditSegmentId(null);
+    latestFocusRef.current = null;
     persistWorkspaceState({ focusTarget: null, scrollTop: currentScrollTop(), segmentId: segment.id });
     onSeek(segment);
     window.setTimeout(() => {
@@ -305,7 +413,7 @@ export function VirtualizedSegmentList({
   }
 
   useEffect(() => {
-    if (!activeSearchSegmentId) {
+    if (!listActive || !activeSearchSegmentId) {
       return;
     }
 
@@ -313,7 +421,7 @@ export function VirtualizedSegmentList({
     if (index >= 0) {
       rowVirtualizer.scrollToIndex(index, { align: 'center' });
     }
-  }, [activeSearchSegmentId, segments]);
+  }, [activeSearchSegmentId, listActive, rowVirtualizer, segments]);
 
   useEffect(() => {
     if (!diagnosticsEnabled) {

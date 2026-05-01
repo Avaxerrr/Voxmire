@@ -25,6 +25,7 @@ type MediaInfo = {
 };
 
 type TranscriptViewProps = {
+  active: boolean;
   busy: boolean;
   exportTranscript: (format: ExportFormat, textMode?: ExportTextMode) => Promise<void>;
   jobs: JobWithSource[];
@@ -53,6 +54,7 @@ type TranscriptViewProps = {
 };
 
 export function TranscriptView({
+  active,
   busy,
   exportTranscript,
   jobs,
@@ -430,6 +432,7 @@ export function TranscriptView({
 
         <div className="transcript-main">
           <TranscriptStage
+            active={active}
             activeSearchSegmentId={activeFindSegment?.id ?? null}
             activeSegmentIndex={transcriptActiveSegmentIndex}
             busy={busy}

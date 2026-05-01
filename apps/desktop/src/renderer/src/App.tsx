@@ -784,8 +784,9 @@ export function App(): ReactElement {
           />
         ) : null}
 
-        {view === 'transcript' ? (
+        <div className="workspace-view-panel" data-active={view === 'transcript'} inert={view !== 'transcript' ? true : undefined}>
           <TranscriptView
+            active={view === 'transcript'}
             busy={busy}
             exportTranscript={exportTranscript}
             jobs={jobs}
@@ -812,7 +813,7 @@ export function App(): ReactElement {
             updateSegmentTiming={updateTranscriptSegmentTiming}
             updateSegment={updateTranscriptSegment}
           />
-        ) : null}
+        </div>
 
         {view === 'voice' ? <VoiceStudioView /> : null}
 

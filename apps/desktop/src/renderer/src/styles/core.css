@@ -327,6 +327,18 @@ textarea,
   overflow: hidden;
 }
 
+.workspace-view-panel {
+  position: absolute;
+  inset: 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+.workspace-view-panel[data-active="false"] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .view {
   height: calc(100vh - 32px);
   min-height: 0;

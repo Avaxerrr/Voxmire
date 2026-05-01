@@ -18,6 +18,7 @@ type WordTimingDiagnosticDetails = {
 };
 
 type TranscriptStageProps = {
+  active: boolean;
   activeSearchSegmentId: string | null;
   activeSegmentIndex: number;
   busy: boolean;
@@ -65,6 +66,7 @@ type TranscriptStageProps = {
 };
 
 export function TranscriptStage({
+  active,
   activeSearchSegmentId,
   activeSegmentIndex,
   busy,
@@ -115,6 +117,7 @@ export function TranscriptStage({
     <EmptyState title="Transcript pending" body="Transcript text will appear here as the job progresses." />
   ) : (
     <VirtualizedSegmentList
+      active={active}
       activeSegmentIndex={activeSegmentIndex}
       diagnosticsEnabled={diagnosticsEnabled}
       onWordTimingDiagnostic={onWordTimingDiagnostic}
