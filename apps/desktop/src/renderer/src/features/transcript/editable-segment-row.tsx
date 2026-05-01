@@ -11,6 +11,25 @@ import { ArrowDownToLine, ArrowUpToLine, Scissors } from 'lucide-react';
 import type { TranscriptSegment } from '@voxmire/contracts';
 import { formatEditableTime, formatTime, parseEditableTime } from '../../lib/format';
 import { HighlightedTranscriptText } from './highlighted-transcript-text';
+import { debugTranscriptInteraction } from './transcript-interaction-debug';
+
+const transcriptEditTargetSelector = '[data-transcript-edit-target="true"]';
+let pendingTranscriptEditTargetSegmentId: string | null = null;
+let pendingTranscriptEditTargetResetId: number | null = null;
+
+function rememberPendingTranscriptEditTarget(segmentId: string): void {
+  pendingTranscriptEditTargetSegmentId = segmentId;
+  if (pendingTranscriptEditTargetResetId !== null) {
+    window.clearTimeout(pendingTranscriptEditTargetResetId);
+  }
+
+  pendingTranscriptEditTargetResetId = window.setTimeout(() => {
+    if (pendingTranscriptEditTargetSegmentId === segmentId) {
+      pendingTranscriptEditTargetSegmentId = null;
+    }
+    pendingTranscriptEditTargetResetId = null;
+  }, 250);
+}
 
 type EditableSegmentRowProps = {
   active: boolean;
@@ -93,7 +112,7 @@ export function EditableSegmentRow({
     }
 
     if (document.activeElement !== textArea) {
-      textArea.focus();
+      textArea.focus({ preventScroll: true });
       textArea.setSelectionRange(textArea.value.length, textArea.value.length);
     }
   }, [editing]);
@@ -114,6 +133,21 @@ export function EditableSegmentRow({
       return;
     }
 
+    const nextTarget = event.relatedTarget instanceof Element ? event.relatedTarget : null;
+    const nextEditTarget = nextTarget?.closest(transcriptEditTargetSelector);
+    const pendingEditTargetSegmentId = pendingTranscriptEditTargetSegmentId;
+    if (nextEditTarget || pendingEditTargetSegmentId) {
+      debugTranscriptInteraction('text-blur-save-transfer', {
+        fromSegmentId: segment.id,
+        toSegmentId: nextEditTarget?.getAttribute('data-segment-id') ?? pendingEditTargetSegmentId,
+        viaRelatedTarget: Boolean(nextEditTarget)
+      });
+      pendingTranscriptEditTargetSegmentId = null;
+      void onSave(event.currentTarget.value);
+      return;
+    }
+
+    debugTranscriptInteraction('text-blur-save-close', { segmentId: segment.id });
     void onSaveAndClose(event.currentTarget.value);
   }
 
@@ -210,6 +244,16 @@ export function EditableSegmentRow({
     event.preventDefault();
   }
 
+  function handleTextEditPointerDown(event: ReactPointerEvent<HTMLButtonElement | HTMLTextAreaElement>): void {
+    if (event.button !== 0) {
+      return;
+    }
+
+    event.stopPropagation();
+    rememberPendingTranscriptEditTarget(segment.id);
+    debugTranscriptInteraction('text-pointer-down', { segmentId: segment.id });
+  }
+
   function handleTimestampPointerDown(event: ReactPointerEvent<HTMLInputElement>, seconds: number): void {
     event.stopPropagation();
     if (event.button === 0 && !event.defaultPrevented) {
@@ -223,10 +267,15 @@ export function EditableSegmentRow({
     }
 
     const target = event.target instanceof Element ? event.target : null;
-    if (target?.closest('.segment-structure-tools, .segment-time-editors')) {
+    if (target?.closest('button, input, textarea, .segment-structure-tools, .segment-time-editors')) {
+      debugTranscriptInteraction('row-pointer-skip-interactive', {
+        segmentId: segment.id,
+        target: target.tagName.toLowerCase()
+      });
       return;
     }
 
+    debugTranscriptInteraction('row-pointer-select', { segmentId: segment.id });
     onSelectSegment();
   }
 
@@ -307,15 +356,17 @@ export function EditableSegmentRow({
           <textarea
             aria-label="Transcript segment text"
             className="segment-text-input"
+            data-segment-id={segment.id}
+            data-transcript-edit-target="true"
             onBlur={handleEditBlur}
             onChange={(event) => {
               onDraftChange(event.target.value);
               onCursorOffsetChange(event.target.selectionStart);
             }}
             onClick={syncCursorOffset}
-            onFocus={onFocus}
             onKeyDown={handleEditKeyDown}
             onKeyUp={syncCursorOffset}
+            onPointerDown={handleTextEditPointerDown}
             onSelect={syncCursorOffset}
             ref={textAreaRef}
             spellCheck
@@ -325,7 +376,10 @@ export function EditableSegmentRow({
           <button
             aria-label="Edit transcript segment text"
             className={active ? 'segment-text-display playback-active' : 'segment-text-display'}
+            data-segment-id={segment.id}
+            data-transcript-edit-target="true"
             onClick={onFocus}
+            onPointerDown={handleTextEditPointerDown}
             type="button"
           >
             <HighlightedTranscriptText query={searchQuery} text={segment.text} />

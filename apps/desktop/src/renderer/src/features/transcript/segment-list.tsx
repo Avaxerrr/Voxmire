@@ -4,6 +4,7 @@ import type { TranscriptSegment, TranscriptSegmentListResult } from '@voxmire/co
 import { EditableSegmentRow } from './editable-segment-row';
 import { useSegmentEditor } from './use-segment-editor';
 import { getPlaybackWordState, type PlaybackWordState } from './word-timing';
+import { debugTranscriptInteraction } from './transcript-interaction-debug';
 
 type VirtualizedSegmentListProps = {
   activeSegmentIndex: number;
@@ -65,7 +66,18 @@ export function VirtualizedSegmentList({
 
   useLayoutEffect(() => {
     if (activeSegmentIndex >= 0 && !editor.editingSegmentId) {
+      const scrollElement = scrollParentRef.current;
+      debugTranscriptInteraction('active-scroll-center', {
+        activeSegmentIndex,
+        beforeScrollTop: scrollElement?.scrollTop ?? null
+      });
       rowVirtualizer.scrollToIndex(activeSegmentIndex, { align: 'center' });
+      window.requestAnimationFrame(() => {
+        debugTranscriptInteraction('active-scroll-center-after-paint', {
+          activeSegmentIndex,
+          afterScrollTop: scrollElement?.scrollTop ?? null
+        });
+      });
     }
   }, [activeSegmentIndex, editor.editingSegmentId]);
 
