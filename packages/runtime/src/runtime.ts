@@ -12,8 +12,10 @@ import type {
   TranscriptionJob,
   TranscriptionProgressEvent,
   TranscriptionLanguage,
+  TranscriptionOutputMode,
   TranscriptSegment
 } from '@voxmire/contracts';
+import { modelSupportsTranscriptionOutputMode } from '@voxmire/core';
 import { defaultModelPath } from '@voxmire/engine';
 import {
   abandonJobProcessingSession,
@@ -223,12 +225,20 @@ export class VoxmireRuntime {
   }
 
   async createTranscriptionJob(input: CreateTranscriptionJobInput): Promise<JobWithSource> {
+    const engineBackend = input.engineBackend ?? 'cpu';
+    const language = input.language ?? 'auto';
+    const outputMode = input.outputMode ?? 'transcribe';
+    if (!modelSupportsTranscriptionOutputMode(input.modelId, outputMode)) {
+      throw new Error('Large v3 Turbo does not support Translate to English. Select Small q8_0 or full Large v3 for translation.');
+    }
+
     const sourceFile = await createSourceFile(this.options.resources, input.sourcePath);
     const created = createJobRecord(this.options.db, {
       sourceFile,
       modelId: input.modelId,
-      engineBackend: input.engineBackend ?? 'cpu',
-      language: input.language ?? 'auto'
+      engineBackend,
+      language,
+      outputMode
     });
     this.log({
       level: 'info',
@@ -239,8 +249,9 @@ export class VoxmireRuntime {
       details: {
         sourcePath: sourceFile.path,
         modelId: input.modelId,
-        engineBackend: input.engineBackend ?? 'cpu',
-        language: input.language ?? 'auto'
+        engineBackend,
+        language,
+        outputMode
       }
     });
 
@@ -498,6 +509,7 @@ export class VoxmireRuntime {
           chunks,
           modelPath,
           language: jobWithSource.job.language,
+          outputMode: jobWithSource.job.outputMode,
           outputDirectory,
           abortController,
           activeJob,
@@ -555,6 +567,7 @@ export class VoxmireRuntime {
     chunks: TranscriptionChunk[];
     modelPath: string;
     language: TranscriptionLanguage;
+    outputMode: TranscriptionOutputMode;
     outputDirectory: string;
     abortController: AbortController;
     activeJob: ActiveJob;
@@ -594,6 +607,7 @@ export class VoxmireRuntime {
           sourcePath: options.chunk.filePath,
           modelPath: options.modelPath,
           language: options.language,
+          outputMode: options.outputMode,
           outputDirectory: options.outputDirectory,
           outputBaseName: `${options.jobId}-chunk-${options.chunk.index.toString().padStart(4, '0')}-${candidate.engine.runtimeId}`,
           signal: options.abortController.signal

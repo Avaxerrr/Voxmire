@@ -4,6 +4,7 @@ import type {
   MachineProfile,
   ModelId,
   ModelProfile,
+  TranscriptionOutputMode,
   TranscriptionPresetId,
   TranscriptionPresetProfile
 } from '@voxmire/contracts';
@@ -46,6 +47,12 @@ export const modelProfiles: readonly ModelProfile[] = [
     relativeQuality: 'best'
   }
 ];
+const translationCapableModelIds = new Set<ModelId>(['small-q8_0', 'large-v3', 'medium']);
+
+export function modelSupportsTranscriptionOutputMode(modelId: ModelId, outputMode: TranscriptionOutputMode): boolean {
+  return outputMode === 'transcribe' || translationCapableModelIds.has(modelId);
+}
+
 export const transcriptionPresets: readonly TranscriptionPresetProfile[] = [
   {
     id: 'balanced',

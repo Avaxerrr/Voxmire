@@ -135,7 +135,8 @@ export function registerIpcHandlers(options: RegisterIpcHandlersOptions): void {
       sourcePath: selectedPath,
       modelId: selection.modelId,
       engineBackend: selection.engineBackend,
-      language: input.language
+      language: input.language,
+      outputMode: input.outputMode
     });
   });
 

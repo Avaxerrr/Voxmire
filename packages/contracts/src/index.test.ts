@@ -22,7 +22,7 @@ describe('contracts', () => {
   });
 
   it('defaults create job input to CPU backend', () => {
-    expect(createJobInputSchema.parse({})).toEqual({ modelId: 'large-v3-turbo', engineBackend: 'cpu', language: 'auto' });
+    expect(createJobInputSchema.parse({})).toEqual({ modelId: 'large-v3-turbo', engineBackend: 'cpu', language: 'auto', outputMode: 'transcribe' });
     expect(createJobInputSchema.parse({ presetId: 'balanced' }).presetId).toBe('balanced');
     expect(createJobInputSchema.parse({ engineBackend: 'cuda' }).engineBackend).toBe('cuda');
   });

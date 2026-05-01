@@ -1,10 +1,11 @@
-import { resolveTranscriptionPreset, transcriptionPresets, type ResolvedTranscriptionPreset } from '@voxmire/core';
+import { modelSupportsTranscriptionOutputMode, resolveTranscriptionPreset, transcriptionPresets, type ResolvedTranscriptionPreset } from '@voxmire/core';
 import type {
   EngineBackend,
   MachineProfile,
   ModelId,
   ModelProfile,
   ResourceStatus,
+  TranscriptionOutputMode,
   TranscriptionPresetId,
   TranscriptionPresetProfile
 } from '@voxmire/contracts';
@@ -71,17 +72,26 @@ export function modelInstalled(resources: ResourceStatus[], modelId: ModelId): b
   return modelResource(resources, modelId)?.available ?? false;
 }
 
-export function presetUsable(resources: ResourceStatus[], preset: TranscriptionPresetProfile): boolean {
-  return modelInstalled(resources, preset.modelId);
+export function presetSupportsOutputMode(preset: TranscriptionPresetProfile, outputMode: TranscriptionOutputMode): boolean {
+  return modelSupportsTranscriptionOutputMode(preset.modelId, outputMode);
 }
 
-export function visiblePresetOptions(resources: ResourceStatus[]): readonly TranscriptionPresetProfile[] {
-  const installed = uniquePresetsByModelId(transcriptionPresets.filter((preset) => presetUsable(resources, preset)));
+export function presetUsable(resources: ResourceStatus[], preset: TranscriptionPresetProfile, outputMode: TranscriptionOutputMode = 'transcribe'): boolean {
+  return modelInstalled(resources, preset.modelId) && presetSupportsOutputMode(preset, outputMode);
+}
+
+export function visiblePresetOptions(resources: ResourceStatus[], outputMode: TranscriptionOutputMode = 'transcribe'): readonly TranscriptionPresetProfile[] {
+  const compatiblePresets = transcriptionPresets.filter((preset) => presetSupportsOutputMode(preset, outputMode));
+  const installed = uniquePresetsByModelId(compatiblePresets.filter((preset) => presetUsable(resources, preset, outputMode)));
   if (installed.length > 0) {
     return installed;
   }
 
-  return uniquePresetsByModelId(transcriptionPresets.filter((preset) => preset.recommended));
+  const preferred = outputMode === 'translate'
+    ? compatiblePresets.filter((preset) => preset.modelId === 'large-v3' || preset.modelId === 'small-q8_0')
+    : compatiblePresets.filter((preset) => preset.recommended);
+
+  return uniquePresetsByModelId(preferred.length > 0 ? preferred : compatiblePresets);
 }
 
 function uniquePresetsByModelId(presets: readonly TranscriptionPresetProfile[]): TranscriptionPresetProfile[] {
@@ -102,28 +112,48 @@ export function presetModelOptionLabel(models: ModelProfile[], preset: Transcrip
     ?? preset.modelId;
 }
 
-export function selectUsablePreset(recommendedModelId: ModelId, resources: ResourceStatus[]): TranscriptionPresetId {
-  const matchingRecommended = transcriptionPresets.find((preset) => preset.modelId === recommendedModelId && presetUsable(resources, preset));
+export function selectUsablePreset(recommendedModelId: ModelId, resources: ResourceStatus[], outputMode: TranscriptionOutputMode = 'transcribe'): TranscriptionPresetId {
+  const compatiblePresets = transcriptionPresets.filter((preset) => presetSupportsOutputMode(preset, outputMode));
+
+  if (outputMode === 'translate') {
+    const qualityPreset = compatiblePresets.find((preset) => preset.modelId === 'large-v3' && presetUsable(resources, preset, outputMode));
+    if (qualityPreset) {
+      return qualityPreset.id;
+    }
+
+    const starterPreset = compatiblePresets.find((preset) => preset.modelId === 'small-q8_0' && presetUsable(resources, preset, outputMode));
+    if (starterPreset) {
+      return starterPreset.id;
+    }
+  }
+
+  const matchingRecommended = compatiblePresets.find((preset) => preset.modelId === recommendedModelId && presetUsable(resources, preset, outputMode));
   if (matchingRecommended) {
     return matchingRecommended.id;
   }
 
-  const recommended = transcriptionPresets.find((preset) => preset.recommended && presetUsable(resources, preset));
+  const recommended = compatiblePresets.find((preset) => preset.recommended && presetUsable(resources, preset, outputMode));
   if (recommended) {
     return recommended.id;
   }
 
-  return transcriptionPresets.find((preset) => presetUsable(resources, preset))?.id ?? 'balanced';
+  return compatiblePresets.find((preset) => presetUsable(resources, preset, outputMode))?.id ?? (outputMode === 'translate' ? 'fast' : 'balanced');
 }
 
 export function resolvePresetSelection(
   presetId: TranscriptionPresetId,
   machineProfile: MachineProfile | null,
-  resources: ResourceStatus[]
+  resources: ResourceStatus[],
+  outputMode: TranscriptionOutputMode = 'transcribe'
 ): ResolvedTranscriptionPreset {
-  const fallbackPresetId = presetUsable(resources, resolveTranscriptionPreset(presetId).preset)
+  const requestedPreset = resolveTranscriptionPreset(presetId).preset;
+  const compatiblePresetId = presetSupportsOutputMode(requestedPreset, outputMode)
     ? presetId
-    : selectUsablePreset('large-v3-turbo', resources);
+    : selectUsablePreset('large-v3', resources, outputMode);
+  const fallbackRecommendedModelId: ModelId = outputMode === 'translate' ? 'large-v3' : 'large-v3-turbo';
+  const fallbackPresetId = presetUsable(resources, resolveTranscriptionPreset(compatiblePresetId).preset, outputMode)
+    ? compatiblePresetId
+    : selectUsablePreset(fallbackRecommendedModelId, resources, outputMode);
   const fallbackBackend = machineProfile ? selectUsableBackend(machineProfile) : 'cpu';
   const resolved = resolveTranscriptionPreset(fallbackPresetId, {
     ...(machineProfile ? { machineProfile } : {}),

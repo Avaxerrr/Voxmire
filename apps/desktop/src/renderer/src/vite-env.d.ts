@@ -22,6 +22,7 @@ import type {
   TranscriptSegmentListResult,
   TranscriptionJob,
   TranscriptionLanguage,
+  TranscriptionOutputMode,
   TranscriptionPresetId,
   TranscriptionProgressEvent
 } from '@voxmire/contracts';
@@ -86,7 +87,7 @@ declare global {
         install: (modelId: ModelId) => Promise<ModelInstallResult>;
       };
       jobs: {
-        create: (input?: { presetId?: TranscriptionPresetId; modelId?: string; engineBackend?: EngineBackend; language?: TranscriptionLanguage }) => Promise<CreateJobResult | null>;
+        create: (input?: { presetId?: TranscriptionPresetId; modelId?: string; engineBackend?: EngineBackend; language?: TranscriptionLanguage; outputMode?: TranscriptionOutputMode }) => Promise<CreateJobResult | null>;
         list: () => Promise<JobWithSource[]>;
         get: (jobId: string) => Promise<JobWithSource | null>;
         cancel: (jobId: string) => Promise<TranscriptionJob | null>;

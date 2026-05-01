@@ -1,12 +1,13 @@
 import { type ReactElement, useState } from 'react';
 import { AlertTriangle, FileAudio, FileVideo, Pencil, RotateCcw, Trash2, UploadCloud, X } from 'lucide-react';
-import type { JobWithSource, MachineProfile, ModelProfile, ProjectDetails, ResourceStatus, TranscriptionLanguage, TranscriptionPresetId } from '@voxmire/contracts';
+import type { JobWithSource, MachineProfile, ModelProfile, ProjectDetails, ResourceStatus, TranscriptionLanguage, TranscriptionOutputMode, TranscriptionPresetId } from '@voxmire/contracts';
 import { EmptyState } from './empty-state';
 import { formatDateTime, formatDuration, formatDurationMs, formatFileSize } from '../lib/format';
 import { jobProgressLabel, statusLabel } from '../lib/job-status';
 import { mediaKindFromExtension, mediaKindLabel } from '../lib/media-kind';
 import { backendOptions, presetModelOptionLabel, visiblePresetOptions, type BackendPreference, type ResolvedTranscriptionPreset } from '../lib/presets';
 import { transcriptionLanguageLabel, transcriptionLanguageOptions } from '../lib/transcription-languages';
+import { transcriptionOutputModeLabel, transcriptionOutputModeOptions } from '../lib/transcription-output-modes';
 
 type ImportModalProps = {
   busy: boolean;
@@ -17,15 +18,25 @@ type ImportModalProps = {
   onClose: () => void;
   selectedBackendPreference: BackendPreference;
   selectedLanguage: TranscriptionLanguage;
+  selectedOutputMode: TranscriptionOutputMode;
   selectedPresetId: TranscriptionPresetId;
   selectedPresetResolution: ResolvedTranscriptionPreset;
   setSelectedBackendPreference: (preference: BackendPreference) => void;
   setSelectedLanguage: (language: TranscriptionLanguage) => void;
+  setSelectedOutputMode: (outputMode: TranscriptionOutputMode) => void;
   setSelectedPresetId: (presetId: TranscriptionPresetId) => void;
   setupLoading: boolean;
 };
 
-export function ImportModal({ busy, createJob, machineProfile, models, resources, onClose, selectedBackendPreference, selectedLanguage, selectedPresetId, selectedPresetResolution, setSelectedBackendPreference, setSelectedLanguage, setSelectedPresetId, setupLoading }: ImportModalProps): ReactElement {
+export function ImportModal({ busy, createJob, machineProfile, models, resources, onClose, selectedBackendPreference, selectedLanguage, selectedOutputMode, selectedPresetId, selectedPresetResolution, setSelectedBackendPreference, setSelectedLanguage, setSelectedOutputMode, setSelectedPresetId, setupLoading }: ImportModalProps): ReactElement {
+  const presetOptions = visiblePresetOptions(resources, selectedOutputMode);
+  const selectedPresetValue = presetOptions.some((preset) => preset.id === selectedPresetResolution.preset.id)
+    ? selectedPresetResolution.preset.id
+    : selectedPresetId;
+  const outputModeNote = selectedOutputMode === 'translate'
+    ? 'Translate to English outputs English only. Turbo is disabled here because it returns source-language text instead of translation.'
+    : 'Auto detects one dominant language per job. Original-language transcription is usually more accurate than translation.';
+
   return (
     <div className="modal-backdrop" role="presentation">
       <section className="import-modal" aria-labelledby="import-title" role="dialog">
@@ -41,8 +52,8 @@ export function ImportModal({ busy, createJob, machineProfile, models, resources
         <div className="settings-field-grid modal-field-grid">
           <label>
             <span className="field-label">Transcription model</span>
-            <select disabled={setupLoading || busy} value={selectedPresetId} onChange={(event) => setSelectedPresetId(event.target.value as TranscriptionPresetId)}>
-              {visiblePresetOptions(resources).map((preset) => <option key={preset.id} value={preset.id}>{presetModelOptionLabel(models, preset)}</option>)}
+            <select disabled={setupLoading || busy} value={selectedPresetValue} onChange={(event) => setSelectedPresetId(event.target.value as TranscriptionPresetId)}>
+              {presetOptions.map((preset) => <option key={preset.id} value={preset.id}>{presetModelOptionLabel(models, preset)}</option>)}
             </select>
           </label>
           <label>
@@ -62,6 +73,13 @@ export function ImportModal({ busy, createJob, machineProfile, models, resources
               {transcriptionLanguageOptions.map((language) => <option key={language.id} value={language.id}>{language.label}</option>)}
             </select>
           </label>
+          <label>
+            <span className="field-label">Output</span>
+            <select disabled={setupLoading || busy} value={selectedOutputMode} onChange={(event) => setSelectedOutputMode(event.target.value as TranscriptionOutputMode)}>
+              {transcriptionOutputModeOptions.map((mode) => <option key={mode.id} value={mode.id}>{mode.label}</option>)}
+            </select>
+          </label>
+          <p className="modal-note">{outputModeNote}</p>
         </div>
 
         <button className="drop-zone" disabled={busy || setupLoading} onClick={() => void createJob()} type="button">
@@ -138,6 +156,7 @@ export function ProjectDetailsDrawer({ details, loading, onClose, onDelete, onRe
               <div><dt>Progress</dt><dd>{jobProgressLabel(details.job.status, details.job.progress)}</dd></div>
               <div><dt>Model</dt><dd>{details.job.modelId}</dd></div>
               <div><dt>Language</dt><dd>{transcriptionLanguageLabel(details.job.language)}</dd></div>
+              <div><dt>Output</dt><dd>{transcriptionOutputModeLabel(details.job.outputMode)}</dd></div>
               <div><dt>Backend</dt><dd>{details.job.engineBackend.toUpperCase()}</dd></div>
               <div><dt>Solver</dt><dd>{solverLabel ?? details.job.engineBackend.toUpperCase()}</dd></div>
               <div><dt>Transcript segments</dt><dd>{details.segmentCount.toLocaleString()}</dd></div>

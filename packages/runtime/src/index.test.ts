@@ -67,6 +67,31 @@ describe('VoxmireRuntime', () => {
     db.close();
   });
 
+  it('rejects Turbo translation jobs before running Whisper', async () => {
+    const tempDirectory = mkdtempSync(join(tmpdir(), 'voxmire-runtime-'));
+    const sourcePath = join(tempDirectory, 'recording.wav');
+    writeFileSync(sourcePath, 'placeholder audio');
+
+    const db = openVoxmireDatabase(':memory:');
+    const runtime = createVoxmireRuntime({
+      db,
+      resources: { projectRoot: tempDirectory },
+      directories: {
+        engineOutputDirectory: join(tempDirectory, 'engine-output'),
+        exportDirectory: join(tempDirectory, 'exports')
+      }
+    });
+
+    await expect(runtime.createTranscriptionJob({
+      sourcePath,
+      modelId: 'large-v3-turbo',
+      outputMode: 'translate',
+      startImmediately: false
+    })).rejects.toThrow(/does not support Translate to English/);
+    expect(runtime.listJobs()).toHaveLength(0);
+    db.close();
+  });
+
   it('queues interrupted jobs for recovery without rerunning completed chunks', async () => {
     const tempDirectory = mkdtempSync(join(tmpdir(), 'voxmire-runtime-'));
     const sourcePath = join(tempDirectory, 'recording.wav');

@@ -1,4 +1,4 @@
-import type { EngineAvailability, EngineBackend, EngineRuntimeId, TranscriptionLanguage, TranscriptionProgressEvent } from '@voxmire/contracts';
+import type { EngineAvailability, EngineBackend, EngineRuntimeId, TranscriptionLanguage, TranscriptionOutputMode, TranscriptionProgressEvent } from '@voxmire/contracts';
 
 export type ResourcePaths = {
   projectRoot: string;
@@ -33,6 +33,7 @@ export type TranscriptionInput = {
   sourcePath: string;
   modelPath: string;
   language?: TranscriptionLanguage;
+  outputMode?: TranscriptionOutputMode;
   outputDirectory: string;
   outputBaseName?: string;
   signal?: AbortSignal;

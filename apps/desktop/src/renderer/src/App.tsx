@@ -16,6 +16,7 @@ import type {
   TranscriptSegment,
   TranscriptSegmentListResult,
   TranscriptionLanguage,
+  TranscriptionOutputMode,
   TranscriptionPresetId,
   TranscriptionProgressEvent
 } from '@voxmire/contracts';
@@ -57,6 +58,7 @@ export function App(): ReactElement {
   const [selectedPresetId, setSelectedPresetId] = useState<TranscriptionPresetId>('balanced');
   const [selectedBackendPreference, setSelectedBackendPreference] = useState<BackendPreference>('auto');
   const [selectedLanguage, setSelectedLanguage] = useState<TranscriptionLanguage>('auto');
+  const [selectedOutputMode, setSelectedOutputMode] = useState<TranscriptionOutputMode>('transcribe');
   const [solverLabelsByJobId, setSolverLabelsByJobId] = useState<SolverLabelsByJobId>({});
   const [jobs, setJobs] = useState<JobWithSource[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -89,8 +91,8 @@ export function App(): ReactElement {
   );
 
   const selectedPresetResolution = useMemo(
-    () => resolvePresetSelection(selectedPresetId, machineProfile, resources),
-    [machineProfile, resources, selectedPresetId]
+    () => resolvePresetSelection(selectedPresetId, machineProfile, resources, selectedOutputMode),
+    [machineProfile, resources, selectedOutputMode, selectedPresetId]
   );
 
   const selectedEngineBackend = useMemo(
@@ -390,7 +392,8 @@ export function App(): ReactElement {
       const created = await api.jobs.create({
         modelId: selectedPresetResolution.modelId,
         engineBackend: selectedEngineBackend,
-        language: selectedLanguage
+        language: selectedLanguage,
+        outputMode: selectedOutputMode
       });
       if (created) {
         const updated = await api.jobs.list();
@@ -857,10 +860,12 @@ export function App(): ReactElement {
           machineProfile={machineProfile}
           selectedBackendPreference={selectedBackendPreference}
           selectedLanguage={selectedLanguage}
+          selectedOutputMode={selectedOutputMode}
           selectedPresetId={selectedPresetId}
           selectedPresetResolution={selectedPresetResolution}
           setSelectedBackendPreference={setSelectedBackendPreference}
           setSelectedLanguage={setSelectedLanguage}
+          setSelectedOutputMode={setSelectedOutputMode}
           setSelectedPresetId={setSelectedPresetId}
           setupLoading={systemLoading}
         />

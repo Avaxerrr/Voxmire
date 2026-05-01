@@ -4,6 +4,7 @@ import {
   canTransitionJobStatus,
   estimateChunkCount,
   getTranscriptionPreset,
+  modelSupportsTranscriptionOutputMode,
   mapTranscriptWordTimingsToTextRanges,
   resolveTranscriptionPreset,
   shouldChunkAudio,
@@ -52,6 +53,13 @@ describe('transcription presets', () => {
 
   it('returns preset metadata by id', () => {
     expect(getTranscriptionPreset('balanced').label).toBe('Balanced');
+  });
+
+  it('keeps Turbo out of translation mode', () => {
+    expect(modelSupportsTranscriptionOutputMode('large-v3-turbo', 'transcribe')).toBe(true);
+    expect(modelSupportsTranscriptionOutputMode('large-v3-turbo', 'translate')).toBe(false);
+    expect(modelSupportsTranscriptionOutputMode('small-q8_0', 'translate')).toBe(true);
+    expect(modelSupportsTranscriptionOutputMode('large-v3', 'translate')).toBe(true);
   });
 });
 

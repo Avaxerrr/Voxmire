@@ -21,6 +21,8 @@ export const engineRuntimeIdSchema = z.enum(['cuda-12.4', 'vulkan', 'cpu-blas', 
 
 export const transcriptionLanguageSchema = z.enum(['auto', 'en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'ja', 'ko', 'zh', 'ru', 'ar', 'hi', 'vi', 'id', 'tr', 'pl', 'uk']);
 
+export const transcriptionOutputModeSchema = z.enum(['transcribe', 'translate']);
+
 export const modelIdSchema = z.enum(['small-q8_0', 'large-v3-turbo', 'large-v3', 'distil-large-v3.5', 'medium']);
 
 export const transcriptionPresetIdSchema = z.enum(['balanced', 'fast', 'quality', 'low-memory']);
@@ -54,6 +56,7 @@ export const transcriptionJobSchema = z.object({
   modelId: modelIdSchema,
   engineBackend: engineBackendSchema,
   language: transcriptionLanguageSchema.default('auto'),
+  outputMode: transcriptionOutputModeSchema.default('transcribe'),
   progress: z.number().min(0).max(1),
   errorMessage: z.string().nullable(),
   createdAt: z.string().datetime(),
@@ -297,7 +300,8 @@ export const createJobInputSchema = z.object({
   presetId: transcriptionPresetIdSchema.optional(),
   modelId: modelIdSchema.default('large-v3-turbo'),
   engineBackend: engineBackendSchema.default('cpu'),
-  language: transcriptionLanguageSchema.default('auto')
+  language: transcriptionLanguageSchema.default('auto'),
+  outputMode: transcriptionOutputModeSchema.default('transcribe')
 });
 
 export const createJobResultSchema = z.object({
@@ -424,6 +428,7 @@ export type EngineKind = z.infer<typeof engineKindSchema>;
 export type EngineBackend = z.infer<typeof engineBackendSchema>;
 export type EngineRuntimeId = z.infer<typeof engineRuntimeIdSchema>;
 export type TranscriptionLanguage = z.infer<typeof transcriptionLanguageSchema>;
+export type TranscriptionOutputMode = z.infer<typeof transcriptionOutputModeSchema>;
 export type ModelId = z.infer<typeof modelIdSchema>;
 export type TranscriptionPresetId = z.infer<typeof transcriptionPresetIdSchema>;
 export type TranscriptionPresetBackendPreference = z.infer<typeof transcriptionPresetBackendPreferenceSchema>;

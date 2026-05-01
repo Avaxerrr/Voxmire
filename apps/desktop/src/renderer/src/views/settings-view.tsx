@@ -101,8 +101,12 @@ export function SettingsView({ appInfo, engines, exportDirectory, installingMode
             <FileText size={18} />
             <div>
               <h3>Model manager</h3>
-              <p>Download approved ggml models. Large v3 Turbo is the best default; Small q8_0 is bundled for first-run use.</p>
+              <p>Download approved ggml models. Large v3 Turbo is the best default for transcription; Small q8_0 is bundled for first-run use.</p>
             </div>
+          </div>
+          <div className="model-manager-note" role="note">
+            <AlertTriangle size={15} />
+            <span>Translate to English works with Small q8_0 and full Large v3. Large v3 Turbo is fast for transcription, but testing showed it returns source-language text instead of English translation.</span>
           </div>
           <div className="model-manager-list">
             {modelInstallStatuses.length === 0 ? (
@@ -116,6 +120,7 @@ export function SettingsView({ appInfo, engines, exportDirectory, installingMode
             ) : modelInstallStatuses.map((model) => {
               const installing = installingModelId === model.modelId;
               const disabled = model.installed || !model.downloadable || installing;
+              const translationNote = modelTranslationNote(model.modelId);
 
               return (
                 <div className={`model-row ${modelRowClass(model)}`} key={model.modelId}>
@@ -125,6 +130,7 @@ export function SettingsView({ appInfo, engines, exportDirectory, installingMode
                   </span>
                   <em>{modelStatusLabel(model)}</em>
                   <p>{model.description}</p>
+                  {translationNote ? <p className={model.modelId === 'large-v3-turbo' ? 'model-translation-note warning' : 'model-translation-note'}>{translationNote}</p> : null}
                   {model.path ? <p>{model.path}</p> : null}
                   <button className="secondary-action model-install-action" disabled={disabled} onClick={() => onInstallModel(model.modelId)} type="button">
                     {installing ? 'Downloading' : model.installed ? 'Installed' : 'Download'}
@@ -290,6 +296,18 @@ export function SettingsView({ appInfo, engines, exportDirectory, installingMode
       </div>
     </div>
   );
+}
+
+function modelTranslationNote(modelId: ModelId): string | null {
+  if (modelId === 'large-v3-turbo') {
+    return 'Translation: not reliable for Translate to English.';
+  }
+
+  if (modelId === 'small-q8_0' || modelId === 'large-v3') {
+    return 'Translation: compatible with Translate to English.';
+  }
+
+  return null;
 }
 
 function modelInstallSummary(model: ModelInstallStatus): string {
