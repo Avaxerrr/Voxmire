@@ -364,6 +364,17 @@
   overflow: auto;
   padding-right: 4px;
 }
+
+.transcript-stage:not(.preview-side) .segment-list-inner {
+  width: min(100%, 1360px);
+  margin-inline: auto;
+}
+
+@media (min-width: 1800px) {
+  .transcript-stage:not(.preview-side) .segment-list-inner {
+    width: min(100%, 1180px);
+  }
+}
 .segment-list-inner {
   position: relative;
   width: 100%;
@@ -375,7 +386,7 @@
   width: 100%;
   padding-bottom: 18px;
 }
-.segment-row { position: relative; display: grid; grid-template-columns: 128px minmax(0, 1fr); align-items: start; gap: 20px; width: 100%; padding: 15px 16px; border: 0; border-left: 2px solid transparent; border-radius: 8px; color: inherit; background: transparent; text-align: left; }
+.segment-row { position: relative; display: grid; grid-template-columns: 184px minmax(0, 1fr); align-items: start; gap: 20px; width: 100%; padding: 15px 16px; border: 0; border-left: 2px solid transparent; border-radius: 8px; color: inherit; background: transparent; text-align: left; }
 .segment-row.active,
 .segment-row:hover { border-left-color: var(--violet); background: linear-gradient(90deg, rgba(168, 85, 247, 0.09), transparent 72%); }
 .segment-row.search-match { border-left-color: var(--cyan); background: linear-gradient(90deg, rgba(34, 211, 238, 0.08), transparent 72%); }
@@ -393,10 +404,10 @@
 }
 .segment-time-editors {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(84px, 1fr) auto minmax(84px, 1fr);
   align-items: center;
-  gap: 4px;
-  max-width: 128px;
+  gap: 6px;
+  max-width: 184px;
   color: var(--faint);
   font-family: "Fira Code", Consolas, monospace;
   font-size: 10px;
@@ -405,13 +416,14 @@
 .segment-time-editors input {
   min-width: 0;
   width: 100%;
-  padding: 4px 5px;
+  padding: 4px 6px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 5px;
   color: var(--muted);
   background: rgba(255, 255, 255, 0.035);
   font: inherit;
   cursor: text;
+  text-align: center;
 }
 .segment-time-editors:hover input {
   color: var(--text);
