@@ -12,6 +12,7 @@ import type { TranscriptSegment } from '@voxmire/contracts';
 import { formatEditableTime, formatTime, parseEditableTime } from '../../lib/format';
 import { HighlightedTranscriptText } from './highlighted-transcript-text';
 import { debugTranscriptInteraction } from './transcript-interaction-debug';
+import type { TranscriptFocusTarget } from './transcript-workspace-state';
 
 const transcriptEditTargetSelector = '[data-transcript-edit-target="true"]';
 const transcriptTimingTargetSelector = '[data-transcript-timing-target="true"]';
@@ -45,6 +46,7 @@ type EditableSegmentRowProps = {
   onCursorOffsetChange: (offset: number) => void;
   onDraftChange: (text: string) => void;
   onFocus: () => void;
+  onFocusTargetChange: (target: TranscriptFocusTarget) => void;
   onMergeNext: () => Promise<void>;
   onMergePrevious: () => Promise<void>;
   onSave: (nextText: string) => Promise<boolean>;
@@ -79,6 +81,7 @@ export function EditableSegmentRow({
   onSave,
   onSeekTime,
   onFocus,
+  onFocusTargetChange,
   onMergeNext,
   onMergePrevious,
   onSaveAndClose,
@@ -164,6 +167,11 @@ export function EditableSegmentRow({
     }
 
     void onSaveTiming(nextStart, nextEnd);
+  }
+
+  function handleTimingFocus(target: TranscriptFocusTarget): void {
+    onTimingEditStart();
+    onFocusTargetChange(target);
   }
 
   function handleTimingBlur(event: ReactFocusEvent<HTMLInputElement>): void {
@@ -266,14 +274,19 @@ export function EditableSegmentRow({
     }
 
     event.stopPropagation();
+    onFocusTargetChange('text');
     rememberPendingTranscriptEditTarget(segment.id);
     debugTranscriptInteraction('text-pointer-down', { segmentId: segment.id });
   }
 
-  function handleTimestampPointerDown(event: ReactPointerEvent<HTMLInputElement>, seconds: number): void {
+  function handleTimestampPointerDown(
+    event: ReactPointerEvent<HTMLInputElement>,
+    seconds: number,
+    target: TranscriptFocusTarget
+  ): void {
     event.stopPropagation();
     if (event.button === 0 && !event.defaultPrevented) {
-      onTimingEditStart();
+      handleTimingFocus(target);
       onSeekTime(seconds, segment.id);
     }
   }
@@ -315,26 +328,30 @@ export function EditableSegmentRow({
         >
           <input
             aria-label="Segment start time"
+            data-segment-id={segment.id}
+            data-transcript-focus-target="start-time"
             data-transcript-timing-target="true"
             disabled={savingTiming}
             onBlur={handleTimingBlur}
             onChange={(event) => setStartDraft(event.target.value)}
-            onFocus={onTimingEditStart}
+            onFocus={() => handleTimingFocus('start-time')}
             onKeyDown={handleTimingKeyDown}
-            onPointerDown={(event) => handleTimestampPointerDown(event, segment.startSeconds)}
+            onPointerDown={(event) => handleTimestampPointerDown(event, segment.startSeconds, 'start-time')}
             title={`Seek to ${formatTime(segment.startSeconds)}`}
             value={startDraft}
           />
           <span>-</span>
           <input
             aria-label="Segment end time"
+            data-segment-id={segment.id}
+            data-transcript-focus-target="end-time"
             data-transcript-timing-target="true"
             disabled={savingTiming}
             onBlur={handleTimingBlur}
             onChange={(event) => setEndDraft(event.target.value)}
-            onFocus={onTimingEditStart}
+            onFocus={() => handleTimingFocus('end-time')}
             onKeyDown={handleTimingKeyDown}
-            onPointerDown={(event) => handleTimestampPointerDown(event, segment.endSeconds)}
+            onPointerDown={(event) => handleTimestampPointerDown(event, segment.endSeconds, 'end-time')}
             title={`Seek to ${formatTime(segment.endSeconds)}`}
             value={endDraft}
           />
@@ -379,12 +396,14 @@ export function EditableSegmentRow({
             className="segment-text-input"
             data-segment-id={segment.id}
             data-transcript-edit-target="true"
+            data-transcript-focus-target="text"
             onBlur={handleEditBlur}
             onChange={(event) => {
               onDraftChange(event.target.value);
               onCursorOffsetChange(event.target.selectionStart);
             }}
             onClick={syncCursorOffset}
+            onFocus={() => onFocusTargetChange('text')}
             onKeyDown={handleEditKeyDown}
             onKeyUp={syncCursorOffset}
             onPointerDown={handleTextEditPointerDown}
@@ -399,7 +418,9 @@ export function EditableSegmentRow({
             className={active ? 'segment-text-display playback-active' : 'segment-text-display'}
             data-segment-id={segment.id}
             data-transcript-edit-target="true"
+            data-transcript-focus-target="text"
             onClick={onFocus}
+            onFocus={() => onFocusTargetChange('text')}
             onPointerDown={handleTextEditPointerDown}
             type="button"
           >

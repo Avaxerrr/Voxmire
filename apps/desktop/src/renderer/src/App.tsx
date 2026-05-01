@@ -23,6 +23,7 @@ import { AppSidebar } from './components/app-sidebar';
 import { StatusBar } from './components/status-bar';
 import { WindowFrameControls } from './components/window-frame-controls';
 import { VoiceStudioView } from './views/voice-studio-view';
+import { emptyTranscriptWorkspaceState } from './features/transcript/transcript-workspace-state';
 import { DashboardView } from './views/dashboard-view';
 import { SettingsView } from './views/settings-view';
 import { TranscriptView } from './views/transcript-view';
@@ -74,6 +75,7 @@ export function App(): ReactElement {
   const [bulkDeleteTargets, setBulkDeleteTargets] = useState<JobWithSource[]>([]);
   const [projectBusy, setProjectBusy] = useState(false);
   const [playing, setPlaying] = useState(false);
+  const [transcriptWorkspaceState, setTranscriptWorkspaceState] = useState(emptyTranscriptWorkspaceState);
   const [exportDirectory, setExportDirectory] = useState<string | null>(null);
   const progressRefreshSequence = useRef(0);
   const selectedJobIdRef = useRef<string | null>(null);
@@ -802,6 +804,8 @@ export function App(): ReactElement {
             solverLabelsByJobId={solverLabelsByJobId}
             setPlaying={setPlaying}
             splitSegment={splitTranscriptSegment}
+            transcriptWorkspaceState={transcriptWorkspaceState}
+            setTranscriptWorkspaceState={setTranscriptWorkspaceState}
             mergeSegment={mergeTranscriptSegment}
             replaceSegments={replaceTranscriptSegments}
             resetSegments={resetTranscriptSegments}

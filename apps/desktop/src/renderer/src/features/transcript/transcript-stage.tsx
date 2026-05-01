@@ -1,4 +1,4 @@
-import { type MutableRefObject, type ReactElement } from 'react';
+import { type Dispatch, type MutableRefObject, type ReactElement, type SetStateAction } from 'react';
 import { FileText, FolderOpen, Plus, Video } from 'lucide-react';
 import type { JobWithSource, TranscriptSegment, TranscriptSegmentListResult } from '@voxmire/contracts';
 import { EmptyState } from '../../components/empty-state';
@@ -8,6 +8,7 @@ import { type MediaKind } from '../../lib/media-kind';
 import { VirtualizedSegmentList } from './segment-list';
 import { TranscriptJobStatus } from './transcript-job-status';
 import { type PlaybackWordState } from './word-timing';
+import type { TranscriptWorkspaceState } from './transcript-workspace-state';
 
 type WordTimingDiagnosticDetails = {
   activeSegmentIndex: number;
@@ -48,9 +49,11 @@ type TranscriptStageProps = {
   resetSignal: number;
   searchQuery: string;
   selectedJob: JobWithSource | null;
+  setTranscriptWorkspaceState: Dispatch<SetStateAction<TranscriptWorkspaceState>>;
   selectedMediaKind: MediaKind;
   solverLabel: string | null;
   segments: TranscriptSegment[];
+  transcriptWorkspaceState: TranscriptWorkspaceState;
   setPlaying: (playing: boolean) => void;
   setVideoPreviewDock: (dock: VideoPreviewDock) => void;
   setVideoPreviewHidden: (hidden: boolean) => void;
@@ -93,9 +96,11 @@ export function TranscriptStage({
   resetSignal,
   searchQuery,
   selectedJob,
+  setTranscriptWorkspaceState,
   selectedMediaKind,
   solverLabel,
   segments,
+  transcriptWorkspaceState,
   setPlaying,
   setVideoPreviewDock,
   setVideoPreviewHidden,
@@ -113,6 +118,7 @@ export function TranscriptStage({
       activeSegmentIndex={activeSegmentIndex}
       diagnosticsEnabled={diagnosticsEnabled}
       onWordTimingDiagnostic={onWordTimingDiagnostic}
+      jobId={selectedJob?.job.id ?? null}
       onMergeSegment={onMergeSegment}
       onSeek={onSeek}
       onSeekTime={onSeekTime}
@@ -124,6 +130,8 @@ export function TranscriptStage({
       resetSignal={resetSignal}
       searchQuery={searchQuery}
       segments={segments}
+      setWorkspaceState={setTranscriptWorkspaceState}
+      workspaceState={transcriptWorkspaceState}
     />
   );
 
