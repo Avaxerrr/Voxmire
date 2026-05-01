@@ -386,7 +386,7 @@
   width: 100%;
   padding-bottom: 18px;
 }
-.segment-row { position: relative; display: grid; grid-template-columns: 184px minmax(0, 1fr); align-items: start; gap: 20px; width: 100%; padding: 15px 16px; border: 0; border-left: 2px solid transparent; border-radius: 8px; color: inherit; background: transparent; text-align: left; transition: border-color 140ms ease, background 140ms ease; }
+.segment-row { position: relative; display: grid; grid-template-columns: 184px minmax(0, 1fr); align-items: start; gap: 20px; width: 100%; padding: 15px 16px; border: 0; border-left: 2px solid transparent; border-radius: 8px; color: inherit; background: transparent; text-align: left; }
 .transcript-stage:not(.preview-side) .segment-row {
   grid-template-columns: minmax(0, 1fr);
   justify-items: center;
@@ -411,9 +411,6 @@
   justify-content: center;
 }
 
-.segment-row.active {
-  background: rgba(168, 85, 247, 0.032);
-}
 .segment-row.search-match {
   background: rgba(34, 211, 238, 0.035);
 }
@@ -502,7 +499,7 @@
   opacity: 0.28;
 }
 .segment-row.editing {
-  background: rgba(168, 85, 247, 0.04);
+  background: rgba(168, 85, 247, 0.032);
 }
 .segment-edit-stack {
   display: grid;
